@@ -6,7 +6,8 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CHUNK_SIZE, WORLD_CHUNKS_X, WORLD_CHUNKS_Z } from '../../shared/constants.js';
 import { decode } from '../../shared/protocol.js';
 import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter } from './art/character.js';
-import { getPrefab } from './prefabs.js';
+import { updateWind } from './art/wind.js';
+import { getPrefabVariant, variantKey } from './prefabs.js';
 
 const GRID = 17; // узлов на сторону чанка
 const CELL = CHUNK_SIZE / (GRID - 1); // 4 м
@@ -64,6 +65,14 @@ export function heightInChunk(heights, lx, lz) {
   return u + v <= 1 ? a + u * (b - a) + v * (c - a) : d + (1 - u) * (c - d) + (1 - v) * (b - d);
 }
 
+// Низкочастотный «шум» цвета земли: пятна светлее и темнее вместо шахматки. Зависит от мировых координат,
+// поэтому стыки чанков не заметны.
+function groundTint(wx, wz) {
+  const broad = Math.sin(wx * 0.045 + Math.sin(wz * 0.031) * 2.1) * Math.sin(wz * 0.052 + Math.cos(wx * 0.027) * 1.7);
+  const fine = Math.sin(wx * 0.31 + wz * 0.17) * Math.sin(wz * 0.27 - wx * 0.13);
+  return 1 + broad * 0.07 + fine * 0.025;
+}
+
 function buildTerrain(chunk, material) {
   const positions = new Float32Array(GRID * GRID * 3);
   const colors = new Float32Array(GRID * GRID * 3);
@@ -71,7 +80,7 @@ function buildTerrain(chunk, material) {
     for (let ix = 0; ix < GRID; ix++) {
       const i = iz * GRID + ix;
       positions.set([ix * CELL, chunk.heights[i], iz * CELL], i * 3);
-      const shade = (ix + iz) % 2 ? 0.94 : 1; // лёгкая «шахматка», чтобы было видно движение
+      const shade = groundTint(chunk.cx * CHUNK_SIZE + ix * CELL, chunk.cz * CHUNK_SIZE + iz * CELL);
       colors.fill(shade, i * 3, i * 3 + 3);
     }
   }
@@ -87,7 +96,9 @@ function buildTerrain(chunk, material) {
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
-  return new THREE.Mesh(geometry, material);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 export function makeLabel(text) {
@@ -113,9 +124,10 @@ function instanceBox(collider, x, y, z, ry, scale) {
  * @param {ReturnType<import('./pool.js').createPool>} deps.pool
  * @param {(text: string) => THREE.Object3D & {element: HTMLElement}} [deps.createLabel] подпись над NPC (для тестов без DOM)
  */
-export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
+export function createChunkManager({ scene, pool, createLabel = makeLabel, quality = 'medium' }) {
   /** @type {Map<number, object>} */
   const chunks = new Map();
+  let currentQuality = quality;
 
   function build(chunk) {
     const group = new THREE.Group();
@@ -132,26 +144,33 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
     const terrain = buildTerrain(chunk, terrainMat);
     group.add(terrain);
 
-    // Инстансы группируются по префабу: одна InstancedMesh на префаб в чанке.
+    // Инстансы группируются по префабу и его варианту: одна InstancedMesh на вариант в чанке.
     const byPrefab = new Map();
     for (const inst of chunk.instances) {
       if (!Array.isArray(inst) || inst.length < 6) continue;
-      const list = byPrefab.get(inst[0]);
-      if (list) list.push(inst);
-      else byPrefab.set(inst[0], [inst]);
+      const variant = variantKey(inst[0], inst[1], inst[3]);
+      const key = variant ? `${inst[0]}:${variant}` : `${inst[0]}`;
+      const entry = byPrefab.get(key);
+      if (entry) entry.list.push(inst);
+      else byPrefab.set(key, { id: inst[0], variant, key, list: [inst] });
     }
     const instanced = [];
     const colliders = [];
+    const decor = [];
     const matrix = new THREE.Matrix4();
     const quat = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
     const pos = new THREE.Vector3();
     const scl = new THREE.Vector3();
-    for (const [prefabId, list] of byPrefab) {
-      const prefab = getPrefab(prefabId);
-      const geometry = acquire(`prefab-geo:${prefabId}`, prefab.build);
-      const material = acquire(`prefab-mat:${prefabId}`, () => new THREE.MeshLambertMaterial({ color: prefab.color, vertexColors: prefab.vertexColors === true }));
+    for (const { id: prefabId, variant, key, list } of byPrefab.values()) {
+      const prefab = getPrefabVariant(prefabId, variant);
+      const geometry = acquire(`prefab-geo:${key}`, prefab.build);
+      const material = acquire(`prefab-mat:${prefabId}`, () => (prefab.vertexColors === true
+        ? new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.86, metalness: 0 })
+        : new THREE.MeshLambertMaterial({ color: prefab.color })));
       const mesh = new THREE.InstancedMesh(geometry, material, list.length);
+      mesh.castShadow = prefab.name !== 'city_path'; // дорожки лежат на земле и теней не отбрасывают
+      mesh.receiveShadow = true;
       list.forEach(([, x, y, z, ry, scale], i) => {
         // Координаты инстансов мировые, а группа смещена на чанк.
         pos.set(x - group.position.x, y, z - group.position.z);
@@ -159,6 +178,9 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
         scl.setScalar(scale);
         mesh.setMatrixAt(i, matrix.compose(pos, quat, scl));
         if (prefab.collider) colliders.push(instanceBox(prefab.collider, x, y, z, ry, scale));
+        if (prefab.decorate) {
+          decor.push(prefab.decorate({ group, instance: { x: x - group.position.x, y, z: z - group.position.z, ry, scale }, quality: currentQuality }));
+        }
       });
       mesh.instanceMatrix.needsUpdate = true;
       group.add(mesh);
@@ -183,13 +205,14 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
     });
 
     scene.add(group);
-    return { chunk, group, terrain, instanced, colliders, npcs, keys };
+    return { chunk, group, terrain, instanced, colliders, npcs, keys, decor };
   }
 
   function disposeEntry(entry) {
     scene.remove(entry.group);
     entry.terrain.geometry.dispose();
     for (const mesh of entry.instanced) mesh.dispose(); // освобождает буфер instanceMatrix
+    for (const decor of entry.decor) decor.dispose();
     for (const npc of entry.npcs) {
       npc.label.removeFromParent();
       npc.label.element.remove();
@@ -260,7 +283,9 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
     },
     /** Каждый кадр: NPC дышат, моргают и поворачивают голову к игроку, пока он рядом. */
     update(dt, elapsed, player) {
+      updateWind(elapsed);
       for (const entry of chunks.values()) {
+        for (const decor of entry.decor) decor.update?.(dt, elapsed);
         for (const npc of entry.npcs) {
           let lookYaw = 0;
           if (player) {
@@ -274,6 +299,11 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
           animateCharacter(npc.avatar, dt, elapsed, { speed: 0, lookYaw });
         }
       }
+    },
+    /** Меняет уровень графики: декор (струи, растения) подстраивает число частиц и экземпляров. */
+    setQuality(level) {
+      currentQuality = level;
+      for (const entry of chunks.values()) for (const decor of entry.decor) decor.setQuality?.(level);
     },
     dispose() {
       this.clear();

@@ -1,123 +1,86 @@
-// Наружная модель пекарни в центре города. Положительное Z — сторона входа.
-// Каждая деталь объединяется в одну цветную геометрию для InstancedMesh.
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+// Пекарня: тёплое, уютное здание с полосатыми навесами, витринами с булочками и уличными деталями.
+// Положительное Z — сторона входа. Одна вершинно-окрашенная геометрия для InstancedMesh.
+import { createPrefabKit } from './art/prefab-kit.js';
+import { bin, bush, flower } from './art/flora.js';
+
+const C = {
+  cream: 0xf6e8cc, peach: 0xe8b491, trim: 0xfff1d8, cocoa: 0x805143, roof: 0xb65a4b, roofTile: 0x963f35, dark: 0x843c38,
+  glass: 0x8cc3c9, awnA: 0xc96156, awnB: 0xfff1d8, gold: 0xedbc61, wood: 0x9b6748, woodLight: 0xc28a5c, pastry: 0xdca45e,
+  bread: 0xb87939, brick: 0xc9684f, stone: 0xdcd0b0, green: 0x668a5c, chalk: 0x2f3b3a,
+};
+
+export const BAKERY_SIGNS = Object.freeze([
+  { text: 'ПЕКАРНЯ', x: 0, y: 8.3, z: 6.95, w: 5.2, h: 1.05, color: '#6f3a2e', border: '#c96156', background: '#fff0d4' },
+]);
 
 export function buildBakeryGeometry() {
-  const pieces = [];
-  const C = {
-    cream: 0xf5e9cd, peach: 0xe8b491, trim: 0xfff1d8,
-    cocoa: 0x805143, roof: 0xb65a4b, dark: 0x843c38,
-    window: 0x77b0b8, frame: 0xfff4dc, awning: 0xc96156,
-    gold: 0xedbc61, wood: 0x9b6748, pastry: 0xdca45e,
-    bread: 0xb87939, shadow: 0x9c7762, green: 0x668a5c,
-  };
-  function add(geometry, color, x=0, y=0, z=0, rx=0, ry=0, rz=0) {
-    if (rx) geometry.rotateX(rx);
-    if (ry) geometry.rotateY(ry);
-    if (rz) geometry.rotateZ(rz);
-    geometry.translate(x,y,z);
-    const g = geometry.index ? geometry.toNonIndexed() : geometry;
-    if (g !== geometry) geometry.dispose();
-    // Only position/normal/color attributes, all non-indexed.
-    const col = new THREE.Color(color);
-    const arr = new Float32Array(g.attributes.position.count * 3);
-    for (let i=0; i<arr.length; i+=3) {arr[i]=col.r;arr[i+1]=col.g;arr[i+2]=col.b;}
-    g.setAttribute('color',new THREE.BufferAttribute(arr,3));
-    if (g.getAttribute('uv')) g.deleteAttribute('uv');
-    pieces.push(g);
-  }
-  const box=(w,h,d,x,y,z,c)=>add(new THREE.BoxGeometry(w,h,d),c,x,y,z);
-  const cyl=(r,h,x,y,z,c,n=12,rx=0)=>add(new THREE.CylinderGeometry(r,r,h,n),c,x,y,z,rx);
-  const sphere=(r,x,y,z,c)=>add(new THREE.SphereGeometry(r,10,6),c,x,y,z);
-  const roofSlope=(x,rz)=>add(new THREE.BoxGeometry(9.55,0.25,15.4),C.roof,x,10.24,0,0,0,rz);
+  const k = createPrefabKit({ seed: 12 });
 
-  // Цоколь, двухэтажный корпус, уголки и межэтажный пояс.
-  box(17.6,0.38,13.4,0,0.19,0,C.shadow);
-  box(17.2,8.6,13,0,4.55,0,C.cream);
-  box(17.5,0.28,13.25,0,4.45,0,C.peach);
-  box(17.8,0.38,13.55,0,8.78,0,C.trim);
-  for (const x of [-8.35,8.35]) {
-    box(0.55,8.35,0.42,x,4.5,6.48,C.peach);
-    box(0.42,8.35,0.55,x,4.5,-6.35,C.peach);
-  }
-  // Цельная двускатная крыша без щели между скатами.
-  const roofProfile = new THREE.Shape();
-  roofProfile.moveTo(-9.45, 8.99);
-  roofProfile.lineTo(0, 12.15);
-  roofProfile.lineTo(9.45, 8.99);
-  roofProfile.closePath();
+  // Цоколь, двухэтажный корпус с поясом, угловыми пилястрами и карнизом.
+  k.slab(17.6, 0.45, 13.4, 0, 0, 0, C.stone, { r: 0.1 });
+  k.slab(17.2, 8.5, 13.0, 0, 0.45, 0, C.cream);
+  k.slab(17.5, 0.9, 13.3, 0, 0.45, 0, C.peach);
+  k.box(17.6, 0.3, 13.3, 0, 4.7, 0, C.peach, { r: 0.06 });
+  k.box(17.9, 0.4, 13.6, 0, 9.2, 0, C.trim, { r: 0.08 });
+  for (const x of [-8.5, 8.5]) k.slab(0.6, 8.7, 0.5, x, 0.45, 6.55, C.peach, { r: 0.06 });
 
-  const roofGeometry = new THREE.ExtrudeGeometry(roofProfile, {
-    depth: 15.4,
-    bevelEnabled: false,
-    steps: 1,
-  });
-  roofGeometry.translate(0, 0, -7.7);
-  add(roofGeometry, C.roof);
+  // Крыша с черепицей и кирпичной трубой.
+  k.gableRoof({ w: 19.0, d: 14.6, rise: 3.2, y: 9.4, color: C.roof, edge: C.trim, ridge: C.dark, tiles: C.roofTile, courses: 8 });
+  k.slab(1.3, 3.0, 1.3, 5.2, 10.2, -2.6, C.brick, { r: 0.07 });
+  k.box(1.6, 0.25, 1.6, 5.2, 13.3, -2.6, C.stone, { r: 0.06 });
+  // Слуховое окно на крыше: уютный акцент над вывеской.
+  k.prism(3.2, 2.0, 1.5, 0, 10.45, 3.6, C.cream);
+  k.at([0, 10.45, 4.6], 0, () => k.window(0, 0.75, 0, { w: 1.2, h: 1.0, glass: C.glass, frame: C.trim, rows: 1, mullions: 1 }));
 
-  // Карниз вдоль передней стороны здания.
-  box(19.2, 0.22, 0.35, 0, 8.99, 7.68, C.dark);
-  // Витрины на первом этаже — стекло, вертикальные переплёты, подоконники.
-  function window(x,y,w,h,z=6.57) {
-    box(w+0.32,h+0.27,0.2,x,y,z,C.frame);
-    box(w,h,0.24,x,y,z+0.08,C.window);
-    box(0.13,h,0.28,x,y,z+0.23,C.frame);
-    box(w,0.13,0.28,x,y,z+0.23,C.frame);
-    box(w+0.54,0.18,0.42,x,y-h/2-0.08,z+0.16,C.peach);
-  }
-  for (const x of [-5.15,5.15]) window(x,2.34,4.65,3.35);
-  for (const x of [-5.85,-2.1,2.1,5.85]) window(x,6.63,2.55,1.95);
-  // Дверь посередине, рамка, дверные стёкла и ручка.
-  box(2.45,3.55,0.24,0,2.3,6.62,C.wood);
-  box(1.96,2.7,0.28,0,2.58,6.78,C.window);
-  box(0.13,2.7,0.30,0,2.58,6.95,C.frame);
-  box(0.15,0.25,0.16,0.76,2.2,7.01,C.gold);
-  box(3.2,0.24,1.15,0,0.42,6.8,C.peach);
-  // Два полосатых навеса над витринами.
-  for (const xc of [-5.15,5.15]) {
-    box(5.6,0.15,2.1,xc,4.19,7.28,C.cream);
-    for(let k=0;k<10;k++) {
-      const x=xc-2.52+k*0.56;
-      box(0.55,0.085,2.13,x,4.27,7.28,k%2?C.cream:C.awning);
-      box(0.55,0.35,0.16,x,4.03,8.32,k%2?C.cream:C.awning);
+  // Витрины первого этажа с полками, булочками и подоконными ящиками.
+  for (const sx of [-1, 1]) {
+    const x = sx * 5.15;
+    k.window(x, 2.55, 6.5, { w: 4.6, h: 3.2, glass: C.glass, frame: C.trim, sill: C.peach, mullions: 3, rows: 2 });
+    k.box(4.2, 0.14, 0.34, x, 1.75, 6.78, C.woodLight, { r: 0.04 });
+    k.box(4.2, 0.14, 0.34, x, 2.8, 6.78, C.woodLight, { r: 0.04 });
+    for (let j = 0; j < 6; j++) {
+      k.sphere(0.27, x - 1.65 + j * 0.66, 2.04, 6.82, j % 2 ? C.pastry : C.bread, { s: [1.15, 0.85, 1], w: 8, h: 6 });
+      k.sphere(0.2, x - 1.65 + j * 0.66, 3.03, 6.82, j % 2 ? C.bread : C.pastry, { s: [1.25, 0.8, 1], w: 7, h: 5 });
     }
+    // Навес со скруглённой бахромой над витриной.
+    k.awning(x, 4.55, 6.52, { w: 5.4, depth: 1.9, drop: 0.7, stripes: 9, a: C.awnA, b: C.awnB });
   }
-  // Главная вывеска — объёмная табличка с символами выпечки.
-  box(7.6,1.05,0.22,0,8.18,6.77,C.cocoa);
-  box(7.32,0.82,0.25,0,8.18,6.94,C.cream);
-  // Золотистый батон по центру вывески.
-  const loaf = new THREE.SphereGeometry(1, 20, 12);
-  loaf.scale(1.15, 0.33, 0.20);
-  add(loaf, C.bread, 0, 8.16, 7.27);
+  // Окна второго этажа с ставнями и цветами.
+  for (const x of [-6.0, -2.2, 2.2, 6.0]) {
+    k.window(x, 7.0, 6.5, { w: 1.9, h: 2.0, glass: C.glass, frame: C.trim, sill: C.peach, lintel: null, shutters: C.awnA, flowerBox: { box: C.wood, leaf: 0x5f9a64, blooms: [0xf4b6c2, 0xfff0b8, 0xffffff] } });
+  }
 
-  // Светлые диагональные надрезы на хлебе.
-  for (const x of [-0.49, 0, 0.49]) {
-    add(
-      new THREE.BoxGeometry(0.09, 0.39, 0.045),
-      C.cream, x, 8.20, 7.465, 0, 0, -0.48
-    );
+  // Центральный вход с дверью-с-окнами, светильниками и ступеньками.
+  k.door(0, 2.35, 6.5, { w: 2.5, h: 3.4, leaf: C.wood, frame: C.trim, glass: C.glass, handle: C.gold, step: C.peach });
+  for (const x of [-2.0, 2.0]) {
+    k.box(0.12, 0.7, 0.14, x, 3.5, 6.75, C.dark);
+    k.sphere(0.22, x, 3.05, 6.9, 0xffe3a0, { w: 8, h: 6, tinted: false });
   }
-  // Булочки на полках в витринах — хорошо различимые с площади силуэты.
-  for(const xc of [-5.15,5.15]) {
-    box(4.0,0.17,0.28,xc,1.5,6.88,C.wood);
-    for(let j=0;j<5;j++) {
-      sphere(0.28,xc-1.55+j*0.78,1.82,7.03,j%2?C.pastry:C.bread);
-    }
+  // Объёмная вывеска-эмблема: булка-батон на кронштейне над дверью.
+  k.box(6.0, 0.18, 0.3, 0, 9.0, 6.82, C.cocoa, { r: 0.06 });
+  k.sphere(1.0, 0, 9.7, 7.05, C.bread, { s: [1.5, 0.52, 0.46], w: 14, h: 9 });
+  for (const x of [-0.66, 0, 0.66]) k.box(0.1, 0.5, 0.06, x, 9.74, 7.45, C.cream, { rot: [0, 0, -0.5], tinted: false });
+  k.cyl(0.04, 0.04, 0.7, 5, 0, 9.35, 7.05, C.dark);
+
+  // Уличные детали: столик с двумя табуретами, корзины с хлебом, меловая доска, бочка с цветами, урна.
+  k.cyl(0.55, 0.55, 0.08, 14, -2.5, 0.92, 9.0, C.woodLight);
+  k.cyl(0.07, 0.09, 0.86, 8, -2.5, 0.45, 9.0, C.dark);
+  k.cyl(0.32, 0.32, 0.08, 10, -2.5, 0.05, 9.0, C.dark);
+  for (const [dx, dz] of [[-0.9, 0], [0.9, 0.1]]) {
+    k.cyl(0.26, 0.26, 0.08, 10, -2.5 + dx, 0.58, 9.0 + dz, C.awnA);
+    k.cyl(0.04, 0.04, 0.54, 6, -2.5 + dx, 0.28, 9.0 + dz, C.dark);
   }
-  // Боковые деревянные панели и лампы около входа.
-  for(const x of [-1.75,1.75]) {
-    box(0.18,0.65,0.2,x,3.48,6.88,C.dark);
-    sphere(0.22,x,3.13,6.95,C.gold);
+  k.sphere(0.2, -2.5, 1.05, 9.0, C.bread, { s: [1.3, 0.8, 1], w: 7, h: 5 });
+  for (const [x, z] of [[3.2, 8.6], [4.3, 8.4]]) {
+    k.cyl(0.42, 0.34, 0.5, 12, x, 0.25, z, C.wood);
+    for (let i = 0; i < 4; i++) k.sphere(0.19, x + Math.cos(i * 1.7) * 0.2, 0.62, z + Math.sin(i * 1.7) * 0.2, i % 2 ? C.bread : C.pastry, { s: [1.2, 0.8, 1], w: 6, h: 5 });
   }
-  // Небольшие растения у входа.
-  for(const x of [-1.8,1.8]) {
-    box(0.54,0.6,0.54,x,0.54,7.02,C.wood);
-    cyl(0.32,0.6,x,1.04,7.02,C.green,7);
-  }
-  const geometry=mergeGeometries(pieces,false);
-  for(const g of pieces) g.dispose();
-  if(!geometry) throw new Error('Не удалось объединить геометрии пекарни');
-  geometry.computeVertexNormals();
-  return geometry;
+  k.box(0.9, 1.15, 0.08, 1.9, 0.65, 8.2, C.chalk, { r: 0.04, rot: [-0.1, 0.3, 0] });
+  k.box(0.9, 0.08, 0.5, 1.9, 0.04, 8.15, C.wood, { ry: 0.3 });
+  k.cyl(0.5, 0.42, 0.7, 12, -6.6, 0.35, 8.2, C.wood);
+  k.at([0, 0.62, 0], 0, () => bush(k, -6.6, 8.2, 0.55, 1)); // куст растёт из бочки
+  for (let i = 0; i < 5; i++) flower(k, -6.6 + Math.cos(i * 1.3) * 0.3, 0.7, 8.2 + Math.sin(i * 1.3) * 0.3, [0xf4b6c2, 0xfff0b8, 0xffffff, 0xffc27a, 0xc7b5f4][i], 0.9);
+  bin(k, 6.7, 8.3);
+
+  return k.build({ groundAO: { height: 2.0, strength: 0.3 }, bands: [{ y0: 8.7, y1: 9.15, strength: 0.15 }] });
 }

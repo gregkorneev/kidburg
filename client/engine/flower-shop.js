@@ -1,227 +1,97 @@
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+// Цветочная лавка: самое «живое» здание площади — шалфейные стены, розовые навесы, арка с плющом, стеллажи
+// с цветами и маленькая оранжерея сбоку. Фасад смотрит в +Z. Одна вершинно-окрашенная геометрия для InstancedMesh.
+import { createPrefabKit } from './art/prefab-kit.js';
+import { bush, flower, planterBox } from './art/flora.js';
+
+const C = {
+  wall: 0xdfe9d4, wallShade: 0xc9d9bf, trim: 0xfbf7ec, roof: 0x9a5651, roofTile: 0x7d4340, glass: 0xa6cfd6, frame: 0x7fa584,
+  frameDark: 0x4f7a5e, door: 0x6d9a7b, stone: 0xd6cdb9, awnA: 0xeaa6bd, awnB: 0xfff7ee, wood: 0x9b6f48, woodLight: 0xc9985f,
+  leaf: 0x58985f, leafDark: 0x3f7a4f, pink: 0xe99ab5, yellow: 0xf0cd67, lilac: 0xb9a0e0, red: 0xe0646d, white: 0xfffaf0,
+};
+const BLOOMS = [C.pink, C.yellow, C.lilac, C.red, C.white];
+
+export const FLOWER_SHOP_SIGNS = Object.freeze([
+  { text: 'ЦВЕТОЧНАЯ ЛАВКА', x: 0, y: 8.2, z: 4.95, w: 6.6, h: 1.0, color: '#3d6e4d', border: '#e99ab5', background: '#fffaf0' },
+]);
+
+const bucket = (k, x, y, z, i) => {
+  k.cyl(0.26, 0.2, 0.42, 9, x, y + 0.21, z, i % 2 ? C.wood : C.frameDark);
+  for (let j = 0; j < 4; j++) {
+    const a = j * 1.6 + i;
+    flower(k, x + Math.cos(a) * 0.12, y + 0.36 + (j % 2) * 0.12, z + Math.sin(a) * 0.12, BLOOMS[(i + j) % BLOOMS.length], 0.9);
+  }
+};
 
 export function buildFlowerShopGeometry() {
-  const parts = [];
+  const k = createPrefabKit({ seed: 13 });
 
-  const C = {
-    wall: 0xdfe7d7,
-    trim: 0xf5f2e8,
-    roof: 0x8b4a46,
-    roofDark: 0x5f2d2a,
-    glass: 0x9ec3cf,
-    frame: 0x7b9a82,
-    door: 0x6d8f76,
-    doorDark: 0x496251,
-    base: 0xbdb6a7,
-    sign: 0xf4efe4,
-    signBorder: 0x7fa084,
-    awning: 0xe8c7d1,
-    awningStripe: 0xf7f3ea,
-    planter: 0x7a5a3a,
-    leaf: 0x4f8b59,
-    petalPink: 0xe99ab5,
-    petalYellow: 0xf0cd67,
-    potDark: 0x64482f,
-    shadow: 0xc9c3b4,
-  };
+  // Основание, корпус, угловые пилястры и карниз.
+  k.slab(16.0, 0.4, 10.0, 0, 0, 0, C.stone, { r: 0.1 });
+  k.slab(15.2, 8.5, 9.1, 0, 0.4, 0, C.wall);
+  k.slab(15.4, 0.9, 9.3, 0, 0.4, 0, C.wallShade);
+  for (const x of [-7.5, 7.5]) k.slab(0.5, 8.8, 9.3, x, 0.4, 0, C.trim, { r: 0.07 });
+  k.box(15.5, 0.26, 9.4, 0, 4.7, 0, C.trim, { r: 0.06 });
+  k.box(15.9, 0.34, 9.8, 0, 9.0, 0, C.trim, { r: 0.08 });
 
-  const colorize = (geometry, color) => {
-    const g = geometry.index ? geometry.toNonIndexed() : geometry;
-    const c = new THREE.Color(color);
-    const count = g.attributes.position.count;
-    const colors = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      colors[i * 3] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
+  // Крыша и слуховое окно в мансарде.
+  k.gableRoof({ w: 17.2, d: 10.8, rise: 3.1, y: 9.2, color: C.roof, edge: C.trim, ridge: C.roofTile, tiles: C.roofTile, courses: 7 });
+  k.prism(3.4, 2.0, 1.55, -3.8, 10.25, 3.2, C.wall);
+  k.at([-3.8, 10.25, 4.2], 0, () => k.window(0, 0.8, 0, { w: 1.2, h: 1.1, glass: C.glass, frame: C.trim, rows: 1, mullions: 1, flowerBox: { box: C.wood, leaf: C.leaf, blooms: BLOOMS } }));
+  k.slab(1.1, 2.8, 1.1, 5.0, 10.2, -2.4, 0xc9684f, { r: 0.06 });
+
+  // Верхние окна с ставнями и цветочными ящиками.
+  for (const x of [-4.8, -1.6, 1.6, 4.8]) {
+    k.window(x, 6.9, 4.55, { w: 1.8, h: 2.0, glass: C.glass, frame: C.trim, sill: C.trim, shutters: C.frame, flowerBox: { box: C.wood, leaf: C.leaf, blooms: BLOOMS } });
+  }
+
+  // Витрины с растениями и розовыми навесами.
+  for (const sx of [-1, 1]) {
+    const x = sx * 4.7;
+    k.window(x, 2.45, 4.55, { w: 4.2, h: 3.0, glass: C.glass, frame: C.trim, sill: C.frame, mullions: 3, rows: 2 });
+    k.box(3.8, 0.12, 0.4, x, 1.75, 4.82, C.woodLight, { r: 0.03 });
+    for (let j = 0; j < 5; j++) {
+      const px = x - 1.5 + j * 0.75;
+      k.cyl(0.19, 0.15, 0.3, 8, px, 1.95, 4.84, j % 2 ? C.wood : C.frameDark);
+      k.sphere(0.24, px, 2.32, 4.84, j % 2 ? C.leaf : C.leafDark, { w: 7, h: 5 });
+      k.sphere(0.1, px, 2.5, 4.9, BLOOMS[j % BLOOMS.length], { w: 5, h: 4, tinted: false });
     }
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    return g;
-  };
+    k.awning(x, 4.5, 4.58, { w: 4.8, depth: 1.7, drop: 0.65, stripes: 8, a: C.awnA, b: C.awnB });
+  }
 
-  const add = (geometry, color, {
-    tx = 0, ty = 0, tz = 0,
-    rx = 0, ry = 0, rz = 0,
-  } = {}) => {
-    if (rx) geometry.rotateX(rx);
-    if (ry) geometry.rotateY(ry);
-    if (rz) geometry.rotateZ(rz);
-    geometry.translate(tx, ty, tz);
-    parts.push(colorize(geometry, color));
-  };
+  // Вход под аркой из плюща.
+  k.door(0, 2.3, 4.55, { w: 1.9, h: 3.0, leaf: C.door, frame: C.trim, glass: C.glass, handle: C.yellow, step: C.stone });
+  for (const sx of [-1, 1]) k.box(0.2, 3.9, 0.2, sx * 1.35, 2.15, 5.5, C.frameDark, { r: 0.05 });
+  k.torus(1.35, 0.1, 0, 4.1, 5.5, C.frameDark, { rot: [0, 0, 0], arc: Math.PI, radial: 6, tubular: 18 });
+  for (let i = 0; i < 12; i++) {
+    const a = Math.PI * (i / 11);
+    k.sphere(0.2, Math.cos(a) * 1.35, 4.1 + Math.sin(a) * 1.35, 5.5, i % 3 ? C.leaf : C.leafDark, { w: 6, h: 5 });
+    if (i % 2) k.sphere(0.1, Math.cos(a) * 1.38, 4.1 + Math.sin(a) * 1.38, 5.62, BLOOMS[i % BLOOMS.length], { w: 5, h: 4, tinted: false });
+  }
+  for (const sx of [-1, 1]) for (let j = 0; j < 5; j++) k.sphere(0.2, sx * 1.35, 0.9 + j * 0.78, 5.5, j % 2 ? C.leaf : C.leafDark, { w: 6, h: 5 });
 
-  const box = (w, h, d, x, y, z, color) => {
-    add(new THREE.BoxGeometry(w, h, d), color, { tx: x, ty: y, tz: z });
-  };
-
-  const cylinder = (rt, rb, h, seg, x, y, z, color, rot = {}) => {
-    add(new THREE.CylinderGeometry(rt, rb, h, seg), color, { ...rot, tx: x, ty: y, tz: z });
-  };
-
-  const sphere = (r, x, y, z, color, scale = [1, 1, 1]) => {
-    const g = new THREE.SphereGeometry(r, 16, 12);
-    g.scale(scale[0], scale[1], scale[2]);
-    add(g, color, { tx: x, ty: y, tz: z });
-  };
-
-  const addWindow = (x, y, z, w = 2.1, h = 2.0, d = 0.12) => {
-    box(w, h, d, x, y, z, C.glass);
-    box(w + 0.18, 0.12, d + 0.02, x, y + h / 2 - 0.06, z + 0.01, C.trim);
-    box(w + 0.18, 0.12, d + 0.02, x, y - h / 2 + 0.06, z + 0.01, C.trim);
-    box(0.12, h + 0.06, d + 0.02, x - w / 2 + 0.06, y, z + 0.01, C.trim);
-    box(0.12, h + 0.06, d + 0.02, x + w / 2 - 0.06, y, z + 0.01, C.trim);
-    box(0.08, h, d + 0.03, x, y, z + 0.02, C.trim);
-    box(w, 0.08, d + 0.03, x, y, z + 0.02, C.trim);
-    box(w + 0.28, 0.12, 0.28, x, y - h / 2 - 0.12, z + 0.03, C.frame);
-  };
-
-  const addDisplayWindow = (x, y, z, w = 4.2, h = 2.9, d = 0.14) => {
-    box(w, h, d, x, y, z, C.glass);
-    box(w + 0.18, 0.16, d + 0.03, x, y + h / 2 - 0.08, z + 0.01, C.trim);
-    box(w + 0.18, 0.16, d + 0.03, x, y - h / 2 + 0.08, z + 0.01, C.trim);
-    box(0.16, h + 0.12, d + 0.03, x - w / 2 + 0.08, y, z + 0.01, C.trim);
-    box(0.16, h + 0.12, d + 0.03, x + w / 2 - 0.08, y, z + 0.01, C.trim);
-    box(0.10, h, d + 0.04, x, y, z + 0.02, C.trim);
-    box(w, 0.10, d + 0.04, x, y, z + 0.02, C.trim);
-    box(w + 0.24, 0.16, 0.24, x, y - h / 2 - 0.16, z + 0.03, C.frame);
-  };
-
-  const addAwning = (x, y, z, width = 4.5) => {
-    box(width, 0.18, 0.9, x, y, z, C.awning);
-    const stripes = 8;
-    const stripeW = width / stripes;
-    for (let i = 0; i < stripes; i++) {
-      if (i % 2 === 0) {
-        const sx = x - width / 2 + stripeW * i + stripeW / 2;
-        box(stripeW * 0.92, 0.19, 0.92, sx, y + 0.01, z + 0.01, C.awningStripe);
-      }
-    }
-    const scallops = 6;
-    for (let i = 0; i < scallops; i++) {
-      const sx = x - width / 2 + (i + 0.5) * (width / scallops);
-      sphere(0.16, sx, y - 0.18, z + 0.38, C.awning, [1.0, 0.65, 0.8]);
-    }
-    box(width + 0.1, 0.08, 0.16, x, y + 0.14, z - 0.36, C.frame);
-  };
-
-  const addPlanter = (x, y, z) => {
-    box(0.55, 0.45, 0.55, x, y, z, C.planter);
-    box(0.42, 0.18, 0.42, x, y + 0.24, z, C.potDark);
-
-    const stems = [-0.10, 0, 0.10];
-    for (const dx of stems) {
-      box(0.04, 0.42, 0.04, x + dx, y + 0.42, z, C.leaf);
-      sphere(0.08, x + dx - 0.06, y + 0.48, z, C.leaf, [1.2, 0.55, 0.8]);
-      sphere(0.08, x + dx + 0.06, y + 0.56, z, C.leaf, [1.2, 0.55, 0.8]);
-      for (const [px, py] of [[0,0.66],[-0.07,0.60],[0.07,0.60],[0,0.54],[-0.07,0.72],[0.07,0.72]]) {
-        sphere(0.06, x + dx + px, y + py, z, C.petalPink, [1.0, 0.8, 0.8]);
-      }
-      sphere(0.04, x + dx, y + 0.63, z + 0.01, C.petalYellow);
-    }
-  };
-
-  const addFlowerBox = (x, y, z, width = 1.8) => {
-    box(width, 0.22, 0.34, x, y, z, C.planter);
-    const count = 4;
-    for (let i = 0; i < count; i++) {
-      const px = x - width / 2 + 0.28 + i * ((width - 0.56) / (count - 1));
-      box(0.03, 0.26, 0.03, px, y + 0.22, z, C.leaf);
-      sphere(0.06, px - 0.05, y + 0.30, z, C.petalPink, [1.0, 0.8, 0.8]);
-      sphere(0.06, px + 0.05, y + 0.30, z, C.petalPink, [1.0, 0.8, 0.8]);
-      sphere(0.06, px, y + 0.24, z, C.petalPink, [1.0, 0.8, 0.8]);
-      sphere(0.06, px, y + 0.36, z, C.petalPink, [1.0, 0.8, 0.8]);
-      sphere(0.04, px, y + 0.30, z + 0.01, C.petalYellow);
-    }
-  };
-
-  const addFlowerSign = (x, y, z) => {
-    sphere(0.18, x, y, z, C.petalYellow, [1, 1, 0.7]);
-    const petals = [
-      [0, 0.24], [0.22, 0.08], [0.14, -0.18],
-      [-0.14, -0.18], [-0.22, 0.08]
-    ];
-    for (const [px, py] of petals) {
-      sphere(0.15, x + px, y + py, z, C.petalPink, [1.15, 0.85, 0.75]);
-    }
-  };
-
-  // Основание
-  box(16.0, 0.36, 10.0, 0, 0.18, 0, C.base);
-  box(15.2, 8.4, 9.1, 0, 4.56, 0, C.wall);
-
-  // Угловые акценты
-  box(0.42, 8.7, 9.4, -7.4, 4.6, 0, C.trim);
-  box(0.42, 8.7, 9.4, 7.4, 4.6, 0, C.trim);
-
-  // Межэтажный пояс и карниз
-  box(15.3, 0.18, 9.2, 0, 4.45, 0, C.trim);
-  box(15.6, 0.26, 9.5, 0, 8.9, 0, C.trim);
-  box(15.6, 0.14, 9.2, 0, 8.66, 0, C.shadow);
-
-  // Цельная двускатная крыша
-  const roofProfile = new THREE.Shape();
-  roofProfile.moveTo(-8.2, 8.92);
-  roofProfile.lineTo(0, 12.0);
-  roofProfile.lineTo(8.2, 8.92);
-  roofProfile.closePath();
-  const roofGeometry = new THREE.ExtrudeGeometry(roofProfile, {
-    depth: 10.2,
-    bevelEnabled: false,
-    steps: 1,
+  // Оранжерея справа: стеклянный пристрой с рамой и растениями внутри.
+  k.at([9.0, 0, 1.0], 0, () => {
+    k.slab(3.6, 0.3, 6.4, 0, 0, 0, C.stone, { r: 0.06 });
+    for (const [x, z] of [[-1.7, -3.0], [1.7, -3.0], [-1.7, 3.0], [1.7, 3.0]]) k.box(0.14, 3.4, 0.14, x, 1.95, z, C.trim);
+    k.box(3.5, 3.0, 6.2, 0, 1.9, 0, C.glass, { tinted: false });
+    for (let i = 1; i < 4; i++) k.box(0.06, 3.0, 6.3, -1.75 + i * 0.875, 1.9, 0, C.trim, { tinted: false });
+    k.prism(3.8, 6.5, 1.1, 0, 3.55, 0, C.trim);
+    for (let i = 0; i < 4; i++) { k.sphere(0.4, -0.9 + (i % 2) * 1.8, 0.7, -2 + i * 1.3, C.leaf, { w: 7, h: 5 }); k.sphere(0.14, -0.9 + (i % 2) * 1.8, 1.05, -2 + i * 1.3, BLOOMS[i], { w: 5, h: 4, tinted: false }); }
   });
-  roofGeometry.translate(0, 0, -5.1);
-  add(roofGeometry, C.roof);
-  box(16.4, 0.14, 10.3, 0, 8.94, 0, C.roofDark);
 
-  // Верхние окна
-  addWindow(-4.8, 6.55, 4.57);
-  addWindow(-1.6, 6.55, 4.57);
-  addWindow(1.6, 6.55, 4.57);
-  addWindow(4.8, 6.55, 4.57);
+  // Уличные стеллажи: ступенчатая подставка с вёдрами и цветочные ящики вдоль фасада.
+  for (const [x, z] of [[-6.8, 7.2], [6.0, 7.4]]) {
+    for (let tier = 0; tier < 3; tier++) {
+      k.box(2.2 - tier * 0.4, 0.08, 0.8 - tier * 0.12, x, 0.35 + tier * 0.42, z - tier * 0.12, C.wood, { r: 0.02 });
+      for (const sx of [-1, 1]) k.box(0.08, 0.35 + tier * 0.42, 0.08, x + sx * (1.0 - tier * 0.2), (0.35 + tier * 0.42) / 2, z - tier * 0.12, C.wood);
+    }
+    for (let i = 0; i < 7; i++) bucket(k, x - 0.9 + (i % 3) * 0.9 * (1 - 0.2 * Math.floor(i / 3)), 0.4 + Math.floor(i / 3) * 0.42, z - Math.floor(i / 3) * 0.12, i);
+  }
+  planterBox(k, -2.6, 7.3, 0, { length: 2.6, depth: 0.8, wood: true });
+  planterBox(k, 2.6, 7.3, 0, { length: 2.6, depth: 0.8, wood: true });
+  bush(k, -8.2, 6.0, 0.9, 2);
+  bush(k, 8.0, 6.2, 0.8, 3);
+  for (let i = 0; i < 6; i++) flower(k, -8.6 + (i % 3) * 0.35, 0.05, 7.0 + Math.floor(i / 3) * 0.35, BLOOMS[i % BLOOMS.length], 1);
 
-  // Нижние витрины
-  addDisplayWindow(-4.5, 2.3, 4.58, 4.4, 3.0);
-  addDisplayWindow(4.5, 2.3, 4.58, 4.4, 3.0);
-
-  // Центральная дверь
-  box(1.55, 2.95, 0.16, 0, 2.35, 4.60, C.door);
-  box(0.08, 2.82, 0.18, 0, 2.35, 4.66, C.trim);
-  box(1.72, 0.16, 0.22, 0, 3.78, 4.61, C.trim);
-  box(1.72, 0.16, 0.22, 0, 0.92, 4.61, C.trim);
-  box(0.16, 3.0, 0.22, -0.78, 2.35, 4.61, C.trim);
-  box(0.16, 3.0, 0.22, 0.78, 2.35, 4.61, C.trim);
-  box(0.06, 2.55, 0.20, 0, 2.35, 4.67, C.doorDark);
-  box(0.08, 0.08, 0.08, 0.34, 2.2, 4.72, C.trim);
-
-  // Ступенька
-  box(2.1, 0.16, 0.7, 0, 0.42, 4.9, C.shadow);
-
-  // Навесы
-  addAwning(-4.5, 4.15, 4.58, 4.65);
-  addAwning(4.5, 4.15, 4.58, 4.65);
-  addAwning(0, 4.15, 4.63, 2.3);
-
-  // Вывеска
-  box(5.2, 0.92, 0.18, 0, 8.1, 4.62, C.sign);
-  box(5.34, 0.12, 0.22, 0, 8.46, 4.64, C.signBorder);
-  box(5.34, 0.12, 0.22, 0, 7.74, 4.64, C.signBorder);
-  box(0.12, 0.98, 0.22, -2.58, 8.1, 4.64, C.signBorder);
-  box(0.12, 0.98, 0.22, 2.58, 8.1, 4.64, C.signBorder);
-  addFlowerSign(0, 8.08, 4.76);
-
-  // Горшки у входа
-  addPlanter(-1.45, 0.45, 4.62);
-  addPlanter(1.45, 0.45, 4.62);
-
-  // Цветы в витринах
-  addFlowerBox(-4.5, 1.15, 4.45, 2.6);
-  addFlowerBox(4.5, 1.15, 4.45, 2.6);
-
-  const geometry = mergeGeometries(parts, false);
-  if (!geometry) throw new Error('Не удалось объединить геометрии цветочной лавки');
-  geometry.computeVertexNormals();
-
-  for (const g of parts) g.dispose();
-  return geometry;
+  return k.build({ groundAO: { height: 2.0, strength: 0.28 }, bands: [{ y0: 8.7, y1: 9.1, strength: 0.15 }] });
 }

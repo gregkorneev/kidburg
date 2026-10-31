@@ -1,346 +1,104 @@
-// Детализированная мэрия: один цветной BufferGeometry для потоковой системы чанков.
-// Фасад смотрит в сторону +Z; размеры основного корпуса 22 x 9 x 14 м.
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+// Мэрия: главное общественное здание площади. Фасад смотрит в +Z, корпус 22 × 14 м (коллайдер задаёт prefabs.js).
+// Один вершинно-окрашенный BufferGeometry для InstancedMesh; вывеска-табличка добавляется отдельно (CITY_HALL_SIGNS).
+import { createPrefabKit } from './art/prefab-kit.js';
 
+const C = {
+  wall: 0xf1e7d0, wallShade: 0xe3d6ba, trim: 0xfff6e3, stone: 0xd9ccb2, stoneDark: 0xb9aa8d,
+  roof: 0xa8392c, roofTile: 0x8c2d24, roofEdge: 0xfff0d2, glass: 0x86bccd, door: 0x6a3f2b,
+  brass: 0xe3b95c, clockFace: 0xfff8e8, clockRim: 0x8c2d24, hand: 0x3d2d24, copper: 0x5fa392, shutter: 0x4f7f8a,
+};
+
+export const CITY_HALL_SIGNS = Object.freeze([
+  { text: 'МЭРИЯ', x: 0, y: 7.4, z: 7.43, w: 5.4, h: 0.7, color: '#7a2c24', border: '#c9533e' },
+]);
 
 export function buildCityHallGeometry() {
-  const parts = [];
+  const k = createPrefabKit({ seed: 10 });
 
-  const COLORS = {
-    wall: 0xe5e2d8,
-    trim: 0xcfc8bb,
-    roof: 0x8b2e23,
-    roofDark: 0x5f1b15,
-    glass: 0x87aebc,
-    frame: 0xf2efe8,
-    door: 0x5b3727,
-    doorDark: 0x3e2419,
-    brass: 0xc9a24a,
-    sign: 0xf3ead1,
-    signText: 0x5b3727,
-    step: 0xd9d2c3,
-    base: 0xbeb6a5,
-    lantern: 0xecd38b,
-    lanternTop: 0x7d3427,
-    clockFace: 0xf5f1e7,
-    clockRim: 0x7d2f26,
-    clockHand: 0x4b3a2d,
-    shadow: 0xbdb5a4,
-  };
-
-  const paint = (geometry, color) => {
-    const g = geometry.index ? geometry.toNonIndexed() : geometry;
-    const c = new THREE.Color(color);
-    const count = g.attributes.position.count;
-    const colors = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      colors[i * 3] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
+  // Цоколь и корпус.
+  k.slab(20.2, 0.7, 11.6, 0, 0, 0, C.stoneDark, { r: 0.12 });
+  k.slab(19.6, 0.3, 11.0, 0, 0.7, 0, C.stone, { r: 0.08 });
+  k.slab(18.4, 8.6, 10.4, 0, 0.9, 0, C.wall);
+  // Рустованные углы: чередующиеся блоки.
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 12; i++) {
+      const wide = i % 2 === 0;
+      k.box(wide ? 0.95 : 0.7, 0.62, 0.36, sx * (9.2 - (wide ? 0.38 : 0.26)), 1.45 + i * 0.7, 5.24, C.trim, { r: 0.04 });
     }
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    return g;
-  };
+  }
+  // Пояс между этажами и венчающий карниз с зубчиками.
+  k.box(19.0, 0.3, 10.9, 0, 4.7, 0, C.trim, { r: 0.06 });
+  k.box(19.8, 0.46, 11.4, 0, 9.55, 0, C.trim, { r: 0.1 });
+  k.box(19.2, 0.2, 10.8, 0, 9.18, 0, C.wallShade);
+  for (let i = 0; i < 31; i++) k.box(0.28, 0.22, 0.3, -9.0 + i * 0.6, 9.0, 5.45, C.trim, { tinted: false });
 
-  const add = (geometry, color, { rx = 0, ry = 0, rz = 0, tx = 0, ty = 0, tz = 0 } = {}) => {
-    if (rx) geometry.rotateX(rx);
-    if (ry) geometry.rotateY(ry);
-    if (rz) geometry.rotateZ(rz);
-    geometry.translate(tx, ty, tz);
-    parts.push(paint(geometry, color));
-  };
-
-  const addBox = (w, h, d, x, y, z, color) => {
-    add(new THREE.BoxGeometry(w, h, d), color, { tx: x, ty: y, tz: z });
-  };
-
-  const addCylinder = (rt, rb, h, seg, x, y, z, color, rot = {}) => {
-    add(new THREE.CylinderGeometry(rt, rb, h, seg), color, { ...rot, tx: x, ty: y, tz: z });
-  };
-
-  const addGableRoof = (w, d, h, x, y, z, color) => {
-    const shape = new THREE.Shape();
-    shape.moveTo(-w / 2, 0);
-    shape.lineTo(0, h);
-    shape.lineTo(w / 2, 0);
-    shape.lineTo(-w / 2, 0);
-
-    const geom = new THREE.ExtrudeGeometry(shape, {
-      depth: d,
-      bevelEnabled: false,
+  // Крыша с черепицей и часовой башенкой на коньке.
+  k.gableRoof({ w: 21.6, d: 12.2, rise: 3.5, y: 9.78, color: C.roof, edge: C.roofEdge, ridge: C.roofTile, tiles: C.roofTile, courses: 8 });
+  k.slab(3.6, 2.2, 3.6, 0, 12.0, 0, C.wall, { r: 0.1 });
+  k.box(4.1, 0.3, 4.1, 0, 14.1, 0, C.trim, { r: 0.08 });
+  k.cone(2.6, 2.0, 4, 0, 15.25, 0, C.copper, { rot: [0, Math.PI / 4, 0] });
+  k.sphere(0.24, 0, 16.4, 0, C.brass, { w: 8, h: 6 });
+  k.cyl(0.05, 0.05, 0.7, 5, 0, 16.9, 0, C.brass);
+  for (const dir of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+    k.at([dir[0] * 1.82, 13.0, dir[1] * 1.82], Math.atan2(dir[0], dir[1]), () => {
+      k.cyl(0.8, 0.8, 0.12, 28, 0, 0, 0, C.clockRim, { rot: [Math.PI / 2, 0, 0] });
+      k.cyl(0.66, 0.66, 0.12, 28, 0, 0, 0.05, C.clockFace, { rot: [Math.PI / 2, 0, 0], tinted: false });
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        k.box(0.05, i % 3 === 0 ? 0.16 : 0.09, 0.04, Math.sin(a) * 0.55, Math.cos(a) * 0.55, 0.13, C.hand, { rot: [0, 0, -a], tinted: false });
+      }
+      k.box(0.07, 0.46, 0.05, 0, 0.18, 0.14, C.hand, { tinted: false });
+      k.box(0.34, 0.06, 0.05, 0.14, -0.03, 0.14, C.hand, { rot: [0, 0, 0.4], tinted: false });
     });
-    geom.translate(0, 0, -d / 2);
-    add(geom, color, { tx: x, ty: y, tz: z });
-  };
-
-  const addWindow = (x, y, z, w = 1.95, h = 2.2, d = 0.16) => {
-    addBox(w, h, d, x, y, z, COLORS.glass);
-    addBox(w + 0.24, 0.16, d + 0.03, x, y + h / 2 - 0.08, z + 0.005, COLORS.frame);
-    addBox(w + 0.24, 0.16, d + 0.03, x, y - h / 2 + 0.08, z + 0.005, COLORS.frame);
-    addBox(0.16, h + 0.12, d + 0.03, x - w / 2 + 0.08, y, z + 0.005, COLORS.frame);
-    addBox(0.16, h + 0.12, d + 0.03, x + w / 2 - 0.08, y, z + 0.005, COLORS.frame);
-    addBox(0.12, h + 0.05, d + 0.04, x, y, z + 0.01, COLORS.frame);
-    addBox(w + 0.05, 0.12, d + 0.04, x, y, z + 0.01, COLORS.frame);
-  };
-
-  const addLantern = (x, y, z) => {
-    addBox(0.32, 0.26, 0.22, x, y + 0.38, z, COLORS.lanternTop);
-    addBox(0.24, 0.52, 0.18, x, y, z, COLORS.lantern);
-    addBox(0.16, 0.16, 0.16, x, y - 0.36, z, COLORS.lanternTop);
-  };
-
-  const addPixelLetter = (pattern, originX, originY, z, cell, depth, color) => {
-    const rows = pattern.length;
-    const cols = pattern[0].length;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (pattern[r][c] !== '1') continue;
-        const x = originX + c * cell + cell / 2;
-        const y = originY - r * cell - cell / 2;
-        addBox(cell * 0.92, cell * 0.92, depth, x, y, z, color);
-      }
-    }
-    return cols * cell;
-  };
-
-  const addPixelText = (text, centerX, centerY, z, cell, depth, color) => {
-    const letters = {
-      'М': [
-        '10001',
-        '11011',
-        '10101',
-        '10101',
-        '10001',
-        '10001',
-        '10001',
-      ],
-      'Э': [
-        '11111',
-        '00001',
-        '00111',
-        '00001',
-        '00001',
-        '10001',
-        '11111',
-      ],
-      'Р': [
-        '11110',
-        '10001',
-        '10001',
-        '11110',
-        '10000',
-        '10000',
-        '10000',
-      ],
-      'И': [
-        '10001',
-        '11001',
-        '10101',
-        '10011',
-        '10001',
-        '10001',
-        '10001',
-      ],
-      'Я': [
-        '01111',
-        '10001',
-        '10001',
-        '01111',
-        '00101',
-        '01001',
-        '10001',
-      ],
-    };
-
-    const chars = [...text];
-    const letterWidth = 5 * cell;
-    const spacing = cell;
-    const totalWidth = chars.length * letterWidth + (chars.length - 1) * spacing;
-    let x = centerX - totalWidth / 2;
-
-    for (const ch of chars) {
-      const pattern = letters[ch];
-      if (!pattern) {
-        x += letterWidth + spacing;
-        continue;
-      }
-      addPixelLetter(pattern, x, centerY + (7 * cell) / 2, z, cell, depth, color);
-      x += letterWidth + spacing;
-    }
-  };
-
-  // Основание и корпус
-  addBox(18.8, 0.55, 10.8, 0, 0.275, 0, COLORS.base);
-  addBox(18.1, 8.7, 10.0, 0, 4.9, 0, COLORS.wall);
-
-  // Угловые пилястры
-  addBox(0.65, 9.0, 0.5, -8.55, 4.95, 4.9, COLORS.trim);
-  addBox(0.65, 9.0, 0.5, 8.55, 4.95, 4.9, COLORS.trim);
-  addBox(0.65, 9.0, 0.5, -8.55, 4.95, -4.9, COLORS.trim);
-  addBox(0.65, 9.0, 0.5, 8.55, 4.95, -4.9, COLORS.trim);
-
-  // Межэтажный пояс и карниз
-  addBox(18.5, 0.28, 10.2, 0, 3.25, 0, COLORS.trim);
-  addBox(19.1, 0.38, 10.6, 0, 8.9, 0, COLORS.trim);
-  addBox(18.8, 0.18, 10.3, 0, 8.55, 0, COLORS.shadow);
-
-  // Главная крыша
-  addGableRoof(21.0, 12.2, 3.4, 0, 9.1, 0, COLORS.roof);
-  addBox(21.1, 0.18, 12.25, 0, 9.12, 0, COLORS.roofDark);
-  addBox(0.42, 0.35, 0.42, 0, 12.45, 0, COLORS.roofDark);
-
-  // Входная зона
-  addBox(7.2, 0.4, 3.25, 0, 0.78, 5.15, COLORS.step);
-  addBox(6.2, 0.28, 2.3, 0, 1.12, 5.45, COLORS.step);
-  addBox(4.8, 0.18, 1.4, 0, 1.35, 5.72, COLORS.step);
-
-  // Портик
-  addBox(7.4, 0.32, 2.8, 0, 6.35, 5.0, COLORS.trim);
-  addBox(7.0, 0.22, 2.55, 0, 6.1, 5.05, COLORS.shadow);
-
-  // Колонны
-  const colX = [-2.45, -0.8, 0.8, 2.45];
-  for (const x of colX) {
-    addCylinder(0.34, 0.42, 4.75, 18, x, 3.4, 5.35, COLORS.frame);
-    addBox(0.9, 0.2, 0.9, x, 5.85, 5.35, COLORS.trim);
-    addBox(0.8, 0.14, 0.8, x, 0.96, 5.35, COLORS.trim);
   }
 
-  // Крыша портика
-  addGableRoof(8.2, 3.5, 1.8, 0, 6.55, 5.08, COLORS.roof);
-  addBox(8.22, 0.14, 3.55, 0, 6.58, 5.08, COLORS.roofDark);
+  // Входная группа: ступени, колонны, антаблемент, фронтон с эмблемой.
+  k.slab(8.6, 0.32, 3.6, 0, 0.9, 6.0, C.stone, { r: 0.08 });
+  k.slab(7.8, 0.3, 3.0, 0, 1.22, 5.9, C.stone, { r: 0.08 });
+  k.slab(7.2, 0.28, 2.6, 0, 1.52, 5.8, C.stone, { r: 0.08 });
+  for (const x of [-2.7, -0.9, 0.9, 2.7]) {
+    k.cyl(0.4, 0.46, 0.34, 14, x, 2.0, 6.0, C.stoneDark);
+    k.cyl(0.32, 0.38, 4.5, 16, x, 4.4, 6.0, C.trim);
+    k.cyl(0.46, 0.34, 0.3, 14, x, 6.75, 6.0, C.stoneDark);
+    k.box(1.0, 0.18, 1.0, x, 6.98, 6.0, C.trim, { r: 0.05 });
+  }
+  k.box(8.2, 0.55, 2.9, 0, 7.4, 5.9, C.trim, { r: 0.08 });
+  k.box(8.5, 0.18, 3.1, 0, 7.75, 5.95, C.stone, { r: 0.05 });
+  k.prism(8.6, 2.9, 1.7, 0, 7.8, 5.95, C.wall);
+  k.prism(9.0, 0.3, 1.95, 0, 7.72, 7.45, C.trim);
+  k.cyl(0.55, 0.55, 0.16, 22, 0, 8.6, 7.52, C.brass, { rot: [Math.PI / 2, 0, 0] });
+  k.cyl(0.4, 0.4, 0.16, 22, 0, 8.6, 7.58, C.roof, { rot: [Math.PI / 2, 0, 0] });
+  k.sphere(0.2, 0, 8.6, 7.68, C.roofEdge, { w: 8, h: 6 });
 
-  // Фронтон портика
-  addBox(6.65, 0.34, 0.38, 0, 6.08, 6.58, COLORS.trim);
-
-  // Часы
-  addCylinder(0.78, 0.78, 0.18, 32, 0, 7.45, 5.04, COLORS.clockRim, { rx: Math.PI / 2 });
-  addCylinder(0.62, 0.62, 0.1, 32, 0, 7.45, 5.09, COLORS.clockFace, { rx: Math.PI / 2 });
-  addBox(0.08, 0.52, 0.06, 0, 7.58, 5.15, COLORS.clockHand);
-  addBox(0.38, 0.08, 0.06, 0.14, 7.43, 5.15, COLORS.clockHand);
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    const x = Math.sin(a) * 0.5;
-    const y = Math.cos(a) * 0.5;
-    addBox(0.04, 0.12, 0.04, x, 7.45 + y, 5.16, COLORS.clockRim);
+  // Центральные двери, фонари и вазоны.
+  k.door(0, 3.4, 5.2, { w: 2.9, h: 3.1, leaf: C.door, frame: C.trim, handle: C.brass });
+  for (const x of [-3.7, 3.7]) {
+    k.box(0.22, 0.5, 0.22, x, 3.3, 5.45, C.brass, { tinted: false });
+    k.sphere(0.2, x, 3.0, 5.45, 0xffe9a8, { w: 7, h: 6, tinted: false });
+    k.box(0.34, 0.12, 0.34, x, 3.65, 5.45, C.stoneDark);
+  }
+  for (const x of [-4.6, 4.6]) {
+    k.cyl(0.4, 0.3, 0.7, 10, x, 2.0, 7.0, C.stoneDark);
+    k.sphere(0.5, x, 2.55, 7.0, 0x5f9a64, { w: 8, h: 6 });
+    for (let i = 0; i < 4; i++) k.sphere(0.12, x + Math.cos(i * 1.6) * 0.35, 2.75 + (i % 2) * 0.1, 7.0 + Math.sin(i * 1.6) * 0.35, [0xf4b6c2, 0xfff0b8, 0xc7b5f4, 0xffc27a][i], { w: 5, h: 4, tinted: false });
   }
 
-  // Двери
-  addBox(1.0, 2.6, 0.18, -0.55, 2.18, 5.03, COLORS.door);
-  addBox(1.0, 2.6, 0.18, 0.55, 2.18, 5.03, COLORS.door);
-  addBox(2.18, 0.18, 0.24, 0, 3.55, 5.02, COLORS.trim);
-  addBox(0.1, 2.8, 0.14, 0, 2.18, 5.05, COLORS.doorDark);
-  addBox(0.08, 0.08, 0.08, -0.16, 2.05, 5.15, COLORS.brass);
-  addBox(0.08, 0.08, 0.08, 0.16, 2.05, 5.15, COLORS.brass);
-
-  // Элегантная объёмная вывеска МЭРИЯ.
-  // Расположена перед портиком, чтобы крыша не скрывала буквы.
-  addBox(5.65, 0.75, 0.16, 0, 6.26, 7.04, COLORS.sign);
-
-  // Тонкая архитектурная рамка.
-  addBox(5.82, 0.065, 0.21, 0, 6.65, 7.06, COLORS.brass);
-  addBox(5.82, 0.065, 0.21, 0, 5.87, 7.06, COLORS.brass);
-  addBox(0.065, 0.82, 0.21, -2.88, 6.26, 7.06, COLORS.brass);
-  addBox(0.065, 0.82, 0.21, 2.88, 6.26, 7.06, COLORS.brass);
-
-  // Векторные линии вместо квадратных пиксельных букв.
-  // Каждый штрих — гладкая объёмная кривая Three.js.
-  const signStroke = (points) => {
-    const curve = new THREE.CatmullRomCurve3(
-      points.map(([x, y]) => new THREE.Vector3(x, y, 7.20)),
-      false,
-      'centripetal'
-    );
-    const geometry = new THREE.TubeGeometry(
-      curve, 24, 0.024, 7, false
-    );
-    add(geometry, COLORS.signText);
+  // Окна по бокам портика: два этажа, ставни и подоконники.
+  const row = (y, h, sx) => {
+    for (const x of [5.5, 7.7]) k.window(sx * x, y, 5.2, { w: 1.5, h, glass: C.glass, frame: C.trim, sill: C.stone, lintel: C.stone, shutters: y > 4 ? C.shutter : null });
   };
-
-  const letterY = 6.08;
-  const letterH = 0.39;
-  const letterW = 0.42;
-  const letterStep = 0.76;
-  const firstX = -1.72;
-
-  const line = (i, points) => {
-    const x = firstX + i * letterStep;
-    signStroke(points.map(([px, py]) => [
-      x + px * letterW,
-      letterY + py * letterH
-    ]));
-  };
-
-  // М
-  line(0, [
-    [0, 0], [0, 1], [0.15, 0.82],
-    [0.35, 0.48], [0.5, 0.28],
-    [0.65, 0.48], [0.85, 0.82],
-    [1, 1], [1, 0]
-  ]);
-
-  // Э — округлая форма и средняя перекладина.
-  line(1, [
-    [0.05, 0.86], [0.3, 1],
-    [0.72, 0.96], [1, 0.72],
-    [1, 0.28], [0.72, 0.04],
-    [0.3, 0], [0.05, 0.14]
-  ]);
-  line(1, [[0.4, 0.5], [0.94, 0.5]]);
-
-  // Р
-  line(2, [[0.06, 0], [0.06, 1]]);
-  line(2, [
-    [0.06, 1], [0.65, 1],
-    [0.94, 0.85], [1, 0.68],
-    [0.94, 0.5], [0.65, 0.44],
-    [0.06, 0.44]
-  ]);
-
-  // И
-  line(3, [
-    [0, 1], [0, 0],
-    [1, 1], [1, 0]
-  ]);
-
-  // Я
-  line(4, [[1, 0], [1, 1]]);
-  line(4, [
-    [1, 1], [0.4, 1],
-    [0.08, 0.84], [0, 0.66],
-    [0.08, 0.5], [0.4, 0.44],
-    [1, 0.44]
-  ]);
-  line(4, [
-    [0.48, 0.44], [0.26, 0.18], [0.02, 0]
-  ]);
-
-  // Фонари у входа
-  addLantern(-3.55, 3.0, 5.2);
-  addLantern(3.55, 3.0, 5.2);
-
-  // Окна 1 этаж
-  addWindow(-6.1, 2.1, 5.02);
-  addWindow(-4.0, 2.1, 5.02);
-  addWindow(4.0, 2.1, 5.02);
-  addWindow(6.1, 2.1, 5.02);
-
-  // Окна 2 этаж
-  addWindow(-6.2, 5.95, 5.02);
-  addWindow(-4.1, 5.95, 5.02);
-  addWindow(4.1, 5.95, 5.02);
-  addWindow(6.2, 5.95, 5.02);
-
-  // Боковые небольшие окна
-  addWindow(-8.98, 5.95, 0, 1.25, 2.2, 0.16);
-  addWindow(8.98, 5.95, 0, 1.25, 2.2, 0.16);
-
-  const geometry = mergeGeometries(parts, false);
-  if (!geometry) throw new Error('Не удалось объединить геометрии мэрии');
-  geometry.computeVertexNormals();
-
-  for (const g of parts) g.dispose();
-  return geometry;
+  for (const sx of [-1, 1]) {
+    row(2.95, 2.4, sx);
+    row(6.9, 2.3, sx);
+  }
+  // Бока и задняя стена: те же окна.
+  for (const [pos, rot, xs] of [[[9.2, 0, 0], Math.PI / 2, [-3, 0, 3]], [[-9.2, 0, 0], -Math.PI / 2, [-3, 0, 3]], [[0, 0, -5.2], Math.PI, [-6.6, -3.3, 0, 3.3, 6.6]]]) {
+    k.at(pos, rot, () => {
+      for (const x of xs) {
+        k.window(x, 2.95, 0, { w: 1.5, h: 2.4, glass: C.glass, frame: C.trim, sill: C.stone });
+        k.window(x, 6.9, 0, { w: 1.5, h: 2.3, glass: C.glass, frame: C.trim, sill: C.stone, lintel: C.stone });
+      }
+    });
+  }
+  return k.build({ groundAO: { height: 2.2, strength: 0.32 }, bands: [{ y0: 8.7, y1: 9.15, strength: 0.18 }] });
 }
-

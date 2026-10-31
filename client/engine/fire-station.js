@@ -1,140 +1,100 @@
-// Наружная пожарная часть. Один BufferGeometry с цветами вершин для InstancedMesh.
-// Локальный фасад обращён к +Z; разворот задаёт серверный экземпляр в чанке.
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+// Наружная пожарная часть города: тот же облик, что у станции в учебной сцене (кремовые стены, красная крыша
+// с черепицей, сине-серые ворота, часовая башня). Фасад смотрит в +Z; боковая дверь на x = +7.72 — вход по клавише E.
+import { createPrefabKit } from './art/prefab-kit.js';
+
+const C = {
+  cream: 0xf5e9cd, pale: 0xfff4d9, red: 0xd65a42, darkRed: 0xa94436, roof: 0xc9533e, roofTile: 0xa33f33,
+  navy: 0x345568, blue: 0x7fb6bf, green: 0x438266, gold: 0xf0c85f, stone: 0xdcd0b0, grey: 0x5f7a7e,
+  white: 0xfff9e8, trim: 0xd9dfce, brick: 0xd9694d, glass: 0x86bccd,
+};
+
+export const FIRE_STATION_SIGNS = Object.freeze([
+  { text: 'ПОЖАРНАЯ ЧАСТЬ', x: -1.5, y: 8.25, z: 7.15, w: 9.6, h: 1.05, color: '#a63a2e', border: '#c9533e' },
+]);
 
 export function buildFireStationGeometry() {
-  const parts = [];
-  const C = {
-    cream: 0xf5e9cd, pale: 0xfff4d9, red: 0xd65a42,
-    darkRed: 0xa94436, roof: 0x88382c, navy: 0x345568,
-    blue: 0x6ca4ac, green: 0x438266, gold: 0xf0c85f,
-    charcoal: 0x374344, stone: 0xd6c9a8, grey: 0x526d70,
-    white: 0xfff9e8, trim: 0xd9dfce,
-  };
-  function add(geo, color, x=0, y=0, z=0) {
-    geo.translate(x, y, z);
-    const g = geo.index ? geo.toNonIndexed() : geo;
-    if (g !== geo) geo.dispose();
-    // ExtrudeGeometry добавляет UV; убираем у всех UV для совместимости mergeGeometries.
-    g.deleteAttribute('uv');
-    const rgb = new THREE.Color(color);
-    const colors = new Float32Array(g.getAttribute('position').count * 3);
-    for (let i=0; i<colors.length; i+=3) {
-      colors[i]=rgb.r; colors[i+1]=rgb.g; colors[i+2]=rgb.b;
+  const k = createPrefabKit({ seed: 11 });
+
+  // Цоколь, кирпичный пояс и стены.
+  k.slab(22.8, 0.5, 14.8, 0, 0, 0, C.stone, { r: 0.1 });
+  k.slab(21.6, 1.1, 13.8, 0, 0.5, 0, C.brick);
+  k.slab(21.4, 7.5, 13.5, 0, 1.6, 0, C.cream);
+  // Красные угловые пилястры и межэтажный пояс.
+  for (const x of [-10.3, 10.3]) {
+    for (const z of [-6.75, 6.75]) k.slab(0.8, 8.0, 0.6, x, 1.1, z, C.red, { r: 0.08 });
+  }
+  k.box(22.0, 0.34, 14.1, 0, 5.2, 0, C.red, { r: 0.06 });
+  k.box(22.7, 0.34, 14.5, 0, 9.0, 0, C.darkRed, { r: 0.08 });
+
+  // Двускатная крыша: красная, с рядами черепицы; светлая лицевая кромка.
+  k.gableRoof({ w: 23.6, d: 15.6, rise: 2.9, y: 9.15, color: C.roof, edge: C.cream, ridge: C.darkRed, tiles: C.roofTile, courses: 8 });
+  k.prism(21.6, 0.3, 2.45, 0, 9.18, 7.0, C.cream);
+
+  // Часовая башня на левом углу: кирпичный ствол, циферблаты, шатёр и флюгер.
+  k.slab(3.0, 4.6, 3.0, -8.3, 10.0, 0.5, C.brick, { r: 0.08 });
+  k.box(3.4, 0.3, 3.4, -8.3, 14.7, 0.5, C.cream, { r: 0.07 });
+  k.cone(2.35, 2.6, 4, -8.3, 16.1, 0.5, C.roof, { rot: [0, Math.PI / 4, 0] });
+  k.sphere(0.2, -8.3, 17.5, 0.5, C.gold, { w: 8, h: 6 });
+  for (const dir of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+    k.at([-8.3 + dir[0] * 1.52, 12.9, 0.5 + dir[1] * 1.52], Math.atan2(dir[0], dir[1]), () => {
+      k.cyl(0.74, 0.74, 0.1, 26, 0, 0, 0, C.darkRed, { rot: [Math.PI / 2, 0, 0] });
+      k.cyl(0.6, 0.6, 0.1, 26, 0, 0, 0.04, C.white, { rot: [Math.PI / 2, 0, 0], tinted: false });
+      k.box(0.07, 0.42, 0.05, 0, 0.16, 0.1, 0x3d2d24, { tinted: false });
+      k.box(0.3, 0.06, 0.05, 0.12, 0, 0.1, 0x3d2d24, { tinted: false });
+    });
+  }
+  k.box(1.6, 0.9, 0.3, -8.3, 11.4, 2.05, C.navy, { r: 0.05 }); // жалюзи звонницы
+  for (let i = 0; i < 4; i++) k.box(1.4, 0.05, 0.08, -8.3, 11.15 + i * 0.2, 2.22, C.cream, { tinted: false });
+
+  // Два гаража с секционными воротами, окошками и красными наличниками.
+  for (const x of [-5.5, 1.15]) {
+    k.box(5.9, 4.55, 0.34, x, 3.05, 6.85, C.red, { r: 0.1 });
+    k.box(5.2, 4.0, 0.3, x, 2.95, 7.0, C.navy, { r: 0.05 });
+    k.box(4.84, 3.7, 0.12, x, 2.9, 7.18, C.grey, { r: 0.04 });
+    for (let j = 0; j < 5; j++) k.box(4.86, 0.07, 0.07, x, 1.36 + j * 0.68, 7.27, C.trim, { tinted: false });
+    for (const side of [-1, 1]) k.box(0.1, 3.7, 0.08, x + side * 2.35, 2.9, 7.27, C.cream, { tinted: false });
+    for (let m = -1; m <= 1; m++) {
+      k.box(1.2, 0.5, 0.08, x + m * 1.5, 4.12, 7.27, C.blue, { tinted: false });
+      k.box(1.28, 0.08, 0.1, x + m * 1.5, 4.12 + 0.28, 7.27, C.cream, { tinted: false });
     }
-    g.setAttribute('color',new THREE.BufferAttribute(colors,3));
-    parts.push(g);
+    // Сигнальный фонарь над воротами.
+    k.box(0.42, 0.42, 0.36, x, 5.55, 7.1, C.darkRed, { r: 0.07 });
+    k.box(0.28, 0.3, 0.4, x, 5.57, 7.18, C.gold, { tinted: false });
   }
-  const box=(w,h,d,x,y,z,c)=>add(new THREE.BoxGeometry(w,h,d),c,x,y,z);
-  const cylinder=(top,bottom,h,sides,x,y,z,c,rotationX=0)=>{
-    const g=new THREE.CylinderGeometry(top,bottom,h,sides);
-    if(rotationX) g.rotateX(rotationX);
-    add(g,c,x,y,z);
-  };
-  function roof(w,d,height,x,y,z,c) {
-    const shape=new THREE.Shape();
-    shape.moveTo(-w/2,0); shape.lineTo(0,height);
-    shape.lineTo(w/2,0); shape.closePath();
-    const g=new THREE.ExtrudeGeometry(shape,{depth:d,bevelEnabled:false});
-    g.translate(0,0,-d/2);
-    add(g,c,x,y,z);
+
+  // Входная дверь с остеклением справа (E — вход в учебную пожарную часть).
+  k.door(7.72, 2.4, 6.75, { w: 2.2, h: 3.1, leaf: C.green, frame: C.cream, glass: C.glass, handle: C.gold, step: C.stone });
+  k.box(3.2, 0.2, 1.4, 7.72, 4.35, 7.4, C.red, { r: 0.07 }); // козырёк
+  for (const sx of [-1, 1]) k.box(0.1, 0.5, 1.2, 7.72 + sx * 1.5, 4.08, 7.35, C.darkRed);
+
+  // Окна второго этажа: белые рамы, красные подоконники, ящики с цветами.
+  for (const x of [-8.35, -5.3, -2.25, 2.25, 5.3, 8.35]) {
+    k.window(x, 7.05, 6.75, { w: 1.9, h: 1.7, glass: C.glass, frame: C.white, sill: C.red, lintel: null, flowerBox: x % 2 === 0 || x < 0 ? { box: C.darkRed, leaf: 0x5f9a64, blooms: [0xf4b6c2, 0xfff0b8, 0xffffff] } : null });
   }
-  function window(x,y,z,w=1.8,h=1.35) {
-    box(w+0.2,h+0.2,0.16,x,y,z,C.white);
-    box(w,h,0.18,x,y,z+0.11,C.blue);
-    box(0.10,h,0.07,x,y,z+0.23,C.white);
-    box(w,0.10,0.07,x,y,z+0.23,C.white);
-    box(w+0.35,0.15,0.3,x,y-h/2-0.08,z+0.12,C.stone);
+  // Боковые и задние окна.
+  for (const [pos, rot, zs] of [[[10.7, 0, 0], Math.PI / 2, [-3.8, 0, 3.8]], [[-10.7, 0, 0], -Math.PI / 2, [-3.8, 0, 3.8]]]) {
+    k.at(pos, rot, () => zs.forEach((z) => {
+      k.window(z, 3.1, 0, { w: 1.6, h: 1.8, glass: C.glass, frame: C.white, sill: C.stone });
+      k.window(z, 7.05, 0, { w: 1.6, h: 1.7, glass: C.glass, frame: C.white, sill: C.red });
+    }));
   }
-  // Читаемый силуэт двухэтажной станции, ширина 24, глубина 16.
-  box(22.4,0.45,14.4,0,0.225,0,C.stone);
-  box(21.4,8.5,13.5,0,4.6,0,C.cream);
-  // Кирпичный красный цоколь, угловые акценты, межэтажный пояс.
-  box(21.8,0.50,13.9,0,0.46,0,C.darkRed);
-  for (const x of [-10.3,10.3]) {
-    box(0.75,8.5,0.55,x,4.65,6.77,C.red);
-    box(0.75,8.5,0.55,x,4.65,-6.77,C.red);
+
+  // Эмблема на фронтоне: щит с лучами и звездой.
+  k.at([0, 10.7, 7.1], 0, () => {
+    k.cyl(0.9, 0.9, 0.16, 24, 0, 0, 0, C.darkRed, { rot: [Math.PI / 2, 0, 0] });
+    k.cyl(0.72, 0.72, 0.16, 24, 0, 0, 0.05, C.gold, { rot: [Math.PI / 2, 0, 0], tinted: false });
+    for (let i = 0; i < 4; i++) k.box(0.15, 0.9, 0.08, 0, 0, 0.16, C.red, { rot: [0, 0, (i * Math.PI) / 4], tinted: false });
+    k.cyl(0.18, 0.18, 0.1, 12, 0, 0, 0.2, C.darkRed, { rot: [Math.PI / 2, 0, 0], tinted: false });
+  });
+
+  // Конусы и гидрант у ворот: детали рабочего двора.
+  for (const x of [-9.2, 3.8]) {
+    k.cone(0.26, 0.7, 10, x, 0.37, 8.6, 0xf28b35);
+    k.cyl(0.3, 0.3, 0.06, 10, x, 0.04, 8.6, 0xfff6e6);
   }
-  box(22.1,0.33,14.1,0,5.05,0,C.red);
-  box(22.6,0.28,14.45,0,8.91,0,C.darkRed);
-  roof(23.5,15.5,2.65,0,9.04,0,C.red);
-  // Коньковая линия и лицевая окантовка фронтона.
-  box(0.35,0.38,15.4,0,11.7,0,C.darkRed);
-  roof(22.8,0.30,2.45,0,9.08,7.05,C.darkRed);
-  roof(21.95,0.35,2.28,0,9.10,7.25,C.cream);
-  // Два гаража. Арки заменены широкими воротами с рельефными секциями.
-  for (const x of [-5.5,1.15]) {
-    box(5.6,4.15,0.24,x,2.86,6.91,C.darkRed);
-    box(5.08,3.7,0.27,x,2.83,7.10,C.navy);
-    box(4.74,3.35,0.12,x,2.8,7.28,C.grey);
-    for (let j=0;j<5;j++) box(4.80,0.055,0.04,x,1.46+j*0.67,7.36,C.trim);
-    for (const xx of [x-2.21,x+2.21]) box(0.09,3.46,0.06,xx,2.82,7.37,C.cream);
-    // Окна на воротах.
-    for (let k=-1;k<=1;k++) {
-      box(1.15,0.50,0.06,x+k*1.43,3.8,7.38,C.blue);
-      box(1.22,0.08,0.06,x+k*1.43,3.8,7.42,C.cream);
-    }
-    box(5.75,0.24,0.44,x,5.08,7.0,C.red);
-  }
-  // Отдельная боковая дверь справа с остеклением.
-  box(2.55,3.55,0.28,7.72,2.66,6.94,C.green);
-  box(2.18,3.23,0.20,7.72,2.69,7.13,C.navy);
-  box(1.7,1.15,0.10,7.72,3.42,7.27,C.blue);
-  box(0.10,1.16,0.08,7.72,3.42,7.34,C.white);
-  box(1.8,0.10,0.08,7.72,3.42,7.34,C.white);
-  box(0.09,0.20,0.14,8.42,2.2,7.33,C.gold);
-  box(2.9,0.28,1.0,7.72,0.45,7.15,C.stone);
-  // Окна второго этажа.
-  for (const x of [-8.35,-5.3,-2.25,2.25,5.3,8.35]) window(x,6.65,6.84,1.9,1.6);
-  // Парадная вывеска на полосе над воротами: надпись из объёмных линий.
-  box(13.6,0.77,0.20,-1.5,8.13,7.02,C.white);
-  box(13.8,0.08,0.26,-1.5,8.55,7.05,C.darkRed);
-  box(13.8,0.08,0.26,-1.5,7.72,7.05,C.darkRed);
-  // Скелетные кириллические глифы векторными штрихами: чёткие, без пиксельных блоков.
-  const L={
-    'П': [[[0,0],[0,1],[1,1],[1,0]]],
-    'О': [[[0.12,0],[0.88,0],[1,0.18],[1,0.82],[0.88,1],[0.12,1],[0,0.82],[0,0.18],[0.12,0]]],
-    'Ж': [[[0,0],[.5,.5],[0,1]],[[1,0],[.5,.5],[1,1]],[[.5,0],[.5,1]]],
-    'А': [[[0,0],[.5,1],[1,0]],[[.2,.43],[.8,.43]]],
-    'Р': [[[0,0],[0,1],[.75,1],[1,.82],[1,.65],[.75,.5],[0,.5]]],
-    'Н': [[[0,0],[0,1]],[[0,.52],[1,.52]],[[1,0],[1,1]]],
-    'Я': [[[1,0],[1,1],[.28,1],[0,.82],[0,.65],[.28,.5],[1,.5]],[[.47,.5],[0,0]]],
-    'Ч': [[[0,1],[0,.55],[1,.55]],[[1,1],[1,0]]],
-    'С': [[[1,.85],[.78,1],[.18,1],[0,.78],[0,.22],[.18,0],[.78,0],[1,.15]]],
-    'Т': [[[0,1],[1,1]],[[.5,1],[.5,0]]],
-    'Ь': [[[0,1],[0,0],[.73,0],[1,.15],[1,.37],[.73,.52],[0,.52]]],
-  };
-  const label='ПОЖАРНАЯ ЧАСТЬ';
-  const letterW=.48, step=.70, height=.40;
-  const full=(label.length-1)*step+letterW;
-  let originX=-1.5-full/2;
-  for (const char of label) {
-    if (char===' ') {originX+=step*.58;continue;}
-    for(const segment of L[char]??[]) {
-      const points=segment.map(([x,y])=>new THREE.Vector3(originX+x*letterW,7.94+y*height,7.20));
-      const curve=new THREE.CatmullRomCurve3(points,false,'centripetal');
-      add(new THREE.TubeGeometry(curve,Math.max(12,points.length*6),.021,6,false),C.darkRed);
-    }
-    originX+=step;
-  }
-  // Круглый символ службы на фронтоне: красный щит с жёлтой звездой.
-  cylinder(0.82,0.82,0.17,18,0,10.05,7.46,C.darkRed,Math.PI/2);
-  cylinder(0.65,0.65,0.18,18,0,10.05,7.56,C.gold,Math.PI/2);
-  for(let i=0;i<4;i++) {
-    const angle=i*Math.PI/4;
-    const g=new THREE.BoxGeometry(.14,.82,.06);g.rotateZ(angle);
-    add(g,C.red,0,10.05,7.68);
-  }
-  // Сигнальные фонари над гаражами.
-  for(const x of [-8.3,4.0]) {
-    box(.38,.38,.37,x,5.37,7.05,C.darkRed);
-    box(.26,.27,.40,x,5.39,7.12,C.gold);
-  }
-  const merged=mergeGeometries(parts,false);
-  if(!merged) {for(const g of parts)g.dispose();throw new Error('Не удалось объединить геометрии пожарной части');}
-  merged.computeVertexNormals();
-  merged.computeBoundingBox();
-  for(const g of parts)g.dispose();
-  return merged;
+  k.cyl(0.2, 0.24, 0.8, 10, 10.2, 0.4, 8.7, C.red);
+  k.sphere(0.22, 10.2, 0.84, 8.7, C.darkRed, { w: 8, h: 5 });
+  k.cyl(0.07, 0.07, 0.5, 6, 10.2, 0.55, 8.9, C.gold);
+
+  return k.build({ groundAO: { height: 2.2, strength: 0.3 }, bands: [{ y0: 8.7, y1: 9.1, strength: 0.16 }] });
 }
