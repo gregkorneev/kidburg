@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_OLLAMA_URL, OllamaError, assertLoopbackUrl, chatStream } from './ollama.js';
+import { createRepeatGuard } from './repeat-guard.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const AGENT_ID_RE = /^[a-z][a-z0-9_]{0,31}$/;
@@ -23,6 +24,8 @@ export const AGENT_DEFAULTS = Object.freeze({
   notesKept: 8, // сколько кратких заметок «о чём уже рассказано» хранится на пару игрок-агент
   noteChars: 110,
   situationChars: 900,
+  repeatRetries: 2, // сколько раз перегенерировать ответ, начало которого повторяет сказанное раньше
+  repeatThreshold: 0.7, // сходство предложений (0..1), с которого оно считается повтором
   maxReplyChars: 1200,
   numPredict: 200,
   numCtx: 4096,
@@ -285,9 +288,11 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     return { key, label: clean(s.label, 40) || key, text };
   }
 
-  function buildMessages(persona, req, text, situation) {
+  const RETRY_NOTE =
+    'Твой прошлый вариант ответа повторял то, что ты уже говорила этому игроку. Ответь иначе: без приветствия, другими словами и скажи что-то новое по теме вопроса.';
+
+  function buildMessages(persona, req, text, situation, memory, retry = false) {
     const context = req.context ?? {};
-    const memory = loadMemory(req.userId, req.agentId);
     const facts = [];
     const player = clean(context.playerName, 32);
     if (player) facts.push(`Собеседника зовут ${player}.`);
@@ -311,6 +316,7 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
         );
       }
     }
+    if (retry) facts.push(RETRY_NOTE);
     const system = [getSystemRules(), 'Твой персонаж:', personaPrompt(persona), facts.join(' ')]
       .filter(Boolean)
       .join('\n\n');
@@ -334,36 +340,80 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     const release = await slots.acquire({ signal: req.signal, onQueue: req.onQueue });
     try {
       const situation = readSituation(req.context);
-      const messages = buildMessages(persona, req, text, situation);
-      let answer = '';
-      let truncated = false;
-      for await (let token of chatStream({
-        baseUrl: cfg.baseUrl,
-        model: cfg.model,
-        messages,
-        options: { num_predict: cfg.numPredict, num_ctx: cfg.numCtx, temperature: cfg.temperature },
-        keepAlive: cfg.keepAlive,
-        signal: req.signal,
-        idleTimeoutMs: cfg.idleTimeoutMs,
-        totalTimeoutMs: cfg.totalTimeoutMs,
-        fetchImpl,
-      })) {
-        if (!answer) token = token.trimStart();
-        if (!token) continue;
-        if (answer.length + token.length > cfg.maxReplyChars) {
-          token = token.slice(0, cfg.maxReplyChars - answer.length);
-          truncated = true;
+      const memory = loadMemory(req.userId, req.agentId);
+      const guard = createRepeatGuard({
+        previous: [...memory.notes, ...memory.turns.filter((t) => isTurn(t) && t.role === 'assistant').map((t) => t.text)],
+        met: memory.exchanges > 0 || memory.turns.length > 0,
+        threshold: cfg.repeatThreshold,
+      });
+
+      // Начало ответа держится, пока не проверено, что это не повтор сказанного раньше; затем текст идёт потоком.
+      // Повтор не показывается игроку: ответ генерируется заново (ограниченное число раз), иначе — ошибка.
+      for (let attempt = 0; attempt <= cfg.repeatRetries; attempt++) {
+        const messages = buildMessages(persona, req, text, situation, memory, attempt > 0);
+        const temperature = Math.min(1, cfg.temperature + 0.15 * attempt);
+        const outcome = yield* generate(req, messages, temperature, guard);
+        if (req.signal?.aborted) return;
+        if (outcome.repeated) {
+          log?.info?.({ agentId: req.agentId, attempt }, 'ответ повторяет сказанное раньше, генерация заново');
+          continue;
         }
-        answer += token;
-        if (token) yield token;
-        if (truncated) break;
+        if (!outcome.answer.trim()) throw new OllamaError('empty', 'Модель вернула пустой ответ');
+        saveTurns(req.userId, req.agentId, text, outcome.answer.trim(), situation);
+        return;
       }
-      if (req.signal?.aborted) return;
-      if (!answer.trim()) throw new OllamaError('empty', 'Модель вернула пустой ответ');
-      saveTurns(req.userId, req.agentId, text, answer.trim(), situation);
+      throw new OllamaError('repeat', 'Собеседник повторился и не придумал нового ответа. Попробуйте спросить иначе или повторите вопрос.');
     } finally {
       release();
     }
+  }
+
+  /** Одна генерация: отдаёт токены после проверки начала, возвращает {answer, repeated}. */
+  async function* generate(req, messages, temperature, guard) {
+    let answer = '';
+    let held = '';
+    let released = false;
+    let truncated = false;
+
+    const emit = function* (token) {
+      if (answer.length + token.length > cfg.maxReplyChars) {
+        token = token.slice(0, cfg.maxReplyChars - answer.length);
+        truncated = true;
+      }
+      answer += token;
+      if (token) yield token;
+    };
+
+    for await (let token of chatStream({
+      baseUrl: cfg.baseUrl,
+      model: cfg.model,
+      messages,
+      options: { num_predict: cfg.numPredict, num_ctx: cfg.numCtx, temperature },
+      keepAlive: cfg.keepAlive,
+      signal: req.signal,
+      idleTimeoutMs: cfg.idleTimeoutMs,
+      totalTimeoutMs: cfg.totalTimeoutMs,
+      fetchImpl,
+    })) {
+      if (released) {
+        yield* emit(token);
+        if (truncated) break;
+        continue;
+      }
+      held += token;
+      const verdict = guard.check(held.trimStart(), { ended: false });
+      if (verdict === 'wait') continue;
+      if (verdict === 'repeat') return { answer: '', repeated: true };
+      released = true;
+      yield* emit(held.trimStart());
+      if (truncated) break;
+    }
+    if (req.signal?.aborted) return { answer, repeated: false };
+    if (!released && held.trim()) {
+      if (guard.check(held.trimStart(), { ended: true }) === 'repeat') return { answer: '', repeated: true };
+      yield* emit(held.trimStart());
+    }
+    return { answer, repeated: false };
   }
 
   /** Проверка при старте: только журнал, ничего не бросает. */

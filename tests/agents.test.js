@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { openDb } from '../server/db/index.js';
 import { createAgents, resolveAgentConfig } from '../server/agents/index.js';
 import { OllamaError, assertLoopbackUrl, chatStream } from '../server/agents/ollama.js';
-import { closedPort, fakeOllama, hangingHandler, ndjsonLine, tokensHandler } from './ollama-fake.js';
+import { FIRST_SENTENCE, closedPort, fakeOllama, hangingHandler, ndjsonLine, tokensHandler } from './ollama-fake.js';
 
 const messages = [{ role: 'user', content: 'Привет' }];
 const collect = async (iter) => {
@@ -116,7 +116,7 @@ test('chatStream: отмена signal обрывает запрос к Ollama', 
       }
     })();
     await assert.rejects(run, (err) => err.name === 'AbortError');
-    assert.deepEqual(received, ['Начало']);
+    assert.deepEqual(received, [FIRST_SENTENCE]);
     assert.equal((await srv.requests[0].finished).aborted, true);
   } finally {
     await srv.close();
@@ -327,16 +327,216 @@ test('очередь: отмена ожидающего запроса убир�
 test('reply: слишком длинный ответ обрезается по maxReplyChars и запрос к Ollama обрывается', async () => {
   const srv = await fakeOllama((req, res) => {
     res.writeHead(200);
-    res.write(ndjsonLine('abcdef'));
-    res.write(ndjsonLine('ghijkl'));
+    res.write(ndjsonLine('Это очень длинный ответ модели. '));
+    res.write(ndjsonLine('Он продолжается дальше.'));
     setTimeout(() => res.end(ndjsonLine('', true)), 500);
   });
   try {
     const { mk, agents } = setup({ maxReplyChars: 8 });
     const user = mk('Аня');
     const out = await collect(agents(srv.url).reply({ userId: user.id, agentId: 'therapist', text: 'привет' }));
-    assert.equal(out.join(''), 'abcdefgh');
+    assert.equal(out.join(''), 'Это очен');
     assert.equal((await srv.requests[0].finished).aborted, true);
+  } finally {
+    await srv.close();
+  }
+});
+
+// ---- защита от повторов ответов ----
+
+const EQUIP = 'Экипировка защищает пожарного от жара и осколков, поэтому её проверяют до смены.';
+
+/** Ответы подменной модели по очереди (последний повторяется); запросы остаются в srv.requests. */
+const answers = (list) => (req, res) => {
+  const text = list[Math.min(list.length - 1, srvCount(req))];
+  tokensHandler(text.match(/\S+\s*/g))(req, res);
+};
+const counts = new WeakMap();
+const srvCount = (req) => {
+  const n = counts.get(req.socket.server) ?? 0;
+  counts.set(req.socket.server, n + 1);
+  return n;
+};
+
+/** Память «уже разговаривали»: приветствие и один совет сказаны. */
+function metBefore(db, user) {
+  db.saveAgentMemory(user.id, 'therapist', {
+    turns: [
+      { role: 'user', text: 'Здравствуйте' },
+      { role: 'assistant', text: `Привет, Аня! Я наставница. ${EQUIP}` },
+    ],
+    topics: { dialogue: { notes: ['Привет, Аня! Я наставница.'], exchanges: 1 } },
+  });
+}
+
+test('защита от повторов: повторное приветствие не показывается, берётся неповторённый ответ', async () => {
+  const srv = await fakeOllama(answers(['Привет, Аня! Рада видеть тебя снова.', 'Продолжим с того места, где остановились.']));
+  try {
+    const { db, mk, agents } = setup();
+    const user = mk('Аня');
+    metBefore(db, user);
+    const out = await collect(agents(srv.url).reply({ userId: user.id, agentId: 'therapist', text: 'Здравствуйте, Маруся!' }));
+    assert.equal(out.join('').trim(), 'Продолжим с того места, где остановились.');
+    assert.equal(srv.requests.length, 2, 'одна перегенерация');
+    assert.equal(out.join('').includes('Привет'), false, 'повторенное приветствие игрок не получил');
+    assert.doesNotMatch(srv.requests[0].body.messages[0].content, /повторял/);
+    assert.match(srv.requests[1].body.messages[0].content, /повторял то, что ты уже говорила/);
+    assert.ok(srv.requests[1].body.options.temperature > srv.requests[0].body.options.temperature, 'при повторе температура выше');
+    assert.equal(db.getAgentMemory(user.id, 'therapist').topics.dialogue.exchanges, 2);
+    assert.ok(!JSON.stringify(db.getAgentMemory(user.id, 'therapist').turns).includes('Рада видеть тебя снова'));
+  } finally {
+    await srv.close();
+  }
+});
+
+test('защита от повторов: переформулированный прежний совет блокируется, история берётся из базы (после перезагрузки)', async () => {
+  const srv = await fakeOllama(answers([
+    'Экипировка, как известно, защищает пожарного от жара и осколков, поэтому её проверяют до смены!',
+    'Ещё нужна рация: она связывает пожарных друг с другом во время учений.',
+  ]));
+  try {
+    const { db, mk, agents } = setup();
+    const user = mk('Аня');
+    metBefore(db, user);
+    // новый экземпляр агентов = «перезагрузка сервера»: прошлые ответы только в SQLite
+    const out = await collect(agents(srv.url).reply({ userId: user.id, agentId: 'therapist', text: 'Расскажи про экипировку' }));
+    assert.match(out.join(''), /^Ещё нужна рация/);
+    assert.equal(srv.requests.length, 2);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('защита от повторов: заметки о давно сказанном работают, даже когда реплики выпали из окна памяти', async () => {
+  const srv = await fakeOllama(answers([
+    'Команда распределяет роли заранее: один держит рукав, другой следит за связью.',
+    'Каждый на учении отвечает за свою часть задачи и сообщает о затруднениях.',
+  ]));
+  try {
+    const { db, mk, agents } = setup();
+    const user = mk('Аня');
+    db.saveAgentMemory(user.id, 'therapist', {
+      turns: [],
+      topics: { dialogue: { notes: ['Команда распределяет роли заранее: один держит рукав.'], exchanges: 9 } },
+    });
+    const out = await collect(agents(srv.url).reply({ userId: user.id, agentId: 'therapist', text: 'А как работает команда?' }));
+    assert.match(out.join(''), /^Каждый на учении/);
+    assert.equal(srv.requests.length, 2);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('защита от повторов: если модель повторяется и после перегенераций, игрок получает ошибку, а не заготовку', async () => {
+  const srv = await fakeOllama(answers([`Привет, Аня! ${EQUIP}`]));
+  try {
+    const { db, mk, agents } = setup();
+    const user = mk('Аня');
+    metBefore(db, user);
+    const before = JSON.stringify(db.getAgentMemory(user.id, 'therapist'));
+    const brain = agents(srv.url);
+    const seen = [];
+    await assert.rejects(
+      (async () => {
+        for await (const token of brain.reply({ userId: user.id, agentId: 'therapist', text: 'Привет' })) seen.push(token);
+      })(),
+      (err) => err instanceof OllamaError && err.code === 'repeat' && err.expose === true && /повторил/.test(err.message),
+    );
+    assert.deepEqual(seen, [], 'ни одного токена повторённого ответа не отдано');
+    assert.equal(srv.requests.length, 3, 'первая попытка и две перегенерации');
+    assert.equal(JSON.stringify(db.getAgentMemory(user.id, 'therapist')), before, 'в память повтор не попал');
+    assert.deepEqual(brain.busy, { active: 0, queued: 0 }, 'слот освобождён');
+  } finally {
+    await srv.close();
+  }
+});
+
+test('защита от повторов: приветствие при первой встрече допустимо, а разные по словам ответы не сравниваются побуквенно', async () => {
+  const srv = await fakeOllama(answers([
+    'Привет, Аня! Я Маруся, наставница учебной смены.',
+    'Экипировка нужна, чтобы пожарный не получил ожогов во время упражнения.',
+    'Пожарные тренируются, чтобы действовать слаженно и спокойно в любой ситуации.',
+  ]));
+  try {
+    const { db, mk, agents } = setup();
+    const user = mk('Аня');
+    const brain = agents(srv.url);
+    const ask = (text) => collect(brain.reply({ userId: user.id, agentId: 'therapist', text }));
+    assert.match((await ask('Здравствуйте')).join(''), /^Привет, Аня!/);
+    assert.match((await ask('Зачем экипировка?')).join(''), /^Экипировка нужна/);
+    assert.match((await ask('Зачем тренируются?')).join(''), /^Пожарные тренируются/);
+    assert.equal(srv.requests.length, 3, 'ни одной лишней перегенерации');
+    assert.equal(db.getAgentMemory(user.id, 'therapist').topics.dialogue.exchanges, 3);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('защита от повторов: у разных игроков история своя — чужой ответ не считается повтором', async () => {
+  const srv = await fakeOllama(answers([EQUIP]));
+  try {
+    const { db, mk, agents } = setup();
+    const [anna, boris] = [mk('Аня'), mk('Борис')];
+    const brain = agents(srv.url);
+    const ask = (user, text) => collect(brain.reply({ userId: user.id, agentId: 'therapist', text }));
+    assert.equal((await ask(anna, 'Зачем экипировка?')).join('').trim(), EQUIP);
+    assert.equal((await ask(boris, 'Зачем экипировка?')).join('').trim(), EQUIP);
+    assert.equal(srv.requests.length, 2);
+    assert.equal(db.getAgentMemory(boris.id, 'therapist').topics.dialogue.exchanges, 1);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('защита от повторов: после проверки начала текст идёт потоком, а повтор не утекает даже по частям', async () => {
+  const gate = Promise.withResolvers();
+  let call = 0;
+  const srv = await fakeOllama(async (req, res) => {
+    res.writeHead(200);
+    call += 1;
+    if (call === 1) {
+      // первая попытка: приветствие приходит кусками, но показать нельзя ни куска
+      for (const part of ['Прив', 'ет, А', 'ня! ', 'Снова ', 'здесь.']) res.write(ndjsonLine(part));
+      return res.end(ndjsonLine('', true));
+    }
+    res.write(ndjsonLine('Сегодня говорим про '));
+    res.write(ndjsonLine('рукав и его длину. '));
+    await gate.promise; // конец ответа ещё не пришёл
+    res.write(ndjsonLine('Рукав нельзя '));
+    res.write(ndjsonLine('перегибать.'));
+    res.end(ndjsonLine('', true));
+  });
+  try {
+    const { db, mk, agents } = setup();
+    const user = mk('Аня');
+    metBefore(db, user);
+    const stream = agents(srv.url).reply({ userId: user.id, agentId: 'therapist', text: 'Расскажи про рукав' });
+    const first = await stream.next();
+    assert.equal(first.value, 'Сегодня говорим про рукав и его длину. ', 'начало выдано до конца генерации');
+    assert.equal(call, 2);
+    gate.resolve();
+    const rest = [];
+    for await (const token of stream) rest.push(token);
+    assert.deepEqual(rest, ['Рукав нельзя ', 'перегибать.'], 'дальше токены идут по одному');
+  } finally {
+    await srv.close();
+  }
+});
+
+test('защита от повторов: отмена во время проверки начала не пишет в память и не перегенерирует', async () => {
+  const srv = await fakeOllama((req, res) => {
+    res.writeHead(200);
+    res.write(ndjsonLine('Пока без точки'));
+  });
+  try {
+    const { db, mk, agents } = setup();
+    const user = mk('Аня');
+    const controller = new AbortController();
+    const run = collect(agents(srv.url).reply({ userId: user.id, agentId: 'therapist', text: 'привет', signal: controller.signal }));
+    setTimeout(() => controller.abort(), 60);
+    await assert.rejects(run, (err) => err.name === 'AbortError');
+    assert.equal(srv.requests.length, 1);
+    assert.equal(db.getAgentMemory(user.id, 'therapist'), null);
   } finally {
     await srv.close();
   }

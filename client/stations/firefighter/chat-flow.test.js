@@ -12,9 +12,12 @@ function fakeChat() {
     assist: null,
     canSend: true,
     open(npc) { chat.opened.push(npc); return true; },
+    listeners: [],
+    onSend(fn) { chat.listeners.push(fn); },
     send(text) {
       if (!chat.canSend) return false;
       chat.sent.push(text);
+      for (const fn of chat.listeners) fn({ agentId: 'marusya', text });
       return true;
     },
     setAssist(value) { chat.assist = value; },
@@ -22,11 +25,18 @@ function fakeChat() {
   return chat;
 }
 
+/** Хранилище вкладки: переживает «перезагрузку» — новый createMarusyaChat с тем же хранилищем. */
+const fakeStorage = () => {
+  const map = new Map();
+  return { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, String(v)), removeItem: (k) => void map.delete(k) };
+};
+
 function setup(stage = 'not_started', overrides = {}) {
   const chat = fakeChat();
-  const world = { state: { stage }, online: true, busy: false, notice: '', dispatched: [], confirm: null };
+  const world = { state: { stage }, online: true, busy: false, notice: '', dispatched: [], confirm: null, storage: overrides.storage ?? fakeStorage() };
   const flow = createMarusyaChat({
     chat,
+    storage: world.storage,
     getState: () => world.state,
     dispatch: (action, handlers) => {
       world.dispatched.push(action);
@@ -49,21 +59,69 @@ test('первая встреча: открывается панель Мару�
   assert.equal(JSON.stringify(chat.assist).includes('Привет! Я Маруся'), false, 'готового приветствия NPC в клиенте нет');
 });
 
-test('повторное открытие на том же этапе не создаёт новый запрос; на новом этапе игрок обращается снова', () => {
-  const { chat, world, flow } = setup();
+test('повторное открытие панели и новый подход на том же этапе ничего не отправляют', () => {
+  const { chat, flow } = setup();
   flow.open();
   flow.open();
-  assert.equal(chat.sent.length, 1);
-  world.state = { stage: 'briefing' };
-  flow.open();
-  assert.deepEqual(chat.sent, [SAY.hello, SAY.hello]);
-  flow.reset(); // выход из игры
-  flow.open();
-  assert.equal(chat.sent.length, 3);
+  chat.opened.length = 0;
+  flow.open(); // закрыли, отошли, подошли снова
+  assert.deepEqual(chat.sent, [SAY.hello], 'приветствие ушло один раз');
+  assert.equal(chat.opened.length, 1, 'панель открывается, но реплики нет');
 });
 
-test('если ИИ ещё отвечает или связи нет, приветствие не теряется и уйдёт при следующем открытии', () => {
+test('на другом этапе игрок не здоровается заново, а спрашивает, что делать дальше', () => {
   const { chat, world, flow } = setup();
+  flow.open();
+  world.state = { stage: 'briefing' };
+  flow.open();
+  world.state = { stage: 'completed' };
+  flow.open();
+  flow.open();
+  assert.deepEqual(chat.sent, [SAY.hello, SAY.resume, SAY.resume]);
+  assert.equal(chat.sent.filter((t) => t === SAY.hello).length, 1);
+});
+
+test('перезагрузка страницы во вкладке: приветствие не повторяется, этап без обращения получает «что дальше»', () => {
+  const first = setup('briefing');
+  first.flow.open();
+  assert.deepEqual(first.chat.sent, [SAY.hello]);
+
+  // та же вкладка (то же хранилище), страница создана заново
+  const again = setup('briefing', { storage: first.world.storage });
+  again.flow.open();
+  assert.deepEqual(again.chat.sent, [], 'на этом этапе игрок уже обращался');
+  again.world.state = { stage: 'equipping' };
+  again.flow.open();
+  assert.deepEqual(again.chat.sent, [SAY.resume]);
+  assert.equal(again.chat.sent.includes(SAY.hello), false);
+
+  // новая вкладка или другое устройство: клиент ничего не помнит, а повторное приветствие гасит сервер
+  const fresh = setup('briefing');
+  fresh.flow.open();
+  assert.deepEqual(fresh.chat.sent, [SAY.hello]);
+});
+
+test('любая реплика игрока (кнопка, ввод) считается обращением на этом этапе', () => {
+  const { chat, world, flow } = setup('equipping');
+  flow.open(); // открывается без обращения: sent = hello (первое обращение за вкладку)
+  chat.sent.length = 0;
+  world.state = { stage: 'fire_drill' };
+  chat.send('Как держать рукав?'); // игрок написал сам, до открытия на новом этапе
+  chat.sent.length = 0;
+  flow.open();
+  assert.deepEqual(chat.sent, [], 'вводную реплику не отправляем: игрок уже говорил с Марусей на этом этапе');
+});
+
+test('выход из игры очищает память вкладки: следующий игрок знакомится заново', () => {
+  const { chat, flow } = setup();
+  flow.open();
+  flow.reset();
+  flow.open();
+  assert.deepEqual(chat.sent, [SAY.hello, SAY.hello]);
+});
+
+test('если ИИ ещё отвечает или связи нет, вводная реплика не теряется и уйдёт при следующем открытии', () => {
+  const { chat, flow } = setup();
   chat.canSend = false;
   flow.open();
   assert.deepEqual(chat.sent, []);
@@ -71,7 +129,6 @@ test('если ИИ ещё отвечает или связи нет, приве
   flow.open();
   assert.deepEqual(chat.sent, [SAY.hello]);
 
-  world.online = false;
   const offline = setup('debrief', { isOnline: () => false });
   assert.equal(offline.flow.open(), false);
   assert.deepEqual(offline.chat.opened, []);

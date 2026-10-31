@@ -41,6 +41,7 @@ export function createNpcChat({ api, timers = globalThis, replyTimeoutMs = REPLY
   const histories = new Map(); // agentId -> сообщения, только в памяти страницы
   const listeners = new Set();
   const openListeners = new Set();
+  const sendListeners = new Set();
   let current = null; // {reqId, agentId, message, timer}
   let counter = 0;
   let nextId = 0;
@@ -169,6 +170,11 @@ export function createNpcChat({ api, timers = globalThis, replyTimeoutMs = REPLY
       openListeners.add(fn);
       return () => openListeners.delete(fn);
     },
+    /** Вызывается после каждой реплики игрока, ушедшей на сервер (станция запоминает, что игрок уже обращался). */
+    onSend(fn) {
+      sendListeners.add(fn);
+      return () => sendListeners.delete(fn);
+    },
     /** Открывает панель разговора. Возвращает false, если собеседник не указан. */
     open(npc) {
       if (!npc?.agentId) return false;
@@ -247,6 +253,7 @@ export function createNpcChat({ api, timers = globalThis, replyTimeoutMs = REPLY
       state.error = '';
       arm();
       emit();
+      for (const fn of [...sendListeners]) fn({ agentId, text: clean });
       return true;
     },
     dispose() {
@@ -255,6 +262,7 @@ export function createNpcChat({ api, timers = globalThis, replyTimeoutMs = REPLY
       current = null;
       listeners.clear();
       openListeners.clear();
+      sendListeners.clear();
     },
   };
   return controller;

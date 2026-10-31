@@ -14,7 +14,7 @@ import { createSession } from '../client/engine/session.js';
 import { createNpcChat } from '../client/ui/npc-chat-core.js';
 import { openDb } from '../server/db/index.js';
 import { listen, seedPlayerState, tempDb, tempWorld } from './helpers.js';
-import { closedPort, fakeOllama, hangingHandler, ndjsonLine, tokensHandler } from './ollama-fake.js';
+import { FIRST_SENTENCE, closedPort, fakeOllama, hangingHandler, ndjsonLine, tokensHandler } from './ollama-fake.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const THERAPIST = { agentId: 'therapist', name: 'therapist' };
@@ -113,7 +113,11 @@ const echoHandler = () => (req, res, rec) => {
 };
 
 test('вход по коду комнаты, затем разговор: токены доходят потоком, следующая реплика уходит после done', async () => {
-  const ollama = await fakeOllama(tokensHandler(['Здрав', 'ствуйте', '!']));
+  // Второй ответ другой: одинаковые подряд защита от повторов не пропустит.
+  const ollama = await fakeOllama((req, res, rec) =>
+    tokensHandler(ollama.requests.length === 1
+      ? ['Здрав', 'ствуйте, дорогой коллега. ', 'Рад ', 'знакомству']
+      : ['Чтобы стать врачом, нужно долго учиться в университете и практиковаться.'])(req, res, rec));
   const s = await setup({ ollama });
   try {
     const t = s.tab();
@@ -125,10 +129,10 @@ test('вход по коду комнаты, затем разговор: ток
     t.chat.open(THERAPIST);
     assert.equal(t.chat.send('Расскажите о своей работе'), true);
     const done = await t.until((st) => st.status === 'idle' && st.messages.at(-1)?.text);
-    assert.equal(done.messages.at(-1).text, 'Здравствуйте!');
+    assert.equal(done.messages.at(-1).text, 'Здравствуйте, дорогой коллега. Рад знакомству');
     assert.equal(done.messages.at(-1).pending, false);
     assert.equal(done.error, '');
-    assert.equal(t.events.filter((m) => m.t === 'agent_token').length, 3, 'ответ пришёл тремя токенами');
+    assert.equal(t.events.filter((m) => m.t === 'agent_token').length, 3, 'начало одним куском, затем поток');
 
     assert.equal(t.chat.send('А что нужно, чтобы стать врачом?'), true);
     await t.until((st) => st.status === 'idle' && st.messages.length === 4);
@@ -198,7 +202,7 @@ test('разговоры разных игроков не смешиваются
 
 test('обрыв посреди ответа: UI показывает ошибку, Ollama получает отмену, после переподключения можно писать снова', async () => {
   let mode = 'hang';
-  const ollama = await fakeOllama((req, res, rec) => (mode === 'hang' ? hangingHandler('Начало')(req, res, rec) : tokensHandler(['Снова на связи'])(req, res)));
+  const ollama = await fakeOllama((req, res, rec) => (mode === 'hang' ? hangingHandler()(req, res, rec) : tokensHandler(['Снова на связи'])(req, res)));
   const s = await setup({ ollama });
   try {
     const t = s.tab();
@@ -209,7 +213,7 @@ test('обрыв посреди ответа: UI показывает ошибк
     t.net.disconnect();
     await t.until((st) => st.status === 'idle');
     assert.match(t.chat.state.error, /Связь с сервером прервалась/);
-    assert.equal(t.chat.state.messages.at(-1).text, 'Начало', 'полученное остаётся');
+    assert.equal(t.chat.state.messages.at(-1).text, FIRST_SENTENCE, 'полученное остаётся');
     assert.equal((await ollama.requests[0].finished).aborted, true, 'генерация прекращена');
     assert.equal(t.chat.send('Пока нет связи'), false);
 
@@ -380,8 +384,8 @@ const scripted = (replies) => (req, res) => {
 const scriptedCount = new WeakMap();
 
 /** Сценарий preview для вкладки: те же createTaskSync и createMarusyaChat, что в client/stations/firefighter/preview.js. */
-function station(tab) {
-  const flow = { current: null };
+function station(tab, storage = fakeStorage()) {
+  const flow = { current: null, storage };
   const sync = createTaskSync({ api: tab.api, onState: () => {}, onNotice: (text) => { flow.notice = text; } });
   Object.assign(flow, {
     sync,
@@ -392,6 +396,7 @@ function station(tab) {
       dispatch: (action, handlers) => sync.send(action, handlers),
       isOnline: () => true,
       getNotice: () => flow.notice,
+      storage, // память вкладки: общая у «перезагруженной» страницы, пустая у новой вкладки
     }),
     button: (label) => tab.chat.state.assist.actions.find((a) => a.label === label),
     /** Нажатие на кнопку панели и ожидание подтверждения сервера. */
@@ -520,8 +525,13 @@ test('Маруся: после перезагрузки страницы раз�
 });
 
 test('Маруся: память и запрос к модели ограничены по размеру при долгом разговоре', async () => {
-  const long = 'Это длинный ответ наставницы, который повторяется много раз. '.repeat(15);
-  const ollama = await fakeOllama(scripted([long]));
+  // Ответы разные по словам (одинаковые защита от повторов отклонила бы), но длинные: по 17 предложений из 6 слов.
+  const alphabet = 'абвгдежзиклмнопрстуфхцчшэюя';
+  const letter = (n) => alphabet[n % alphabet.length];
+  const word = (i, j) => [i, j, i + j, i * 3 + j, j * 5 + i].map(letter).join('');
+  const long = Array.from({ length: 20 }, (_, i) =>
+    Array.from({ length: 17 }, (_, s) => `${Array.from({ length: 6 }, (_, w) => word(i + 1, s * 6 + w + 1)).join(' ')}.`).join(' '));
+  const ollama = await fakeOllama(scripted(long));
   const s = await setup({ ollama, withDb: true });
   try {
     const t = s.tab();
@@ -638,6 +648,133 @@ test('Маруся: ошибка Ollama видна игроку, ответ не
     assert.equal(t.chat.state.error, '');
     assert.equal(t.chat.state.messages.at(-1).text.trim(), 'Теперь я на связи. Начинаем инструктаж.');
     assert.equal(readMemory(s.dbPath, 'Аня').topics.dialogue.exchanges, 1, 'неудачные обмены в память не попали');
+  } finally {
+    await s.stop();
+  }
+});
+
+// ---- защита от повторов: путь от модели до панели игрока ----
+
+const GREETING = 'Привет, Аня! Рада видеть тебя на станции.';
+const tokensOf = (tab) => tab.events.filter((m) => m.t === 'agent_token').map((m) => m.token).join('');
+
+test('Маруся: повторное приветствие модели не доходит до игрока при новом подходе, на новом этапе, после перезагрузки и в новой вкладке', async () => {
+  // Модель упорно начинает с приветствия; без приветствия отвечает только после просьбы ответить иначе.
+  const plain = ['Сегодня говорим про порядок тренировки: сначала экипировка, потом окна.', 'Теперь про рукав: держи его двумя руками и не заходи за линию.', 'Ещё напомню про линию безопасности перед стеной.'];
+  let plainIndex = 0;
+  const ollama = await fakeOllama((req, res, rec) => {
+    const retry = /повторял то, что ты уже говорила/.test(rec.body.messages[0].content);
+    const text = retry ? plain[Math.min(plainIndex++, plain.length - 1)] : `${GREETING} Начнём, когда будешь готова.`;
+    return tokensHandler(text.match(/\S+\s*/g))(req, res, rec);
+  });
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const storage = fakeStorage();
+    const first = s.tab();
+    const st = station(first, storage);
+    await first.join('Аня', { beforeConnect: () => seedPlayerState(s.dbPath, 'Аня', nearMarusya) });
+    await sleep(100);
+
+    st.marusya.open(); // первая встреча: приветствие здесь уместно
+    await first.until(settled(2));
+    assert.match(first.chat.state.messages[1].text, /^Привет, Аня!/);
+    assert.equal(ollama.requests.length, 1);
+
+    // закрыли панель, отошли, подошли снова: ничего не отправляется
+    first.chat.close();
+    st.marusya.open();
+    first.chat.close();
+    st.marusya.open();
+    await sleep(100);
+    assert.equal(ollama.requests.length, 1, 'повторное открытие не вызывает запрос');
+
+    // новый этап: игрок нажимает действие, модель снова хочет поздороваться
+    await st.press('Начать тренировку');
+    await first.until(settled(4));
+    const answer = first.chat.state.messages[3].text;
+    assert.doesNotMatch(answer, /Привет/, 'повторное приветствие не показано');
+    assert.match(answer, /порядок тренировки/);
+    assert.equal(ollama.requests.length, 3, 'первый ответ и один запрос с перегенерацией');
+    assert.equal(tokensOf(first).split('Привет').length - 1, 1, 'за всё время приветствие пришло по сети один раз');
+
+    // перезагрузка во вкладке: хранилище вкладки то же, этап тот же — клиент молчит
+    st.sync.dispose();
+    first.close();
+    const reloaded = s.tab();
+    let attempt = 0;
+    const again = station(reloaded, storage);
+    for (;;) {
+      try {
+        await reloaded.join('Аня');
+        break;
+      } catch (err) {
+        if (++attempt > 40 || err.code !== 'name_taken') throw err;
+        await sleep(25);
+      }
+    }
+    await sleep(100);
+    const before = ollama.requests.length;
+    again.marusya.open();
+    await sleep(100);
+    assert.equal(ollama.requests.length, before, 'после перезагрузки на том же этапе запроса нет');
+    assert.equal(again.sync.state.stage, 'briefing');
+
+    // другое устройство: клиент ничего не помнит и отправляет приветствие, но сервер помнит историю
+    const other = s.tab();
+    const otherStation = station(other);
+    reloaded.close();
+    attempt = 0;
+    for (;;) {
+      try {
+        await other.join('Аня');
+        break;
+      } catch (err) {
+        if (++attempt > 40 || err.code !== 'name_taken') throw err;
+        await sleep(25);
+      }
+    }
+    await sleep(100);
+    otherStation.marusya.open();
+    await other.until(settled(2));
+    assert.equal(other.chat.state.messages[0].text, SAY.hello);
+    assert.doesNotMatch(other.chat.state.messages[1].text, /Привет/, 'сервер не пустил повторное приветствие');
+    assert.doesNotMatch(tokensOf(other), /Привет/, 'и по сети оно не приходило');
+    assert.ok(readMemory(s.dbPath, 'Аня').topics.dialogue.exchanges >= 3);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('Маруся: если модель повторяет сказанное даже после перегенераций, игрок видит ошибку без повтора и может спросить снова', async () => {
+  const said = 'Экипировка защищает пожарного от жара и осколков, поэтому её проверяют до смены.';
+  let fresh = false;
+  const ollama = await fakeOllama((req, res, rec) =>
+    tokensHandler((fresh ? 'Ещё рация связывает пожарных во время учений и помогает им не терять друг друга.' : said).match(/\S+\s*/g))(req, res, rec));
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const t = s.tab();
+    await t.join('Аня', { beforeConnect: () => seedPlayerState(s.dbPath, 'Аня', nearMarusya) });
+    await sleep(100);
+    t.chat.open(MARUSYA);
+    t.chat.send('Зачем экипировка?');
+    await t.until(settled(2));
+    assert.equal(t.chat.state.messages[1].text.trim(), said);
+
+    const tokensBefore = tokensOf(t);
+    t.chat.send('Расскажи ещё про экипировку');
+    await t.until((st) => st.status === 'idle' && st.error);
+    assert.match(t.chat.state.error, /повторился/);
+    assert.deepEqual(t.chat.state.messages.map((m) => m.from), ['me', 'npc', 'me'], 'ответа на вторую реплику нет, повтор не показан');
+    assert.equal(tokensOf(t), tokensBefore, 'токены повтора по сети не уходили');
+    assert.equal(ollama.requests.length, 4, 'первый ответ и три попытки на втором');
+    assert.equal(t.chat.canSend, true);
+
+    fresh = true;
+    t.chat.send('Расскажи ещё про экипировку');
+    await t.until(settled(5));
+    assert.equal(t.chat.state.error, '');
+    assert.match(t.chat.state.messages.at(-1).text, /^Ещё рация/);
+    assert.equal(readMemory(s.dbPath, 'Аня').topics.dialogue.exchanges, 2, 'неудачная попытка в память не попала');
   } finally {
     await s.stop();
   }

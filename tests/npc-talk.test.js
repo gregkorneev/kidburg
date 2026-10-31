@@ -55,7 +55,7 @@ async function readAnswer(client, reqId = 'r1') {
 }
 
 test('npc_talk: токены идут потоком, затем agent_done; чужой клиент ничего не получает', async () => {
-  const ollama = await fakeOllama(tokensHandler(['Здрав', 'ствуйте', ', юный коллега']));
+  const ollama = await fakeOllama(tokensHandler(['Здрав', 'ствуйте, юный коллега. ', 'Рад ', 'знакомству']));
   const s = await setup({ ollama });
   try {
     const { client: anna } = await s.join('Аня');
@@ -66,7 +66,9 @@ test('npc_talk: токены идут потоком, затем agent_done; ч�
       msgs.map((m) => m.t),
       ['agent_token', 'agent_token', 'agent_token', 'agent_done'],
     );
-    assert.equal(msgs.slice(0, 3).map((m) => m.token).join(''), 'Здравствуйте, юный коллега');
+    // Начало ответа выдаётся одним куском после проверки на повтор, дальше текст идёт потоком.
+    assert.equal(msgs[0].token, 'Здравствуйте, юный коллега. ');
+    assert.equal(msgs.slice(0, 3).map((m) => m.token).join(''), 'Здравствуйте, юный коллега. Рад знакомству');
     assert.ok(msgs.every((m) => m.agentId === 'therapist' && m.reqId === 'r1'));
     await wait(100);
     assert.equal(boris.inbox.filter(isAgentMsg).length, 0, 'диалог не рассылается другим игрокам');
@@ -145,7 +147,7 @@ test('npc_talk: HTTP-ошибка, отсутствующая модель, пу
     blank: tokensHandler(['', '']),
     malformed: (req, res) => {
       res.writeHead(200);
-      res.end(ndjsonLine('Начало') + '{не json\n');
+      res.end(ndjsonLine('Начало ответа, которое уже можно показать. ') + '{не json\n');
     },
     truncated: (req, res) => {
       res.writeHead(200);

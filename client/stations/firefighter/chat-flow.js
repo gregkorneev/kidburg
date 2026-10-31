@@ -7,6 +7,7 @@ export const MARUSYA = Object.freeze({ agentId: 'marusya', name: 'Маруся �
 /** Реплики игрока. Ответ на каждую приходит от ИИ; после действия реплика уходит только по подтверждению сервера. */
 export const SAY = Object.freeze({
   hello: 'Здравствуйте, Маруся!',
+  resume: 'Я снова здесь. Что мне делать дальше?',
   afterStart: 'Давай начнём! Расскажи, как пройдёт тренировка.',
   afterBriefing: 'Мне всё понятно. Что дальше?',
   afterReport: 'Учебная смена завершена. Что скажешь?',
@@ -59,6 +60,17 @@ export function planActions(stage) {
   }
 }
 
+const STORE_KEY = 'kidburg.marusya.addressed';
+
+/** sessionStorage вкладки, если он доступен (в приватном окне и тестах его может не быть). */
+function tabStorage() {
+  try {
+    return globalThis.sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * @param {object} deps
  * @param {import('../../ui/npc-chat-core.js').NpcChat} deps.chat контроллер панели разговора
@@ -67,11 +79,34 @@ export function planActions(stage) {
  * @param {() => boolean} deps.isOnline
  * @param {() => boolean} [deps.isBusy] ждём ответ сервера на действие
  * @param {() => string} [deps.getNotice] сообщение игре (отказ сервера и т. п.)
+ * @param {{getItem: Function, setItem: Function, removeItem: Function}|null} [deps.storage] память вкладки
  */
-export function createMarusyaChat({ chat, getState, dispatch, isOnline, isBusy = () => false, getNotice = () => '' }) {
-  // Первое обращение на каждом этапе за страницу: игрок здоровается, ответ генерирует ИИ.
-  // Память прошлых разговоров хранит сервер, поэтому после перезагрузки Маруся продолжает, а не начинает заново.
-  const greeted = new Set();
+export function createMarusyaChat({ chat, getState, dispatch, isOnline, isBusy = () => false, getNotice = () => '', storage = tabStorage() }) {
+  // Помним, что игрок уже обращался к Марусе: приветствие уходит один раз за вкладку (не на каждом этапе
+  // и не после перезагрузки), а на новом этапе игрок спрашивает, что делать дальше. Сама память разговора
+  // и защита от повторов ответов находятся на сервере; здесь только решение, нужна ли вводная реплика.
+  let memory = { met: false, stages: [] };
+  try {
+    const saved = JSON.parse(storage?.getItem(STORE_KEY) ?? 'null');
+    if (saved && typeof saved.met === 'boolean' && Array.isArray(saved.stages)) memory = { met: saved.met, stages: saved.stages.filter((v) => typeof v === 'string') };
+  } catch {
+    // повреждённая или недоступная запись: считаем, что обращений не было
+  }
+  const remember = () => {
+    try {
+      storage?.setItem(STORE_KEY, JSON.stringify(memory));
+    } catch {
+      // без хранилища работает память только этого экземпляра
+    }
+  };
+
+  chat.onSend?.(({ agentId }) => {
+    if (agentId !== MARUSYA.agentId) return;
+    const { stage } = getState();
+    memory.met = true;
+    if (!memory.stages.includes(stage)) memory.stages.push(stage);
+    remember();
+  });
 
   function assist() {
     const { stage } = getState();
@@ -89,15 +124,26 @@ export function createMarusyaChat({ chat, getState, dispatch, isOnline, isBusy =
   return {
     /** Обновляет подсказку и кнопки по текущему состоянию. */
     sync: () => chat.setAssist(assist()),
-    /** Открывает панель у Маруси; на новом для страницы этапе игрок здоровается. */
+    /**
+     * Открывает панель у Маруси. Вводная реплика уходит, только если игрок ещё не обращался к ней на этом этапе:
+     * первая за вкладку — приветствие, на новом этапе — вопрос «что дальше». Повторное открытие ничего не отправляет.
+     */
     open() {
       if (!isOnline()) return false;
       chat.open(MARUSYA);
       chat.setAssist(assist());
       const { stage } = getState();
-      if (!greeted.has(stage) && chat.canSend && chat.send(SAY.hello)) greeted.add(stage);
+      if (!memory.stages.includes(stage) && chat.canSend) chat.send(memory.met ? SAY.resume : SAY.hello);
       return true;
     },
-    reset: () => greeted.clear(),
+    /** Выход из игры: следующий игрок на этой вкладке знакомится заново. */
+    reset() {
+      memory = { met: false, stages: [] };
+      try {
+        storage?.removeItem(STORE_KEY);
+      } catch {
+        // нечего очищать
+      }
+    },
   };
 }

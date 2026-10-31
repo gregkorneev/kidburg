@@ -52,7 +52,9 @@ export const tokensHandler = (tokens) => (req, res) => {
 };
 
 /** Начинает ответ и больше ничего не шлёт: ждёт, пока клиент оборвёт соединение. */
-export const hangingHandler = (firstToken = 'Начало') => (req, res) => {
+/** Первая фраза достаточно длинная и законченная: защита от повторов выдаёт её игроку сразу. */
+export const FIRST_SENTENCE = 'Начало ответа, которое уже можно показать. ';
+export const hangingHandler = (firstToken = FIRST_SENTENCE) => (req, res) => {
   res.writeHead(200, { 'content-type': 'application/x-ndjson' });
   res.write(line(firstToken));
 };
