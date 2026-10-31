@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FIRE_HIT_LIMIT } from './state.js';
+import { WINDOW_HIT_LIMIT } from './preview-state.js';
 
 const mat = (color, roughness = 0.86) => new THREE.MeshStandardMaterial({ color, roughness, flatShading: true });
 const shared = {
@@ -130,8 +130,9 @@ function createPerson({ name, outfit, helmet = false, player = false }) {
   const body = new THREE.Group();
   root.add(body);
   sphere(body, 0, 1.05, 0, 0.43, 0.59, 0.3, outfit, 8);
-  cylinder(body, -0.57, 0.95, 0, 0.13, 0.16, 0.9, outfit, 7, { z: -0.15 });
-  cylinder(body, 0.57, 0.95, 0, 0.13, 0.16, 0.9, outfit, 7, { z: 0.15 });
+  const leftArm = cylinder(body, -0.57, 0.95, 0, 0.13, 0.16, 0.9, outfit, 7, { z: -0.15 });
+  const rightArm = cylinder(body, 0.57, 0.95, 0, 0.13, 0.16, 0.9, outfit, 7, { z: 0.15 });
+  root.userData.arms = [leftArm, rightArm];
   cylinder(body, -0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: 0.04 });
   cylinder(body, 0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: -0.04 });
   sphere(body, 0, 1.95, 0.03, 0.48, 0.48, 0.43, mat('#efc89e'), 9);
@@ -171,7 +172,7 @@ function createMannequin() {
   return root;
 }
 
-export function createFirefighterScene({ container, onPrompt, onAction, onNotice, onHoseMode }) {
+export function createFirefighterScene({ container, onPrompt, onAction, onNotice, onHoseMode, onTarget }) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#cfe5df');
   scene.fog = new THREE.Fog('#cfe5df', 38, 95);
@@ -245,30 +246,33 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   addLabel(locker, 'ЭКИПИРОВКА', '#315548').position.set(0, 2.95, 0.2);
   scene.add(locker);
 
-  // Training target: stylized, harmless flames on a bright practice board.
+  // The facade has four independently targetable practice windows.
   const targetBase = new THREE.Group();
-  targetBase.position.set(2.2, 0, 10.2);
-  box(targetBase, 0, 1.25, 0, 2.6, 2.5, 0.32, shared.cream);
-  box(targetBase, 0, 1.25, 0.2, 2.34, 2.2, 0.08, mat('#e8aa68'));
-  box(targetBase, 0, 0.2, -0.18, 0.2, 2.3, 0.18, shared.wood);
-  box(targetBase, -0.85, 0.2, -0.18, 0.16, 2.2, 0.16, shared.wood);
-  box(targetBase, 0.85, 0.2, -0.18, 0.16, 2.2, 0.16, shared.wood);
-  const flames = new THREE.Group();
-  flames.position.set(0, 0.22, 0.38);
+  targetBase.position.set(3.5, 0, 3.2);
+  box(targetBase, 0, 3.5, 0, 6.8, 7, 0.55, shared.cream);
+  box(targetBase, 0, 7.05, 0, 7.2, 0.3, 0.8, shared.red);
   const flameOrange = new THREE.MeshStandardMaterial({ color: '#f48638', emissive: '#bd4b1e', emissiveIntensity: 0.32, roughness: 0.7, flatShading: true });
   const flameYellow = new THREE.MeshStandardMaterial({ color: '#ffd16a', emissive: '#bf671c', emissiveIntensity: 0.22, roughness: 0.7, flatShading: true });
   const flameParts = [];
-  for (let i = 0; i < 5; i++) {
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.3 + (i % 2) * 0.06, 0.85 + (i % 3) * 0.14, 5), i % 2 ? flameOrange : flameYellow);
-    flame.position.set(-0.78 + i * 0.39, 0.48, 0);
-    flame.rotation.z = (i - 2) * 0.1;
-    flame.castShadow = true;
-    flame.userData.baseScale = 1;
-    flames.add(flame);
-    flameParts.push(flame);
+  const windows = [];
+  for (let index = 0; index < 4; index++) {
+    const x = index % 2 ? 1.65 : -1.65;
+    const y = index < 2 ? 2 : 4.8;
+    box(targetBase, x, y, 0.32, 2.2, 2.1, 0.12, shared.wood);
+    const pane = box(targetBase, x, y, 0.4, 1.9, 1.8, 0.08, shared.charcoal);
+    pane.userData.windowIndex = index;
+    const flames = new THREE.Group();
+    flames.position.set(x, y - 0.78, 0.52);
+    for (let i = 0; i < 4; i++) {
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1 + (i % 2) * 0.35, 5), i % 2 ? flameOrange : flameYellow);
+      flame.position.set(-0.65 + i * 0.43, 0.56, 0);
+      flames.add(flame);
+      flameParts.push(flame);
+    }
+    targetBase.add(flames);
+    windows.push({ pane, flames });
   }
-  targetBase.add(flames);
-  addLabel(targetBase, 'УЧЕБНАЯ МИШЕНЬ', '#a04d36').position.set(0, 3.0, 0.35);
+  addLabel(targetBase, 'УЧЕБНАЯ СТЕНА', '#a04d36').position.set(0, 7.8, 0.35);
   scene.add(targetBase);
 
   const hoseStand = new THREE.Group();
@@ -282,6 +286,12 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   nozzle.rotation.y = -0.35;
   addLabel(hoseStand, 'УЧЕБНЫЙ РУКАВ', '#315548').position.set(0, 2.0, 0);
   scene.add(hoseStand);
+  const heldHose = new THREE.Group();
+  heldHose.position.set(0, 1.15, 0.4);
+  cylinder(heldHose, 0, 0, 0.3, 0.13, 0.17, 1.1, shared.charcoal, 8, { x: Math.PI / 2 });
+  cylinder(heldHose, 0, 0, 0.88, 0.1, 0.13, 0.22, shared.blue, 8, { x: Math.PI / 2 });
+  player.add(heldHose);
+  heldHose.visible = false;
 
   const mannequin = createMannequin();
   mannequin.position.set(8.2, 0, 10.1);
@@ -312,6 +322,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   scene.add(beam);
 
   const blockers = [
+    { minX: 0, maxX: 7, minZ: 2.8, maxZ: 3.6 },
     { minX: -15.8, maxX: -2.2, minZ: -8.8, maxZ: 1.1 },
     { minX: 3.1, maxX: 8.3, minZ: -6.8, maxZ: -2.0 },
     { minX: -8.7, maxX: -6.5, minZ: 1.3, maxZ: 3.2 },
@@ -329,6 +340,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   let waterHeld = false;
   let hoseActive = false;
   let hitAccumulator = 0;
+  let previousTarget = null;
   let prompt = '';
   let previousStage = '';
   let bobTime = 0;
@@ -350,6 +362,10 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     hoseActive = false;
     waterHeld = false;
     beam.visible = false;
+    heldHose.visible = false;
+    nozzle.visible = true;
+    player.userData.arms.forEach((arm, i) => { arm.rotation.set(0, 0, i ? 0.15 : -0.15); });
+    onTarget(null);
     onHoseMode(false);
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
   };
@@ -362,7 +378,11 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     npc.userData.body.rotation.z = 0;
     const helmet = player.userData.helmet;
     if (helmet) helmet.visible = Boolean(state?.equipped);
-    flames.visible = stage === 'fire_drill';
+    windows.forEach(({ flames }, index) => {
+      const window = state.windows[index];
+      flames.visible = stage === 'fire_drill' && window.status !== 'done';
+      flames.scale.setScalar(1 - 0.7 * window.hits / WINDOW_HIT_LIMIT);
+    });
     mannequin.visible = stage === 'rescue' && !state?.carryingMannequin && !state?.mannequinDelivered;
     carried.visible = Boolean(state?.carryingMannequin);
     if (stage === 'completed') stopHose();
@@ -404,9 +424,12 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       if (state.stage !== 'fire_drill') return onNotice('Сначала выполните предыдущий этап.');
       hoseActive = !hoseActive;
       waterHeld = false;
+      heldHose.visible = hoseActive;
+      nozzle.visible = !hoseActive;
+      player.userData.arms.forEach((arm, i) => { arm.rotation.set(hoseActive ? -1 : 0, 0, i ? 0.15 : -0.15); });
       onHoseMode(hoseActive);
       if (hoseActive) {
-        onNotice('Учебный рукав готов. Наведите прицел на мишень и удерживайте левую кнопку мыши.');
+        onNotice('Учебный рукав готов. Наведите прицел на окно и удерживайте левую кнопку мыши.');
         renderer.domElement.requestPointerLock?.();
       } else {
         beam.visible = false;
@@ -439,9 +462,9 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   function onMouseMove(event) {
     if (!pointerLocked || uiBlocked) return;
     cameraYaw -= event.movementX * 0.0024;
-    cameraPitch = THREE.MathUtils.clamp(cameraPitch + event.movementY * 0.0018, -0.18, 0.72);
+    cameraPitch = THREE.MathUtils.clamp(cameraPitch + event.movementY * 0.0018, -0.8, 0.55);
   }
-  function onPointerLockChange() { pointerLocked = document.pointerLockElement === renderer.domElement; }
+  function onPointerLockChange() { pointerLocked = document.pointerLockElement === renderer.domElement; if (!pointerLocked) waterHeld = false; }
   function onPointerDown(event) { if (event.button === 0 && hoseActive && !uiBlocked) waterHeld = true; }
   function onPointerUp(event) { if (event.button === 0) waterHeld = false; }
   function onBlur() { keys.clear(); waterHeld = false; }
@@ -492,7 +515,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     const nextZ = player.position.z + dz * speed * delta;
     if (!isBlocked(nextX, player.position.z)) player.position.x = nextX;
     if (!isBlocked(player.position.x, nextZ)) player.position.z = nextZ;
-    player.rotation.y = Math.atan2(dx, dz);
+    if (!hoseActive) player.rotation.y = Math.atan2(dx, dz);
     bobTime += delta * (speed > 5 ? 15 : 10);
     player.userData.body.position.y = Math.abs(Math.sin(bobTime)) * 0.055;
   }
@@ -500,11 +523,11 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   function updateCamera() {
     const target = new THREE.Vector3(
       player.position.x - Math.sin(cameraYaw) * 2.4,
-      1.45,
+      1.45 - cameraPitch * 8,
       player.position.z - Math.cos(cameraYaw) * 2.4,
     );
     const distance = 8.6;
-    const height = 3.15 + cameraPitch * 4.1;
+    const height = 3.8;
     camera.position.set(
       player.position.x + Math.sin(cameraYaw) * distance,
       height,
@@ -514,30 +537,37 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   }
 
   function updateWater(delta) {
-    if (!hoseActive || !waterHeld || state?.stage !== 'fire_drill') {
+    if (hoseActive) player.rotation.y = cameraYaw + Math.PI;
+    if (!hoseActive || state?.stage !== 'fire_drill') {
       beam.visible = false;
       hitAccumulator = 0;
+      onTarget(null);
       return;
     }
     updateCamera();
     raycaster.setFromCamera(centerScreen, camera);
-    const hits = raycaster.intersectObject(flames, true);
-    if (!hits.length) {
+    const hits = raycaster.intersectObjects(windows.map((window) => window.pane));
+    const index = hits.length ? hits[0].object.userData.windowIndex : null;
+    if (index !== previousTarget) hitAccumulator = 0;
+    previousTarget = index;
+    onTarget(index);
+    if (!waterHeld || uiBlocked) {
       beam.visible = false;
       hitAccumulator = 0;
       return;
     }
-    const start = player.position.clone().add(new THREE.Vector3(0, 1.25, 0));
-    const end = hits[0].point;
+    const start = heldHose.localToWorld(new THREE.Vector3(0, 0, 1));
+    const end = hits.length ? hits[0].point : raycaster.ray.at(18, new THREE.Vector3());
     const direction = end.clone().sub(start);
     beam.position.copy(start).addScaledVector(direction, 0.5);
     beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
     beam.scale.set(1, direction.length(), 1);
     beam.visible = true;
+    if (index === null || state.windows[index].status === 'done') { hitAccumulator = 0; return; }
     hitAccumulator += delta;
     if (hitAccumulator >= 0.16) {
       hitAccumulator = 0;
-      onAction('fire_hit');
+      onAction('window_hit', index);
     }
   }
 

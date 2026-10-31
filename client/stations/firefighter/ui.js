@@ -1,5 +1,6 @@
 import { h, render } from 'preact';
-import { FIRE_HIT_LIMIT, OBJECTIVES } from './state.js';
+import { OBJECTIVES } from './state.js';
+import { WINDOW_COUNT, WINDOW_HIT_LIMIT } from './preview-state.js';
 
 function Button({ option, onChoose }) {
   return h('button', {
@@ -9,8 +10,10 @@ function Button({ option, onChoose }) {
   }, option.label);
 }
 
-function StationUI({ state, prompt, notice, dialog, hoseActive, onChoose, onCloseDialog }) {
-  const progress = Math.round((state.fireHits / FIRE_HIT_LIMIT) * 100);
+function StationUI({ state, prompt, notice, dialog, hoseActive, targetWindow, onChoose, onCloseDialog }) {
+  const done = state.windows.filter((window) => window.status === 'done').length;
+  const target = state.windows[targetWindow];
+  const progress = target ? Math.round(target.hits / WINDOW_HIT_LIMIT * 100) : 0;
   return h('div', { class: 'station-ui' },
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' },
@@ -25,17 +28,17 @@ function StationUI({ state, prompt, notice, dialog, hoseActive, onChoose, onClos
 
     h('section', { class: 'objective-card', 'aria-live': 'polite' },
       h('span', { class: 'eyebrow' }, state.stage === 'completed' ? 'СМЕНА ЗАВЕРШЕНА' : 'ТЕКУЩАЯ ЦЕЛЬ'),
-      h('h1', null, OBJECTIVES[state.stage]),
+      h('h1', null, state.stage === 'fire_drill' ? 'Потушите окна учебной стены' : OBJECTIVES[state.stage]),
       state.stage === 'fire_drill' && h('div', { class: 'progress-wrap' },
         h('div', { class: 'progress-label' },
-          h('span', null, 'Учебная мишень'),
-          h('strong', null, `${progress}%`),
+          h('span', null, `Потушено окон: ${done}/${WINDOW_COUNT}`),
+          h('strong', null, target ? `Окно ${targetWindow + 1}: ${progress}%` : 'Наведите прицел на окно'),
         ),
         h('div', { class: 'progress-track' },
           h('div', { class: 'progress-value', style: { width: `${progress}%` } }),
         ),
       ),
-      state.stage === 'completed' && h('p', { class: 'completion-copy' }, 'Ты прошёл инструктаж, подготовился и завершил два учебных задания.'),
+      state.stage === 'completed' && h('p', { class: 'completion-copy' }, 'Ты потушил все окна учебной стены и доставил манекен в безопасную зону.'),
     ),
 
     h('div', { class: 'center-reticle', 'aria-hidden': 'true' }, h('span')),

@@ -1,12 +1,13 @@
 import { createFirefighterScene } from './scene.js';
-import { createInitialState, transitionTask } from './state.js';
+import { createPreviewState, transitionPreview } from './preview-state.js';
 import { mountStationUI } from './ui.js';
 import './style.css';
 
 const sceneRoot = document.querySelector('#scene');
 const uiRoot = document.querySelector('#ui');
 let world;
-let state = createInitialState();
+let state = createPreviewState();
+let targetWindow = null;
 let dialog = null;
 let prompt = '';
 let notice = 'Демонстрационный режим: прогресс не сохраняется на сервере.';
@@ -20,6 +21,7 @@ const refresh = () => {
     notice,
     dialog,
     hoseActive,
+    targetWindow,
     onChoose: (option) => option.onSelect?.(),
     onCloseDialog: closeDialog,
   });
@@ -45,14 +47,14 @@ function showDialog(nextDialog) {
   refresh();
 }
 
-function dispatch(actionType) {
+function dispatch(actionType, index) {
   const previous = state;
-  const result = transitionTask(state, { type: actionType });
+  const result = transitionPreview(state, { type: actionType, index });
   state = result.state;
   world?.setTaskState(state);
   refresh();
   const stageChanged = state?.stage !== previous?.stage;
-  if (actionType !== 'fire_hit' || stageChanged) setNotice(result.feedback);
+  if (result.feedback && (actionType !== 'window_hit' || stageChanged || result.state.windows[index]?.status === 'done')) setNotice(result.feedback);
   return result;
 }
 
@@ -76,7 +78,7 @@ function openBriefing() {
           dispatch('start');
           showDialog({
             title: 'Короткий инструктаж',
-            body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
+            body: 'Надень учебную экипировку, потуши все окна учебной стены и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
             options: [
               { label: 'Поняла, к экипировке', primary: true, onSelect: () => { dispatch('accept_briefing'); closeDialog(); } },
             ],
@@ -89,7 +91,7 @@ function openBriefing() {
   } else if (state.stage === 'briefing') {
     showDialog({
       title: 'Короткий инструктаж',
-      body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
+      body: 'Надень учебную экипировку, потуши все окна учебной стены и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
       options: [{ label: 'Поняла, к экипировке', primary: true, onSelect: () => { dispatch('accept_briefing'); closeDialog(); } }],
     });
   } else {
@@ -100,15 +102,15 @@ function openBriefing() {
 function openDebrief() {
   showDialog({
     title: 'Учебная смена позади',
-    body: 'Ты подготовилась, выполнила упражнение на учебной мишени и доставила манекен в отмеченную зону. В этой профессии важны подготовка, внимание и согласованная работа команды.',
+    body: 'Ты подготовилась, потушила все окна учебной стены и доставила манекен в отмеченную зону. В этой профессии важны подготовка, внимание и согласованная работа команды.',
     options: [{ label: 'Завершить смену', primary: true, onSelect: () => { dispatch('report'); closeDialog(); } }],
   });
 }
 
-function onWorldAction(action) {
+function onWorldAction(action, index) {
   if (action === 'open_briefing') return openBriefing();
   if (action === 'open_debrief') return openDebrief();
-  dispatch(action);
+  dispatch(action, index);
 }
 
 world = createFirefighterScene({
@@ -116,6 +118,7 @@ world = createFirefighterScene({
   onPrompt: (value) => { prompt = value; refresh(); },
   onAction: onWorldAction,
   onNotice: setNotice,
+  onTarget: (value) => { if (targetWindow !== value) { targetWindow = value; refresh(); } },
   onHoseMode: (value) => { hoseActive = value; refresh(); },
 });
 world.setTaskState(state);
