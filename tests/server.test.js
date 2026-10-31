@@ -11,9 +11,15 @@ test('GET /health возвращает {"ok":true}', async () => {
   await app.close();
 });
 
-test('заглушка reply(): эхо по словам', async () => {
-  const parts = [];
-  for await (const tok of reply({ userId: 1, agentId: 'therapist', text: 'как дела  доктор' })) parts.push(tok);
-  assert.equal(parts.join(''), 'как дела доктор');
-  assert.equal(parts.length, 3);
+test('reply() из контракта: без модели и без запущенного модуля — понятная ошибка, а не эхо', async () => {
+  const drain = async (req) => {
+    for await (const _ of reply(req)); // eslint-disable-line no-unused-vars
+  };
+  const req = { userId: 1, agentId: 'therapist', text: 'как дела доктор' };
+  await assert.rejects(drain(req), /не запущен/);
+
+  const app = await buildApp({ dbPath: ':memory:', logLevel: 'silent', agents: { model: '' } });
+  await assert.rejects(drain(req), /OLLAMA_MODEL/);
+  await app.close();
+  await assert.rejects(drain(req), /не запущен/);
 });
