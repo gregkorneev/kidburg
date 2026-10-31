@@ -142,3 +142,16 @@ test('dispose отписывается от событий', () => {
   emitter.emit('welcome', welcome({ x: SPAWN.x, y: 0, z: SPAWN.z, ry: 0 }));
   assert.equal(calls.length, 0);
 });
+
+test('force отправляет изменившуюся позицию сразу, неизменную — нет', () => {
+  const { emitter, sent, network, tick } = setup();
+  emitter.emit('welcome', welcome({ x: SPAWN.x, y: 0, z: SPAWN.z, ry: 0 }));
+  tick(100);
+  network.sendPosition({ x: 0, z: START.z, heading: Math.PI, anim: 0 });
+  tick(5);
+  network.sendPosition({ x: 0, z: START.z, heading: Math.PI + 0.3, anim: 0 }, { force: true });
+  assert.equal(sent.length, 2, 'поворот ушёл без ожидания интервала');
+  tick(5);
+  network.sendPosition({ x: 0, z: START.z, heading: Math.PI + 0.3, anim: 0 }, { force: true });
+  assert.equal(sent.length, 2, 'без изменений force ничего не шлёт');
+});

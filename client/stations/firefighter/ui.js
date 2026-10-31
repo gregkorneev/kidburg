@@ -1,15 +1,16 @@
 import { h, render } from 'preact';
 import { FIRE_HIT_LIMIT, OBJECTIVES } from './state.js';
 
-function Button({ option, onChoose }) {
+function Button({ option, onChoose, busy }) {
   return h('button', {
     class: `choice-button${option.primary ? ' choice-button--primary' : ''}`,
     type: 'button',
+    disabled: busy,
     onClick: () => onChoose(option),
   }, option.label);
 }
 
-function StationUI({ state, prompt, notice, dialog, hoseActive, onChoose, onCloseDialog }) {
+function StationUI({ state, prompt, notice, dialog, hoseActive, busy = false, onChoose, onCloseDialog }) {
   const progress = Math.round((state.fireHits / FIRE_HIT_LIMIT) * 100);
   return h('div', { class: 'station-ui' },
     h('header', { class: 'topbar' },
@@ -20,7 +21,7 @@ function StationUI({ state, prompt, notice, dialog, hoseActive, onChoose, onClos
           h('span', null, 'Учебная смена'),
         ),
       ),
-      h('div', { class: 'demo-badge' }, 'ЛОКАЛЬНЫЙ ПРОТОТИП'),
+      h('div', { class: 'demo-badge' }, 'СЕТЕВОЙ РЕЖИМ'),
     ),
 
     h('section', { class: 'objective-card', 'aria-live': 'polite' },
@@ -47,7 +48,7 @@ function StationUI({ state, prompt, notice, dialog, hoseActive, onChoose, onClos
       h('div', { class: 'control-row' }, h('kbd', null, 'E'), h('span', null, 'действие')),
       h('div', { class: 'control-row' }, h('kbd', null, 'ESC'), h('span', null, 'курсор')),
       hoseActive && h('p', { class: 'hose-tip' }, 'Наведите прицел на огонь и удерживайте левую кнопку мыши.'),
-      h('p', { class: 'demo-note' }, 'Прогресс хранится только в этой вкладке.'),
+      h('p', { class: 'demo-note' }, 'Прогресс хранится на сервере.'),
     ),
 
     prompt && h('div', { class: 'interaction-prompt', 'aria-live': 'polite' },
@@ -71,7 +72,7 @@ function StationUI({ state, prompt, notice, dialog, hoseActive, onChoose, onClos
         h('h2', { id: 'dialog-title' }, dialog.title),
         h('p', null, dialog.body),
         h('div', { class: 'dialog-actions' }, dialog.options.map((option) =>
-          h(Button, { key: option.label, option, onChoose }))),
+          h(Button, { key: option.label, option, onChoose, busy }))),
       ),
     ),
   );

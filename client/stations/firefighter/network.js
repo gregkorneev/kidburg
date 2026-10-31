@@ -1,21 +1,19 @@
 // Сетевой слой пожарного preview: позиции игроков через api клиента (client/engine/API.md).
 //
 // Координаты. Сервер хранит мировые координаты (мир 768×768 м), preview — локальные, с началом
-// на полигоне. Начало подобрано так, что точка появления нового игрока SPAWN попадает в локальную
-// стартовую точку preview. Угол `ry` в протоколе — yaw основного клиента (0 смотрит вдоль −Z),
-// у модели preview поворот на π больше: модель с rotation.y = 0 смотрит вдоль +Z.
+// на полигоне; преобразование и точки станции описаны в layout.js. Угол `ry` в протоколе — yaw
+// основного клиента (0 смотрит вдоль −Z), у модели preview поворот на π больше: модель с rotation.y = 0 смотрит вдоль +Z.
 
-import { SPAWN } from '../../../shared/constants.js';
+import { FIRE_ORIGIN, START, toLocal, toWorld } from './layout.js';
 
-export const START = Object.freeze({ x: 0, z: 13.25 });
-export const ORIGIN = Object.freeze({ x: SPAWN.x - START.x, z: SPAWN.z - START.z });
+export { START, toLocal };
+export const ORIGIN = FIRE_ORIGIN;
+export const toServer = toWorld;
 
 const POS_INTERVAL_MS = 1000 / 15;
 const POS_HEARTBEAT_MS = 1000;
 const DEFAULT_HEADING = Math.PI;
 
-export const toLocal = (x, z) => ({ x: x - ORIGIN.x, z: z - ORIGIN.z });
-export const toServer = (x, z) => ({ x: x + ORIGIN.x, z: z + ORIGIN.z });
 export const headingFromYaw = (ry) => ry + Math.PI;
 export const yawFromHeading = (heading) => heading - Math.PI;
 
@@ -94,16 +92,19 @@ export function connectFireNetwork({ api, world, onSession = () => {}, now = () 
   ];
 
   return {
-    /** Вызывается каждый кадр с world.localPosition(): отправляет pos не чаще 15 раз в секунду. */
-    sendPosition({ x, z, heading, anim }) {
+    /**
+     * Вызывается каждый кадр с world.localPosition(): отправляет pos не чаще 15 раз в секунду.
+     * `force` отправляет изменившуюся позицию сразу: перед действием сервер должен знать, где игрок и куда смотрит.
+     */
+    sendPosition({ x, z, heading, anim }, { force = false } = {}) {
       if (!open) return;
       const t = now();
-      if (last && t - lastAt < POS_INTERVAL_MS) return;
+      if (!force && last && t - lastAt < POS_INTERVAL_MS) return;
       const server = toServer(x, z);
       const ry = yawFromHeading(heading);
       const changed =
         !last || last.x !== server.x || last.z !== server.z || last.ry !== ry || last.anim !== anim;
-      if (!changed && t - lastAt < POS_HEARTBEAT_MS) return;
+      if (!changed && (force || t - lastAt < POS_HEARTBEAT_MS)) return;
       seq += 1;
       if (api.net.send({ t: 'pos', x: server.x, y: baseY, z: server.z, ry, anim, seq })) {
         last = { x: server.x, z: server.z, ry, anim };
