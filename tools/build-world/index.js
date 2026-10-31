@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { encode } from '@msgpack/msgpack';
 import { CHUNK_SIZE, WORLD_CHUNKS_X, WORLD_CHUNKS_Z } from '../../shared/constants.js';
+import { WORLD_POINTS } from '../../client/stations/firefighter/layout.js';
 import { BUILDINGS, CITY_CENTER, PATHS, PLAZA, chunkOf, overlaps } from './layout.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -23,6 +24,9 @@ const HEIGHT_NODES = 17 * 17;
 const CENTER_CHUNK = chunkOf(CITY_CENTER.x, CITY_CENTER.z);
 const CENTRAL_MIN = 5;
 const CENTRAL_MAX = 7;
+const NPCS = Object.freeze([
+  Object.freeze({ id: 'npc_marusya', agentId: 'marusya', x: WORLD_POINTS.npc.x, y: WORLD_POINTS.npc.y, z: WORLD_POINTS.npc.z, ry: 0 }),
+]);
 
 const PREFABS = [
   { id: 1, name: 'tree', model: 'procedural/tree', collider: { type: 'aabb', size: [1, 6, 1] } },
@@ -104,7 +108,7 @@ export function buildCityWorld(outDir = DEFAULT_OUT_DIR) {
       { id: 'city_center', name: 'Центральный город', chunks: districts.center },
       { id: 'park', name: 'Парк', chunks: districts.park },
     ],
-    npcs: [],
+    npcs: NPCS,
   };
   writeFileSync(path.join(outDir, 'world.json'), JSON.stringify(index, null, 2) + '\n');
   return { outDir, chunks: WORLD_CHUNKS_X * WORLD_CHUNKS_Z, totalBytes };

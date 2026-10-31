@@ -6,6 +6,7 @@ import path from 'node:path';
 import { decode } from '@msgpack/msgpack';
 import { buildCityWorld, makeCityChunk, BUILDING_PREFAB_IDS, PLAZA_PREFAB_ID } from './index.js';
 import { BUILDINGS } from './layout.js';
+import { WORLD_POINTS } from '../../client/stations/firefighter/layout.js';
 
 let dir;
 let world;
@@ -37,6 +38,16 @@ test('площадь и шесть зданий представлены ров�
   }
   for (const b of BUILDINGS) assert.equal(ids.get(BUILDING_PREFAB_IDS[b.id]), 1, b.name);
   assert.equal(ids.get(PLAZA_PREFAB_ID), 1);
+});
+
+test('Маруся зарегистрирована для пожарной локации, но не размещена в чанках города', () => {
+  const marusya = { id: 'npc_marusya', agentId: 'marusya', x: WORLD_POINTS.npc.x, y: WORLD_POINTS.npc.y, z: WORLD_POINTS.npc.z, ry: 0 };
+  assert.deepEqual(world.npcs, [marusya]);
+  for (let cz = 0; cz < 12; cz++) for (let cx = 0; cx < 12; cx++) {
+    assert.deepEqual(makeCityChunk(cx, cz).npcs, []);
+    const chunk = decode(readFileSync(path.join(dir, 'chunks', `${cx}_${cz}.bin`)));
+    assert.deepEqual(chunk.npcs, []);
+  }
 });
 
 test('центральные девять чанков укладываются в 10% байтового лимита', () => {
