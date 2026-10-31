@@ -1,5 +1,5 @@
 // Игровой WebSocket: проверка тикета до upgrade, hello, позиции, рассылка соседям.
-// Обрабатываются hello, pos и task_answer; chat и npc_talk приходят в S3.
+// Обрабатываются hello, pos, task_answer и npc_talk (мост к агентам); chat приходит в S3.
 
 import { WebSocketServer, WebSocket } from 'ws';
 import {
@@ -9,6 +9,7 @@ import {
   PROTO_VERSION,
   SPAWN,
   SPEED_TOLERANCE,
+  TALK_DISTANCE,
   TICK_HZ,
   VIEW_RADIUS,
   WORLD_CHUNKS_X,
@@ -17,6 +18,7 @@ import {
   WORLD_SIZE_Z,
 } from '../../shared/constants.js';
 import { C2S, ERROR_CODES, LIMITS, S2C, decode, encode, validate } from '../../shared/protocol.js';
+import { reply as defaultReply } from '../agents/index.js';
 import { createChunkMirror } from './chunks.js';
 
 // Коды закрытия WebSocket (диапазон 4000–4999 отдан приложению).
@@ -36,6 +38,9 @@ const EDGE = 0.001;
 // (иначе можно «накопить» бесконечный запас скорости, простояв на месте).
 const MIN_DT_S = 1 / LIMITS.POS_PER_SEC;
 const MAX_DT_S = 2;
+// agentId и reqId возвращаются клиенту в каждом сообщении потока, поэтому их длина ограничена.
+const MAX_ID_CHARS = 64;
+const GENERIC_AGENT_ERROR = 'Не удалось получить ответ. Попробуйте позже';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const clampX = (x) => clamp(x, 0, WORLD_SIZE_X - EDGE);
@@ -78,6 +83,9 @@ function reject(socket, status, text) {
  * @param {{taskIds: readonly string[], has(id: string): boolean, getState(userId: number, id: string): object,
  *   handle(userId: number, id: string, payload: unknown, context: object): object, forget?(userId: number): void}} [deps.tasks]
  *   задания; прогресс принадлежит userId соединения, позиция берётся у сервера
+ * @param {typeof defaultReply} [deps.reply] мозг агента (shared/agent-api.md); подменяется в тестах
+ * @param {number} [deps.npcTalkMaxChars] предел длины реплики игрока NPC
+ * @param {number} [deps.npcTalkPerSec] предел npc_talk в секунду на игрока
  */
 export function createGame({
   app,
@@ -90,6 +98,9 @@ export function createGame({
   pingMs = 10_000,
   helloTimeoutMs = 5_000,
   flushMs = 5_000,
+  reply = defaultReply,
+  npcTalkMaxChars = 300,
+  npcTalkPerSec = LIMITS.NPC_TALK_PER_SEC,
 }) {
   const log = app.log;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
@@ -132,6 +143,7 @@ export function createGame({
     if (conn.closed) return;
     conn.closed = true;
     clearTimeout(conn.helloTimer);
+    conn.talk?.controller.abort(); // клиент ушёл: генерация NPC больше не нужна
     conns.delete(conn);
     if (connByUser.get(conn.user.id) === conn) connByUser.delete(conn.user.id);
     if (conn.player) removePlayer(conn.player);
@@ -183,6 +195,7 @@ export function createGame({
       known: new Set(),
       posLimit: createLimiter(LIMITS.POS_PER_SEC),
       taskLimit: createLimiter(TASK_PER_SEC),
+      talkLimit: createLimiter(npcTalkPerSec),
       mirror: world && createChunkMirror(world, log),
     };
     conn.player = player;
@@ -253,6 +266,78 @@ export function createGame({
     streamChunks(player);
   }
 
+  const agentError = (conn, agentId, reqId, message) =>
+    send(conn, { t: S2C.AGENT_ERROR, agentId, reqId, message });
+
+  /**
+   * npc_talk: проверки по данным сервера (личность и позиция из соединения), затем поток reply().
+   * Токены уходят только этому соединению. Любой отказ или сбой заканчивается agent_error с тем же reqId.
+   */
+  async function handleNpcTalk(player, msg) {
+    const { conn } = player;
+    const { agentId, reqId } = msg;
+    if (agentId.length > MAX_ID_CHARS || (typeof reqId === 'string' && reqId.length > MAX_ID_CHARS)) {
+      return sendError(conn, ERROR_CODES.BAD_MSG, 'Слишком длинный agentId или reqId');
+    }
+    const t = now();
+    if (!player.talkLimit.hit(t)) {
+      if (player.talkLimit.shouldNotify(t)) sendError(conn, ERROR_CODES.RATE_LIMIT, 'Слишком часто говорите с NPC');
+      return agentError(conn, agentId, reqId, 'Слишком часто, подождите секунду');
+    }
+    if (msg.text.length > npcTalkMaxChars) {
+      return agentError(conn, agentId, reqId, `Слишком длинная реплика (не больше ${npcTalkMaxChars} символов)`);
+    }
+    const text = msg.text.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!text) return agentError(conn, agentId, reqId, 'Пустая реплика');
+
+    const npcs = (world?.npcs ?? []).filter((n) => n.agentId === agentId);
+    if (npcs.length === 0) return agentError(conn, agentId, reqId, 'Неизвестный собеседник');
+    if (!npcs.some((n) => Math.hypot(n.x - player.x, n.z - player.z) <= TALK_DISTANCE)) {
+      sendError(conn, ERROR_CODES.TOO_FAR, 'Слишком далеко от собеседника');
+      return agentError(conn, agentId, reqId, 'Подойдите ближе к собеседнику');
+    }
+    if (conn.talk) return agentError(conn, agentId, reqId, 'Дождитесь ответа на предыдущую реплику');
+
+    const controller = new AbortController();
+    const { signal } = controller;
+    conn.talk = { controller, agentId, reqId };
+    const startedAt = now();
+    let tokens = 0;
+    let chars = 0;
+    try {
+      const stream = reply({
+        userId: player.id,
+        agentId,
+        text,
+        context: { playerName: player.name, nearbyPlayers: player.known.size },
+        signal,
+        onQueue: (position) => {
+          if (!signal.aborted) send(conn, { t: S2C.AGENT_QUEUE, agentId, reqId, position });
+        },
+      });
+      for await (const token of stream) {
+        if (signal.aborted) break;
+        if (typeof token !== 'string' || token === '') continue;
+        send(conn, { t: S2C.AGENT_TOKEN, agentId, reqId, token });
+        tokens += 1;
+        chars += token.length;
+      }
+      if (signal.aborted) return;
+      if (tokens === 0) {
+        log.warn({ agentId, userId: player.id }, 'агент вернул пустой ответ');
+        return agentError(conn, agentId, reqId, 'Собеседник промолчал. Попробуйте переформулировать');
+      }
+      send(conn, { t: S2C.AGENT_DONE, agentId, reqId });
+      log.info({ agentId, userId: player.id, tokens, chars, ms: now() - startedAt }, 'ответ NPC отправлен');
+    } catch (err) {
+      if (signal.aborted) return;
+      log.warn({ agentId, userId: player.id, code: err?.code, err: err?.message, detail: err?.detail }, 'сбой ответа NPC');
+      agentError(conn, agentId, reqId, err?.expose === true ? err.message : GENERIC_AGENT_ERROR);
+    } finally {
+      if (conn.talk?.controller === controller) conn.talk = null;
+    }
+  }
+
   function onMessage(conn, data, isBinary) {
     if (!isBinary) return sendError(conn, ERROR_CODES.BAD_MSG, 'Нужен бинарный кадр');
     let msg;
@@ -272,14 +357,17 @@ export function createGame({
     if (msg.t === C2S.POS) return handlePos(conn.player, msg);
     if (msg.t === C2S.HELLO) return sendError(conn, ERROR_CODES.BAD_MSG, 'hello уже было');
     if (msg.t === C2S.TASK_ANSWER) return handleTask(conn.player, msg);
-    // chat, npc_talk: мосты появятся в S3.
+    if (msg.t === C2S.NPC_TALK) {
+      return void handleNpcTalk(conn.player, msg).catch((err) => log.error({ err }, 'сбой моста npc_talk'));
+    }
+    // chat: мост появится в S3.
   }
 
   function onConnection(ws, user) {
     const previous = connByUser.get(user.id);
     if (previous) dropConn(previous, CLOSE.REPLACED, 'replaced');
 
-    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null };
+    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null, talk: null };
     conns.add(conn);
     connByUser.set(user.id, conn);
     conn.helloTimer = setTimeout(() => {

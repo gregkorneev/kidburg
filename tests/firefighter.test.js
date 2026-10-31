@@ -12,9 +12,21 @@ const yawTo = (from, to) => Math.atan2(-(to.x - from.x), -(to.z - from.z));
 const at = (p, dx = 0, dz = 0) => ({ x: p.x + dx, y: 0, z: p.z + dz });
 const answer = (action, extra = {}) => ({ t: 'task_answer', taskId: FIREFIGHTER_TASK_ID, payload: { action, ...extra } });
 
+/** Сервер снимает игрока с учёта чуть позже, чем клиент видит закрытие сокета: имя ненадолго занято. */
+async function joinWhenFree(app, name) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await join(app, name);
+    } catch (err) {
+      if (attempt >= 40 || !String(err.message).includes('name_taken')) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+}
+
 /** Подключает игрока (вход по коду комнаты; имя создаётся при первом входе); позиция из базы — перед hello. */
 async function connect(app, port, name, { dbPath, position, ry = 0 } = {}) {
-  const session = await join(app, name);
+  const session = await joinWhenFree(app, name);
   if (position) seedPlayerState(dbPath, name, { ...position, ry });
   const client = await TestClient.connect(port, await getTicket(app, session.token));
   client.send({ t: 'hello', ticket: 'x', proto: 1 });
