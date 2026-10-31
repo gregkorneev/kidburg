@@ -46,6 +46,9 @@ for name, location, target, scale in [
     ('side', (10, 0, 1.58), (0, 0, 1.58), 3.55),
     ('back', (0, 10, 1.58), (0, 0, 1.58), 3.55),
     ('face', (0, -10, 2.40), (0, 0, 2.40), 1.35),
+    ('head-front', (0, -10, 2.40), (0, 0, 2.40), 1.65),
+    ('head-side', (10, 0, 2.40), (0, 0, 2.40), 1.65),
+    ('head-45', (7.071, -7.071, 2.40), (0, 0, 2.40), 1.65),
 ]:
     camera.location = location; camera_data.ortho_scale = scale; point_at(camera, target)
     scene.render.filepath = os.path.join(output, name + '.png')

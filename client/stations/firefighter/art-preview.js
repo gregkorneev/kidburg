@@ -351,6 +351,7 @@ const dropPosition = new THREE.Vector3();
 const views = {
   front: [[0, 2.7, 9.3], [0, 1.55, 2.15]], side: [[7.2, 2.7, 2.15], [0, 1.55, 2.15]],
   back: [[0.01, 2.7, -5], [0, 1.55, 2.15]], face: [[0, 2.6, 5.7], [0, 2.38, 2.15]],
+  angle: [[2.51, 2.6, 4.66], [0, 2.38, 2.15]],
   npc: [[-2.4, 2.7, 8.55], [-2.4, 1.55, 1.4]], scene: [[8.4, 6.4, 14], [0, 1.8, -0.3]],
 };
 document.querySelector('#toggle-panel').addEventListener('click', (event) => {
@@ -363,7 +364,7 @@ function updateFieldOfView() {
   camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(19)) * factor));
   camera.updateProjectionMatrix();
 }
-function setView(name) { const [position, target] = views[name]; activeView = name; document.body.classList.toggle('closeup', name === 'face'); camera.position.set(...position); controls.target.set(...target); updateFieldOfView(); controls.update(); }
+function setView(name) { const [position, target] = views[name]; activeView = name; document.body.classList.toggle('closeup', name === 'face' || name === 'angle'); camera.position.set(...position); controls.target.set(...target); updateFieldOfView(); controls.update(); }
 document.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
 setView('scene');
 function resize() { camera.aspect = host.clientWidth / Math.max(1, host.clientHeight); updateFieldOfView(); renderer.setSize(host.clientWidth, host.clientHeight); }
