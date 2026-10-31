@@ -18,3 +18,12 @@
   `OLLAMA_IDLE_TIMEOUT_MS`, `OLLAMA_TOTAL_TIMEOUT_MS`, `OLLAMA_KEEP_ALIVE`, `NPC_TALK_MAX_CHARS` (300), `NPC_TALK_PER_SEC` (1).
   Отказ по `npc_talk` всегда заканчивается `agent_error` с тем же `reqId`; для `too_far` и `rate_limit` дополнительно
   уходит `error` с кодом из `lead-spec.md`.
+- **ИИ-диалоги Маруси: ход задания и память (роль 2, 2026-10-31, ветка `codex/station-ai-dialogue`).** `shared/` и
+  схемы протокола не менялись. Дополнено только внутреннее: (1) `ReplyRequest.context.situation = {key, label, text}` —
+  необязательное поле, которое `server/net/game.js` заполняет из `tasks.describeForAgent(userId, agentId)` по
+  сохранённому на сервере состоянию игрока (клиент его не присылает); модуль агентов кладёт `text` в системный
+  промпт, а `key`/`label` запоминает. (2) Память пары игрок-агент: сверх `turns` в `topics.dialogue` хранится
+  `{notes (≤8 начал прошлых ответов по ≤110 символов), exchanges, lastSituation}`; `summary`, `toldCards` и прочие
+  ключи `topics` не трогаются. (3) Задание станции получило действие `repeat` (только из `completed`, рядом с Марусей,
+  начинает новую смену с `briefing`) и `describe(userId)`; `task_progress.done` при повторе снова `false`.
+  Код в `server/agents/` и `server/tasks/` изменён по заданию Codex, роли 3 и 4 нужно проверить.

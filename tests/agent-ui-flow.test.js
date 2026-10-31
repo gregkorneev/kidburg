@@ -5,12 +5,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { WORLD_POINTS } from '../client/stations/firefighter/layout.js';
+import { SAY, createMarusyaChat } from '../client/stations/firefighter/chat-flow.js';
 import { TASK_ID, createTaskSync } from '../client/stations/firefighter/tasks.js';
 import { createEmitter } from '../client/engine/emitter.js';
 import { ApiError, createHttp } from '../client/engine/http.js';
 import { createNet } from '../client/engine/net.js';
 import { createSession } from '../client/engine/session.js';
 import { createNpcChat } from '../client/ui/npc-chat-core.js';
+import { openDb } from '../server/db/index.js';
 import { listen, seedPlayerState, tempDb, tempWorld } from './helpers.js';
 import { closedPort, fakeOllama, hangingHandler, ndjsonLine, tokensHandler } from './ollama-fake.js';
 
@@ -335,6 +337,307 @@ test('Маруся: разговор у наставницы и прогресс
     await reloaded.until((st) => st.status === 'idle' && st.messages.length === 2);
     const request = ollama.requests.at(-1).body.messages;
     assert.ok(JSON.stringify(request).includes('Зачем нужна экипировка'), 'память разговора восстановлена на сервере');
+  } finally {
+    await s.stop();
+  }
+});
+
+// ---- Маруся: ИИ-диалог поверх станции (чат-сценарий preview против настоящего сервера) ----
+
+const nearMarusya = { x: WORLD_POINTS.npc.x + 1, y: 0, z: WORLD_POINTS.npc.z, ry: 0 };
+const DONE = { stage: 'completed', equipped: true, windows: [12, 12, 12, 12], carryingMannequin: false, mannequinDelivered: true };
+const DRILL = { stage: 'fire_drill', equipped: true, windows: [12, 5, 0, 0], carryingMannequin: false, mannequinDelivered: false };
+
+/** Записывает состояние задания напрямую в базу, как если бы игрок дошёл до него раньше. */
+function seedTask(dbPath, name, state) {
+  const db = openDb(dbPath);
+  db.saveTaskProgress(db.findUserByName(name).id, TASK_ID, { state, done: state.stage === 'completed' });
+  db.close();
+}
+
+function readTask(dbPath, name) {
+  const db = openDb(dbPath);
+  const saved = db.getTaskProgress(db.findUserByName(name).id, TASK_ID);
+  db.close();
+  return saved;
+}
+
+function readMemory(dbPath, name) {
+  const db = openDb(dbPath);
+  const memory = db.getAgentMemory(db.findUserByName(name).id, 'marusya');
+  db.close();
+  return memory;
+}
+
+/** Ответы подменной модели по очереди: i-й запрос получает replies[i] (последний повторяется). */
+const scripted = (replies) => (req, res) => {
+  const n = Math.min(scriptedCount.get(req.socket.server) ?? 0, replies.length - 1);
+  scriptedCount.set(req.socket.server, (scriptedCount.get(req.socket.server) ?? 0) + 1);
+  res.writeHead(200);
+  for (const word of replies[n].split(' ')) res.write(ndjsonLine(`${word} `));
+  res.end(ndjsonLine('', true));
+};
+const scriptedCount = new WeakMap();
+
+/** Сценарий preview для вкладки: те же createTaskSync и createMarusyaChat, что в client/stations/firefighter/preview.js. */
+function station(tab) {
+  const flow = { current: null };
+  const sync = createTaskSync({ api: tab.api, onState: () => {}, onNotice: (text) => { flow.notice = text; } });
+  Object.assign(flow, {
+    sync,
+    notice: '',
+    marusya: createMarusyaChat({
+      chat: tab.chat,
+      getState: () => sync.state,
+      dispatch: (action, handlers) => sync.send(action, handlers),
+      isOnline: () => true,
+      getNotice: () => flow.notice,
+    }),
+    button: (label) => tab.chat.state.assist.actions.find((a) => a.label === label),
+    /** Нажатие на кнопку панели и ожидание подтверждения сервера. */
+    async press(label) {
+      const before = sync.state.stage;
+      const action = flow.button(label);
+      assert.ok(action, `кнопки «${label}» нет: ${tab.chat.state.assist.actions.map((a) => a.label)}`);
+      tab.chat.choose(action);
+      await tab.until(() => sync.state.stage !== before || flow.notice, 2000).catch(() => {});
+    },
+  });
+  return flow;
+}
+
+const systemOf = (request) => request.body.messages[0].content;
+const settled = (n) => (st) => st.status === 'idle' && st.messages.length >= n && st.messages.at(-1).from === 'npc' && !st.messages.at(-1).pending;
+
+test('Маруся: первая реплика приходит от ИИ-провайдера и несёт ход задания с сервера', async () => {
+  const ollama = await fakeOllama(scripted(['Привет, я Маруся! Рада видеть тебя на станции.']));
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const t = s.tab();
+    await t.join('Аня', { beforeConnect: () => seedPlayerState(s.dbPath, 'Аня', nearMarusya) });
+    await sleep(100);
+    const st = station(t);
+    assert.equal(st.marusya.open(), true);
+    assert.equal(t.chat.state.open, true);
+
+    await t.until(settled(2));
+    const [me, npc] = t.chat.state.messages;
+    assert.equal(me.text, SAY.hello, 'игрок сам здоровается');
+    assert.equal(npc.text.trim(), 'Привет, я Маруся! Рада видеть тебя на станции.', 'текст ответа — из подменной модели, не из клиента');
+    assert.equal(ollama.requests.length, 1, 'ровно один запрос npc_talk к модели');
+    const system = systemOf(ollama.requests[0]);
+    assert.match(system, /Маруся Громова/);
+    assert.match(system, /Этап: знакомство\./);
+    assert.match(system, /ещё не начата/);
+    assert.match(system, /первая встреча/);
+    assert.match(system, /выполняет только игрок/);
+    assert.equal(ollama.requests[0].body.messages.at(-1).content, SAY.hello);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('Маруся: контекст следует за подтверждённым сервером прогрессом; подделка в task_answer на него не влияет', async () => {
+  const ollama = await fakeOllama(scripted(['Привет, я Маруся! Рада видеть тебя на станции.', 'Отлично, начинаем. Сначала внимательно выслушай инструктаж.', 'Хороший вопрос про экипировку.']));
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const t = s.tab();
+    await t.join('Аня', { beforeConnect: () => seedPlayerState(s.dbPath, 'Аня', nearMarusya) });
+    await sleep(100);
+    const st = station(t);
+    st.marusya.open();
+    await t.until(settled(2));
+
+    await st.press('Начать тренировку');
+    assert.equal(st.sync.state.stage, 'briefing', 'этап подтвердил сервер');
+    await t.until(settled(4)); // после подтверждения игрок просит рассказать о тренировке
+    assert.equal(t.chat.state.messages[2].text, SAY.afterStart);
+    const second = ollama.requests[1];
+    assert.match(systemOf(second), /Этап: инструктаж\./);
+    assert.match(systemOf(second), /слушает твой инструктаж/);
+    assert.match(systemOf(second), /уже разговаривали/);
+    assert.doesNotMatch(systemOf(second), /первая встреча/);
+    assert.match(systemOf(second), /Ты уже рассказывала: Привет, я Маруся! Рада видеть тебя/);
+    assert.match(systemOf(second), /тогда был этап «знакомство», теперь «инструктаж»/);
+
+    // Клиент пытается «подарить» себе завершённую смену: сервер игнорирует и состояние, и этап.
+    t.net.send({ t: 'task_answer', taskId: TASK_ID, payload: { action: 'resume', state: DONE, stage: 'completed' } });
+    await sleep(80);
+    t.chat.send('Зачем нужна экипировка?');
+    await t.until(settled(6));
+    const third = systemOf(ollama.requests[2]);
+    assert.match(third, /Этап: инструктаж\./);
+    assert.doesNotMatch(third, /полностью завершена/);
+    assert.equal(readTask(s.dbPath, 'Аня').state.stage, 'briefing');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('Маруся: после перезагрузки страницы разговор продолжается с памятью, а не начинается заново', async () => {
+  const ollama = await fakeOllama(scripted(['Привет, я Маруся! Рада видеть тебя на станции.', 'Экипировка защищает пожарного от жара и осколков, поэтому её проверяют до смены.', 'Продолжим с того места, где остановились.']));
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const first = s.tab();
+    await first.join('Аня', { beforeConnect: () => seedPlayerState(s.dbPath, 'Аня', nearMarusya) });
+    await sleep(100);
+    const st = station(first);
+    st.marusya.open();
+    await first.until(settled(2));
+    first.chat.send('Зачем нужна экипировка?');
+    await first.until(settled(4));
+    st.sync.dispose();
+    first.close();
+
+    const reloaded = s.tab();
+    let attempt = 0;
+    for (;;) {
+      try {
+        await reloaded.join('Аня');
+        break;
+      } catch (err) {
+        if (++attempt > 40 || err.code !== 'name_taken') throw err;
+        await sleep(25);
+      }
+    }
+    await sleep(100);
+    const again = station(reloaded);
+    assert.deepEqual(reloaded.chat.state.messages, []);
+    again.marusya.open(); // новая страница: игрок снова подошёл к Марусе
+    await reloaded.until(settled(2));
+
+    const system = systemOf(ollama.requests.at(-1));
+    assert.doesNotMatch(system, /первая встреча/, 'встреча не первая');
+    assert.match(system, /не здоровайся и не представляйся заново/);
+    assert.match(system, /Ты уже рассказывала: Привет, я Маруся! Рада видеть тебя на станции\. Экипировка защищает пожарного от жара/);
+    const sentMessages = ollama.requests.at(-1).body.messages;
+    assert.ok(sentMessages.some((m) => m.role === 'user' && m.content === 'Зачем нужна экипировка?'), 'прошлые реплики на месте');
+    assert.ok(sentMessages.some((m) => m.role === 'assistant' && m.content.includes('защищает пожарного')));
+    assert.equal(reloaded.chat.state.messages[1].text.trim(), 'Продолжим с того места, где остановились.');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('Маруся: память и запрос к модели ограничены по размеру при долгом разговоре', async () => {
+  const long = 'Это длинный ответ наставницы, который повторяется много раз. '.repeat(15);
+  const ollama = await fakeOllama(scripted([long]));
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const t = s.tab();
+    await t.join('Аня', { beforeConnect: () => seedPlayerState(s.dbPath, 'Аня', nearMarusya) });
+    await sleep(100);
+    for (let i = 0; i < 20; i++) {
+      assert.equal(t.chat.send(`Вопрос номер ${i}`) || (t.chat.open(MARUSYA), t.chat.send(`Вопрос номер ${i}`)), true);
+      await t.until((st) => st.status === 'idle');
+    }
+    const memory = readMemory(s.dbPath, 'Аня');
+    assert.ok(memory.turns.length <= 12, `реплик в памяти: ${memory.turns.length}`);
+    assert.ok(memory.topics.dialogue.notes.length <= 8);
+    assert.ok(memory.topics.dialogue.notes.every((n) => n.length <= 110));
+    assert.equal(memory.topics.dialogue.exchanges, 20);
+    const last = ollama.requests.at(-1).body.messages;
+    const chars = last.reduce((sum, m) => sum + m.content.length, 0);
+    assert.ok(last.length <= 10, `сообщений в запросе: ${last.length}`);
+    assert.ok(chars < 7000, `символов в запросе: ${chars}`);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('Маруся: после завершения предлагаются подробности и повтор; повтор идёт только по нажатию и после подтверждения сервера', async () => {
+  const ollama = await fakeOllama(scripted(['Поздравляю, ты прошёл всю смену. Хочешь узнать больше о профессии или повторить тренировку?', 'Тогда начнём заново: сначала короткий инструктаж.']));
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const t = s.tab();
+    const st = station(t); // как в preview: слушатель task_state создаётся до входа
+    await t.join('Аня', { beforeConnect: () => { seedPlayerState(s.dbPath, 'Аня', nearMarusya); seedTask(s.dbPath, 'Аня', DONE); } });
+    await sleep(100);
+    assert.equal(st.sync.state.stage, 'completed');
+    st.marusya.open();
+    await t.until(settled(2));
+    assert.match(systemOf(ollama.requests[0]), /полностью завершена/);
+    assert.match(systemOf(ollama.requests[0]), /Повторить смену/);
+    assert.deepEqual(t.chat.state.assist.actions.map((a) => a.label), ['Узнать больше о профессии', 'Повторить учебную смену']);
+
+    // Модель предложила повтор, но сама ничего не запускает: этап остаётся прежним.
+    await sleep(150);
+    assert.equal(readTask(s.dbPath, 'Аня').state.stage, 'completed');
+    assert.equal(readTask(s.dbPath, 'Аня').done, true);
+
+    await st.press('Повторить учебную смену');
+    assert.equal(st.sync.state.stage, 'briefing', 'сервер подтвердил новую смену');
+    assert.deepEqual(readTask(s.dbPath, 'Аня').state, { stage: 'briefing', equipped: false, windows: [0, 0, 0, 0], carryingMannequin: false, mannequinDelivered: false });
+    assert.equal(readTask(s.dbPath, 'Аня').done, false);
+    await t.until(settled(4));
+    assert.equal(t.chat.state.messages[2].text, SAY.afterRepeat);
+    const second = systemOf(ollama.requests[1]);
+    assert.match(second, /Этап: инструктаж\./);
+    assert.match(second, /тогда был этап «смена завершена», теперь «инструктаж»/);
+    assert.match(second, /Ты уже рассказывала: Поздравляю, ты прошёл всю смену/);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('Маруся: незавершённую смену повторным запросом сбросить нельзя', async () => {
+  const ollama = await fakeOllama(scripted(['Ты на полигоне, продолжай.']));
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const t = s.tab();
+    const st = station(t);
+    await t.join('Борис', { beforeConnect: () => { seedPlayerState(s.dbPath, 'Борис', nearMarusya); seedTask(s.dbPath, 'Борис', DRILL); } });
+    await sleep(100);
+    assert.equal(st.sync.state.stage, 'fire_drill');
+    assert.equal(st.button?.('Повторить учебную смену'), undefined);
+
+    // Даже если клиент пошлёт repeat напрямую, сервер откажет и не тронет прогресс.
+    const rejected = new Promise((resolve) => st.sync.send('repeat', { onRejected: resolve, onConfirmed: () => resolve('confirmed') }));
+    assert.notEqual(await rejected, 'confirmed');
+    assert.equal(st.sync.state.stage, 'fire_drill');
+    assert.match(st.notice, /только после её завершения/);
+    assert.deepEqual(readTask(s.dbPath, 'Борис').state, DRILL);
+    assert.equal(readTask(s.dbPath, 'Борис').done, false);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('Маруся: ошибка Ollama видна игроку, ответ не подменяется готовым текстом, игра идёт дальше и реплику можно повторить', async () => {
+  let down = true;
+  const ollama = await fakeOllama((req, res, rec) => {
+    if (down) {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end('{"error":"boom"}');
+      return;
+    }
+    return tokensHandler(['Теперь я на связи. Начинаем инструктаж.'])(req, res, rec);
+  });
+  const s = await setup({ ollama, withDb: true });
+  try {
+    const t = s.tab();
+    await t.join('Аня', { beforeConnect: () => seedPlayerState(s.dbPath, 'Аня', nearMarusya) });
+    await sleep(100);
+    const st = station(t);
+    st.marusya.open();
+    await t.until((state) => state.status === 'idle' && state.error);
+    assert.ok(t.chat.state.error.length > 0, 'причина показана игроку');
+    assert.deepEqual(t.chat.state.messages.map((m) => m.from), ['me'], 'ответа Маруси нет: ни от ИИ, ни заготовленного');
+    assert.equal(t.chat.canSend, true);
+
+    // Игровое действие работает без ИИ: его подтверждает сервер, а не модель.
+    await st.press('Начать тренировку');
+    assert.equal(st.sync.state.stage, 'briefing');
+    await t.until((state) => state.status === 'idle' && state.messages.length === 2);
+    assert.deepEqual(t.chat.state.messages.map((m) => m.from), ['me', 'me'], 'ошибка и на втором запросе: ответов нет');
+    assert.ok(t.chat.state.error);
+
+    down = false;
+    assert.equal(t.chat.send('Попробуем ещё раз'), true);
+    await t.until(settled(3));
+    assert.equal(t.chat.state.error, '');
+    assert.equal(t.chat.state.messages.at(-1).text.trim(), 'Теперь я на связи. Начинаем инструктаж.');
+    assert.equal(readMemory(s.dbPath, 'Аня').topics.dialogue.exchanges, 1, 'неудачные обмены в память не попали');
   } finally {
     await s.stop();
   }
