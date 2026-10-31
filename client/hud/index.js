@@ -21,6 +21,12 @@ export function createHud(container) {
   }
   container.appendChild(root);
 
+  const entrance = document.createElement('div');
+  entrance.className = 'city-entrance-prompt';
+  entrance.setAttribute('aria-live', 'polite');
+  entrance.hidden = true;
+  container.appendChild(entrance);
+
   const hud = {
     setStatus(status) {
       lines.status.textContent = `Связь: ${STATUS_TEXT[status] ?? status}`;
@@ -44,8 +50,13 @@ export function createHud(container) {
         `Чанки: ${stats.loaded} из ${stats.worldTotal} (${pct.toFixed(1)}%), лимит ${stats.max}` +
         ` · ${kb(stats.bytes)} из ${kb(stats.bytesMax)} КБ`;
     },
+    setEntrancePrompt(label = '') {
+      entrance.hidden = !label;
+      entrance.textContent = label ? `E  ${label}` : '';
+    },
     dispose() {
       root.remove();
+      entrance.remove();
     },
   };
   hud.setStatus('closed');

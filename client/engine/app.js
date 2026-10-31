@@ -7,6 +7,7 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { TALK_DISTANCE } from '../../shared/constants.js';
 import { createHud } from '../hud/index.js';
 import { createChunkManager, makeLabel } from './chunks.js';
+import { FIRE_STATION_ENTRANCE, isNearFireStationEntrance } from './city-entrance.js';
 import { createEmitter } from './emitter.js';
 import { createHttp } from './http.js';
 import { createInput } from './input.js';
@@ -191,11 +192,18 @@ export function createClient({ container, networkOnly = false }) {
     const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel });
     const hud = createHud(container);
     const player = createPlayer();
+    let fireStationNearby = false;
     const input = createInput({
       target: renderer.domElement,
       document,
       window: win,
-      onInteract: () => emitter.emit('interact', state.npc),
+      onInteract: () => {
+        if (fireStationNearby) {
+          win.location.assign(FIRE_STATION_ENTRANCE.href);
+          return;
+        }
+        emitter.emit('interact', state.npc);
+      },
       onChat: () => emitter.emit('chat_key', null),
     });
 
@@ -329,6 +337,11 @@ export function createClient({ container, networkOnly = false }) {
         if (npcClock >= NPC_CHECK_MS) {
           npcClock = 0;
           setNpc(world.nearestNpc(player.x, player.y, player.z, TALK_DISTANCE));
+          const nearEntrance = isNearFireStationEntrance(player.x, player.z);
+          if (nearEntrance !== fireStationNearby) {
+            fireStationNearby = nearEntrance;
+            hud.setEntrancePrompt(nearEntrance ? FIRE_STATION_ENTRANCE.label : '');
+          }
         }
       }
 
