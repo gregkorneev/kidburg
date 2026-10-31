@@ -1,5 +1,6 @@
 import { h, render } from 'preact';
 import { OBJECTIVES, WINDOW_COUNT, WINDOW_HIT_LIMIT, countDoneWindows } from './state.js';
+import { QUALITY_LABELS, QUALITY_LEVELS } from '../../engine/art/quality.js';
 
 function Button({ option, onChoose, busy }) {
   return h('button', {
@@ -10,7 +11,10 @@ function Button({ option, onChoose, busy }) {
   }, option.label);
 }
 
-export function StationUI({ state, prompt, notice, dialog, hoseActive, targetWindow = null, busy = false, onChoose, onCloseDialog }) {
+export function StationUI({
+  state, prompt, notice, dialog, hoseActive, targetWindow = null, busy = false, controlsOpen = true, quality = 'medium',
+  onChoose, onCloseDialog, onToggleControls = () => {}, onQuality = () => {},
+}) {
   const done = countDoneWindows(state.windows);
   const target = targetWindow === null ? undefined : state.windows[targetWindow];
   const progress = target === undefined ? 0 : Math.round((target / WINDOW_HIT_LIMIT) * 100);
@@ -23,7 +27,6 @@ export function StationUI({ state, prompt, notice, dialog, hoseActive, targetWin
           h('span', null, 'Учебная смена'),
         ),
       ),
-      h('div', { class: 'demo-badge' }, 'СЕТЕВОЙ РЕЖИМ'),
     ),
 
     h('section', { class: 'objective-card', 'aria-live': 'polite' },
@@ -43,15 +46,31 @@ export function StationUI({ state, prompt, notice, dialog, hoseActive, targetWin
 
     h('div', { class: 'center-reticle', 'aria-hidden': 'true' }, h('span')),
 
-    h('aside', { class: 'controls-card' },
-      h('span', { class: 'eyebrow' }, 'УПРАВЛЕНИЕ'),
-      h('div', { class: 'control-row' }, h('kbd', null, 'W A S D'), h('span', null, 'движение')),
-      h('div', { class: 'control-row' }, h('kbd', null, 'SHIFT'), h('span', null, 'быстрее')),
-      h('div', { class: 'control-row' }, h('kbd', null, 'E'), h('span', null, 'действие')),
-      h('div', { class: 'control-row' }, h('kbd', null, 'L'), h('span', null, 'в город')),
-      h('div', { class: 'control-row' }, h('kbd', null, 'ESC'), h('span', null, 'курсор')),
+    h('aside', { class: `controls-card${controlsOpen ? '' : ' controls-card--closed'}` },
+      h('button', {
+        class: 'controls-toggle',
+        type: 'button',
+        'aria-expanded': controlsOpen,
+        title: 'Показать или скрыть подсказки (H)',
+        onClick: onToggleControls,
+      }, h('span', { class: 'eyebrow' }, 'УПРАВЛЕНИЕ'), h('kbd', null, controlsOpen ? 'H' : '?')),
+      controlsOpen && h('div', { class: 'controls-body' },
+        h('div', { class: 'control-row' }, h('kbd', null, 'W A S D'), h('span', null, 'движение')),
+        h('div', { class: 'control-row' }, h('kbd', null, 'SHIFT'), h('span', null, 'быстрее')),
+        h('div', { class: 'control-row' }, h('kbd', null, 'E'), h('span', null, 'действие')),
+        h('div', { class: 'control-row' }, h('kbd', null, 'L'), h('span', null, 'в город')),
+        h('div', { class: 'control-row' }, h('kbd', null, 'ESC'), h('span', null, 'курсор')),
+        h('div', { class: 'quality-row', role: 'group', 'aria-label': 'Качество графики' },
+          h('span', null, 'Графика'),
+          QUALITY_LEVELS.map((level) => h('button', {
+            key: level,
+            type: 'button',
+            class: `quality-button${level === quality ? ' quality-button--active' : ''}`,
+            'aria-pressed': level === quality,
+            onClick: () => onQuality(level),
+          }, QUALITY_LABELS[level]))),
+      ),
       hoseActive && h('p', { class: 'hose-tip' }, 'Наведите прицел на окно с огнём и удерживайте левую кнопку мыши.'),
-      h('p', { class: 'demo-note' }, 'Прогресс хранится на сервере.'),
     ),
 
     prompt && h('div', { class: 'interaction-prompt', 'aria-live': 'polite' },
