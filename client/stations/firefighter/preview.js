@@ -16,6 +16,8 @@ let busy = false; // ждём подтверждение действия от �
 let online = false; // вошли на сервер и получили welcome: до этого сцена только фон под экраном входа
 let state = createInitialState();
 let dialog = null;
+let chat = null; // разговор с Марусей через npc_talk (client/ui/npc-chat.js)
+let chatOpen = false;
 let prompt = '';
 let notice = 'Сетевой режим: прогресс станции хранится на сервере.';
 let hoseActive = false;
@@ -43,7 +45,7 @@ function setNotice(message, duration = 2600) {
   noticeTimer = setTimeout(() => { notice = ''; refresh(); }, duration);
 }
 
-const syncBlocked = () => world?.setUiBlocked(!online || dialog !== null);
+const syncBlocked = () => world?.setUiBlocked(!online || dialog !== null || chatOpen);
 
 function closeDialog() {
   dialog = null;
@@ -70,12 +72,24 @@ function onServerState(next, meta) {
   if (meta.changed && meta.feedback) setNotice(meta.feedback);
 }
 
+const MARUSYA = Object.freeze({ agentId: 'marusya', name: 'Маруся Громова' });
+
+/** Свободный разговор: реплики уходят на сервер (npc_talk), ответ приходит потоком от локальной модели. */
+function openChat() {
+  if (!online || !chat) return;
+  dialog = null;
+  chat.open(MARUSYA);
+  syncBlocked();
+  refresh();
+}
+
 function openProfessionCard() {
   showDialog({
     title: 'Работа в команде',
     body: 'Пожарные регулярно тренируются, распределяют роли и учатся пользоваться оборудованием. В этой игре упражнения условные: они знакомят с профессией, но не обучают действиям при реальном пожаре.',
     options: [
       { label: 'Понятно', primary: true, onSelect: () => openBriefing() },
+      { label: 'Поговорить свободно', onSelect: openChat },
     ],
   });
 }
@@ -92,7 +106,7 @@ function showBriefingStep() {
   showDialog({
     title: 'Короткий инструктаж',
     body: 'Надень учебную экипировку, затем потуши все окна учебной стены и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
-    options: [acceptBriefingOption()],
+    options: [acceptBriefingOption(), { label: 'Поговорить свободно', onSelect: openChat }],
   });
 }
 
@@ -106,6 +120,7 @@ function openBriefing() {
           dispatch('start', { onConfirmed: showBriefingStep, onRejected: closeDialog });
         } },
         { label: 'Узнать о профессии', onSelect: openProfessionCard },
+        { label: 'Поговорить свободно', onSelect: openChat },
         { label: 'Позже', onSelect: closeDialog },
       ],
     });
@@ -113,7 +128,7 @@ function openBriefing() {
     showDialog({
       title: 'Короткий инструктаж',
       body: 'Надень учебную экипировку, затем потуши все окна учебной стены и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
-      options: [acceptBriefingOption()],
+      options: [acceptBriefingOption(), { label: 'Поговорить свободно', onSelect: openChat }],
     });
   } else {
     openProfessionCard();
@@ -124,17 +139,21 @@ function openDebrief() {
   showDialog({
     title: 'Учебная смена позади',
     body: 'Ты подготовилась, потушила все окна учебной стены и доставила манекен в отмеченную зону. В этой профессии важны подготовка, внимание и согласованная работа команды.',
-    options: [{
-      label: 'Завершить смену',
-      primary: true,
-      onSelect: () => dispatch('report', { onConfirmed: closeDialog, onRejected: closeDialog }),
-    }],
+    options: [
+      {
+        label: 'Завершить смену',
+        primary: true,
+        onSelect: () => dispatch('report', { onConfirmed: closeDialog, onRejected: closeDialog }),
+      },
+      { label: 'Поговорить свободно', onSelect: openChat },
+    ],
   });
 }
 
 function onWorldAction(action, index) {
   if (action === 'open_briefing') return openBriefing();
   if (action === 'open_debrief') return openDebrief();
+  if (action === 'open_chat') return openChat();
   dispatch(action, { index });
 }
 
@@ -154,6 +173,12 @@ refresh();
 // Вход и сеть: тот же клиент, что у основной страницы, но без второго рендерера.
 const client = createClient({ container: sceneRoot, networkOnly: true });
 const unmountAuth = mountUI(client.api);
+chat = unmountAuth.chat;
+chat.onOpenChange((open) => {
+  chatOpen = open;
+  syncBlocked();
+  refresh();
+});
 network = connectFireNetwork({
   api: client.api,
   world,

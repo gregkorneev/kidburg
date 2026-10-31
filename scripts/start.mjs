@@ -5,7 +5,7 @@ import os from 'node:os';
 import { startServer, DEFAULT_CONFIG } from '../server/index.js';
 
 const port = Number(process.env.PORT ?? DEFAULT_CONFIG.port);
-const app = await startServer({ port });
+const app = await startServer({ port, agents: { probeOnStart: true } });
 
 console.log(`Сервер запущен: http://localhost:${port}`);
 for (const list of Object.values(os.networkInterfaces())) {

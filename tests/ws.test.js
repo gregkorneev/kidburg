@@ -292,13 +292,14 @@ test('чанки: переход, после которого набор не м
   const { app, port } = await listen({ worldDir, dbPath });
   try {
     await register(app, 'Тишина');
-    seedPlayerState(dbPath, 'Тишина', { x: 7 * 64 - 0.2, y: 0, z: 6.5 * 64 }); // граница чанков 6 и 7
+    // Граница чанков 6 и 7 в ряду 7: набор по обе стороны один (в ряду 6 он зависит от байтового бюджета фикстур).
+    seedPlayerState(dbPath, 'Тишина', { x: 7 * 64 - 0.2, y: 0, z: 7.5 * 64 });
     const again = await register(app, 'Тишина');
     const client = await TestClient.connect(port, await getTicket(app, again.token));
     client.send({ t: 'hello', ticket: 'x', proto: 1 });
     await client.nextOfType('welcome');
     await nextChunkBatch(client);
-    client.send(pos(7 * 64 + 0.2, 6.5 * 64, 1)); // чанк сменился, а нужный набор тот же
+    client.send(pos(7 * 64 + 0.2, 7.5 * 64, 1)); // чанк сменился, а нужный набор тот же
     await new Promise((r) => setTimeout(r, 150));
     assert.equal(client.inbox.filter(isChunkMsg).length, 0);
   } finally {

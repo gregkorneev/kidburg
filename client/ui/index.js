@@ -1,4 +1,5 @@
 import './auth.css';
+import { mountNpcChat } from './npc-chat.js';
 
 const STATUS = {
   closed: 'нет соединения',
@@ -15,11 +16,15 @@ const element = (tag, className, text) => {
   return node;
 };
 
-/** Экран входа/регистрации и состояние соединения для игры и LAN-preview. */
+/**
+ * Экран входа (имя и код комнаты), состояние соединения и разговор с NPC для игры и LAN-preview.
+ * Возвращает функцию снятия интерфейса; её свойство `chat` — контроллер разговора (open, close, onOpenChange).
+ */
 export function mountUI(api) {
   const root = element('div', 'auth-root');
   root.setAttribute('aria-live', 'polite');
   document.body.append(root);
+  const chat = mountNpcChat(api);
 
   let user = api.auth.session()?.user ?? null;
   let status = api.net.status;
@@ -157,11 +162,13 @@ export function mountUI(api) {
 
   render();
   loadHostRoom();
-  return () => {
+  const unmount = () => {
     offAuth();
     offStatus();
     offWelcome();
     offError();
+    chat.dispose();
     root.remove();
   };
+  return Object.assign(unmount, { chat });
 }
