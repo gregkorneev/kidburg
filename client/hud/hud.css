@@ -1,7 +1,19 @@
 /* Только системные шрифты и локальные стили. */
-.city-hud {
+.city-brand {
   position: fixed;
   top: 8px;
+  left: 8px;
+  z-index: 10;
+  display: block;
+  width: clamp(84px, 12vw, 150px);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+.city-hud {
+  position: fixed;
+  top: clamp(96px, 12vw, 160px);
   left: 8px;
   z-index: 10;
   padding: 6px 10px;
