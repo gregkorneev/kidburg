@@ -1,6 +1,7 @@
 // HUD роли 1: FPS, пинг, состояние кеша чанков. Экранный интерфейс (вход, диалоги) — роль 4.
 
 import './hud.css';
+import logoUrl from '../../assets/branding/careerium-logo.png';
 
 const STATUS_TEXT = {
   closed: 'нет соединения',
@@ -12,6 +13,12 @@ const STATUS_TEXT = {
 
 /** @param {HTMLElement} container */
 export function createHud(container) {
+  const brand = document.createElement('img');
+  brand.className = 'city-brand';
+  brand.src = logoUrl;
+  brand.alt = 'Carrierium — Город профессий';
+  container.appendChild(brand);
+
   const root = document.createElement('div');
   root.className = 'city-hud';
   const lines = {};
@@ -55,6 +62,7 @@ export function createHud(container) {
       entrance.textContent = label ? `E  ${label}` : '';
     },
     dispose() {
+      brand.remove();
       root.remove();
       entrance.remove();
     },
