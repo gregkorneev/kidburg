@@ -3,6 +3,7 @@ import { createPerson, setPersonEquipment } from './scene.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // Самостоятельная художественная сцена: никакие игровые состояния не меняются.
 const host = document.querySelector('#view');
@@ -82,6 +83,21 @@ plaza.rotation.x = -Math.PI / 2;
 // Одна анатомическая основа и два набора одежды.
 const character = new THREE.Group(); character.position.set(0, 0, 2.15); scene.add(character);
 const animated = new THREE.Group(); character.add(animated);
+animated.visible = false;
+const modelStatus = document.querySelector('#model-status');
+new GLTFLoader().load(new URL('./model-source/firefighter.glb', import.meta.url).href, (gltf) => {
+  character.add(gltf.scene);
+  modelStatus.textContent = 'Объёмная модель Blender. Скелет подготовлен для ручной настройки.';
+}, undefined, () => {
+  modelStatus.textContent = 'Не удалось загрузить GLB. Откройте просмотрщик через локальный Vite-сервер.';
+});
+document.querySelector('#casual').disabled = true;
+document.querySelector('#casual').title = 'Повседневный комплект для новой модели ещё не создан';
+document.querySelector('[data-view="npc"]').disabled = true;
+document.querySelector('[data-view="npc"]').title = 'Этот просмотр посвящён одной модели';
+document.querySelectorAll('[data-motion]').forEach((button) => {
+  button.disabled = true; button.title = 'Анимация новой модели ещё не настроена';
+});
 const casual = new THREE.Group(); const uniform = new THREE.Group();
 animated.add(casual, uniform);
 ellipsoid(animated, 0, 1.79, 0, 0.19, 0.2, 0.18, colors.skin);
@@ -226,6 +242,7 @@ setOutfit(true);
 
 // Самостоятельный образ Маруси в той же палитре и пропорциях.
 const marusya = new THREE.Group(); marusya.position.set(-2.4, 0, 1.4); scene.add(marusya);
+marusya.visible = false;
 const npcBody = new THREE.Group(); marusya.add(npcBody);
 ellipsoid(npcBody, 0, 1.79, 0, 0.19, 0.2, 0.18, colors.skin);
 profile(npcBody, torsoProfile, colors.greenDark, 0, 0.79, 0);
