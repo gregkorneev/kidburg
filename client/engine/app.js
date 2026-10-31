@@ -25,7 +25,7 @@ const MOUSE_SENSITIVITY = 0.0025;
 const MAX_PIXEL_RATIO = 1.5;
 
 /** @param {{container: HTMLElement}} options */
-export function createClient({ container }) {
+export function createClient({ container, networkOnly = false }) {
   const emitter = createEmitter();
   const http = createHttp();
   const session = createSession();
@@ -145,6 +145,11 @@ export function createClient({ container }) {
 
   function start() {
     if (runtime || stopped) return;
+    if (networkOnly) {
+      runtime = { dispose() {} };
+      void restoreSession();
+      return;
+    }
     const win = window;
 
     let renderer;
