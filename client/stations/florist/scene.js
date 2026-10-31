@@ -7,11 +7,12 @@ import { stdMat } from '../../engine/art/materials.js';
 import { QUALITY_LABELS, readQuality, saveQuality } from '../../engine/art/quality.js';
 import { updateWind } from '../../engine/art/wind.js';
 import { buildFloristLayout } from './layout.js';
-import { createFlower, disposeFlower, createWrapping, disposeWrapping } from './flowers.js';
+import { bouquetStemTransform, createFlower, disposeFlower, createWrapping, disposeWrapping } from './flowers.js';
 import { FLOWERS, ORDER } from './state.js';
 import { characterYawForPlayer } from './orientation.js';
 import { targetsForState } from './targets.js';
 import { FLORIST_PLAN } from './layout-plan.js';
+import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
 
 const INTERACTION_RADIUS = 1.72;
 const MOUSE_SENSITIVITY = 0.0024;
@@ -102,6 +103,10 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
   let lastPrompt = '';
   let lastActionTime = 0;
   const focus = new THREE.Vector3();
+  const desiredCamera = new THREE.Vector3();
+  const cameraRay = new THREE.Vector3();
+  const standardCameraDistance = Math.hypot(5.4, 1.45);
+  let cameraArmDistance = standardCameraDistance;
 
   function clearHeldFlower() {
     if (!heldModel) return;
@@ -147,10 +152,6 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
       clearBouquetFlowers();
       next.stems.forEach((stem, index) => {
         const flower = createFlower(stem.type, { id: stem.id });
-        const angle = index * (Math.PI * 2 / Math.max(1, next.stems.length)) + 0.3;
-        const radius = next.stems.length === 1 ? 0 : 0.24 + (index % 2) * 0.1;
-        flower.position.set(Math.cos(angle) * radius, (index % 3) * 0.035, Math.sin(angle) * radius * 0.78);
-        flower.rotation.set(0.08 * ((index % 3) - 1), angle * 0.25, 0.10 * ((index % 2) ? 1 : -1));
         bouquet.add(flower);
         bouquetModels.push(flower);
       });
@@ -158,6 +159,12 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
     }
 
     const packed = next.wrapped;
+    bouquetModels.forEach((flower, index) => {
+      const transform = bouquetStemTransform(index, next.stems.length, packed);
+      flower.position.set(...transform.position);
+      flower.rotation.set(...transform.rotation);
+      flower.scale.setScalar(transform.scale);
+    });
     const wrapKey = packed ? `${next.ribbon ?? 'pink'}` : '';
     if (wrapKey !== renderedWrapKey) {
       clearWrapping();
@@ -266,13 +273,18 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
     avatar.rotation.y = characterYawForPlayer(player.yaw);
     const forwardX = -Math.sin(player.yaw);
     const forwardZ = -Math.cos(player.yaw);
-    const cameraDistance = 4.8;
-    camera.position.set(
-      player.x - forwardX * cameraDistance,
+    focus.set(player.x + forwardX * 0.6, player.y + 1.2 + player.pitch * 1.4, player.z + forwardZ * 0.6);
+    desiredCamera.set(
+      player.x - forwardX * 4.8,
       player.y + 2.65 + player.pitch * 1.2,
-      player.z - forwardZ * cameraDistance,
+      player.z - forwardZ * 4.8,
     );
-    camera.lookAt(player.x + forwardX * 0.6, player.y + 1.2 + player.pitch * 1.4, player.z + forwardZ * 0.6);
+    const targetArmDistance = safeCameraDistance(focus, desiredCamera, layout.cameraBlockers, { radius: 0.2, clearance: 0.1 });
+    cameraArmDistance = approachCameraDistance(cameraArmDistance, targetArmDistance, dt);
+    cameraRay.subVectors(desiredCamera, focus);
+    const desiredLength = cameraRay.length();
+    camera.position.copy(focus).addScaledVector(cameraRay, desiredLength > 0 ? cameraArmDistance / desiredLength : 0);
+    camera.lookAt(focus);
 
     const elapsed = (now - started) / 1000;
     animateCharacter(avatar, dt, elapsed, { speed: player.moving ? (player.running ? 2 : 1) : 0 });

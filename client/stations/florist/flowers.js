@@ -11,7 +11,7 @@ const palette = Object.freeze({
   greenery: { petal: '#8dbd68', light: '#a6cf76', shade: '#4d8c5b', center: '#39764f', stem: '#3f7950', leaf: ['#6ca85d', '#8fc16c', '#477f54'] },
 });
 
-const ribbonColors = Object.freeze({ pink: '#e88eab', yellow: '#efc34c', blue: '#69a8c1' });
+const ribbonColors = Object.freeze({ pink: '#f05f91', yellow: '#f0b72d', blue: '#35a6ce' });
 const leafGeometry = new THREE.Shape([
   new THREE.Vector2(0, 0),
   new THREE.Vector2(-0.09, 0.14),
@@ -180,60 +180,173 @@ export function disposeFlower(flower) {
   geometries.clear();
 }
 
+export function bouquetStemTransform(index, count, packed = false) {
+  const angle = index * (Math.PI * 2 / Math.max(1, count)) + 0.3;
+  if (!packed) {
+    const radius = count === 1 ? 0 : 0.24 + (index % 2) * 0.1;
+    return {
+      position: [Math.cos(angle) * radius, (index % 3) * 0.035, Math.sin(angle) * radius * 0.78],
+      rotation: [0.08 * ((index % 3) - 1), angle * 0.25, 0.10 * (index % 2 ? 1 : -1)],
+      scale: 1,
+    };
+  }
+
+  // Стебли сходятся в небольшой пучок, а верхушки мягко расходятся наружу.
+  const radius = 0.075 + (index % 2) * 0.018;
+  return {
+    position: [Math.cos(angle) * radius, 0, Math.sin(angle) * radius * 0.82],
+    rotation: [Math.sin(angle) * 0.17, angle * 0.25, -Math.cos(angle) * 0.17],
+    scale: 1,
+  };
+}
+
+function makePaperFunnelGeometry() {
+  const geometry = new THREE.BufferGeometry();
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const rows = 7;
+  const columns = 13;
+  const sheets = [
+    { start: -Math.PI / 2, sweep: 2.48, top: 0.76, color: new THREE.Color('#fff1dc') },
+    { start: Math.PI / 6, sweep: 2.48, top: 0.81, color: new THREE.Color('#f8dfd8') },
+    { start: 5 * Math.PI / 6, sweep: 2.48, top: 0.78, color: new THREE.Color('#fff7e9') },
+  ];
+  let vertex = 0;
+
+  for (const [sheetIndex, sheet] of sheets.entries()) {
+    const phase = sheetIndex * 1.7;
+    for (let row = 0; row < rows; row++) {
+      const t = row / (rows - 1);
+      for (let column = 0; column < columns; column++) {
+        const u = column / (columns - 1);
+        const angle = sheet.start + u * sheet.sweep;
+        const radius = THREE.MathUtils.lerp(0.145, sheet.top, t)
+          + Math.sin(angle * 2.2 + phase) * 0.025 * t;
+        const topCurl = Math.pow(t, 4) * Math.sin(angle * 2.5 + phase) * 0.045;
+        const sideFold = Math.sin(u * Math.PI) * Math.sin(t * Math.PI) * 0.022;
+        positions.push(
+          Math.sin(angle) * (radius + sideFold),
+          0.035 + t * 0.93 + topCurl + sheetIndex * 0.002,
+          Math.cos(angle) * (radius + sideFold),
+        );
+        const shade = 0.91 + t * 0.11 + Math.sin(u * Math.PI * 2 + phase) * 0.025;
+        colors.push(sheet.color.r * shade, sheet.color.g * shade, sheet.color.b * shade);
+        if (row < rows - 1 && column < columns - 1) {
+          const a = vertex + row * columns + column;
+          const b = a + 1;
+          const c = a + columns;
+          const d = c + 1;
+          indices.push(a, b, c, b, d, c);
+        }
+      }
+    }
+    vertex += rows * columns;
+  }
+
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function makeRibbonLoopGeometry(side) {
+  const geometry = new THREE.BufferGeometry();
+  const centerX = side * 0.2;
+  const vertices = [
+    side * 0.045, 0, 0,
+    side * 0.12, 0.115, 0,
+    side * 0.34, 0.155, 0,
+    side * 0.29, 0, 0,
+    side * 0.34, -0.155, 0,
+    side * 0.12, -0.115, 0,
+    centerX, 0, 0,
+  ];
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex([0, 1, 6, 1, 2, 6, 2, 3, 6, 3, 4, 6, 4, 5, 6, 5, 0, 6]);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function makeRibbonTailGeometry(side) {
+  const geometry = new THREE.BufferGeometry();
+  const rows = [
+    { y: 0.6, x: side * 0.1, halfWidth: 0.09 },
+    { y: 0.43, x: side * 0.14, halfWidth: 0.1 },
+  ];
+  const vertices = [];
+  for (const row of rows) {
+    for (const edge of [-1, 1]) {
+      const x = row.x + edge * row.halfWidth;
+      const radius = 0.145 + ((row.y - 0.035) / 0.93) * 0.78;
+      const z = Math.sqrt(Math.max(0, radius * radius - x * x)) + 0.12;
+      vertices.push(x, row.y, z);
+    }
+  }
+  const tipX = side * 0.19;
+  const tipY = 0.16;
+  const tipRadius = 0.145 + ((tipY - 0.035) / 0.93) * 0.78;
+  const tipZ = Math.sqrt(Math.max(0, tipRadius * tipRadius - tipX * tipX)) + 0.12;
+  vertices.push(tipX, tipY, tipZ);
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4]);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 export function createWrapping(root, ribbon = 'pink') {
   const group = new THREE.Group();
   const geometrySet = new Set();
-  const paper = stdMat('#fff3df', { roughness: 0.9, side: THREE.DoubleSide });
-  const band = stdMat(ribbonColors[ribbon] ?? ribbonColors.pink, { roughness: 0.56 });
-  const darkColor = `#${new THREE.Color(ribbonColors[ribbon] ?? ribbonColors.pink).multiplyScalar(0.78).getHexString()}`;
+  const paper = stdMat('#ffffff', { roughness: 0.9, side: THREE.DoubleSide, vertexColors: true });
+  const band = stdMat(ribbonColors[ribbon] ?? ribbonColors.pink, { roughness: 0.56, side: THREE.DoubleSide });
+  const darkColor = `#${new THREE.Color(ribbonColors[ribbon] ?? ribbonColors.pink).multiplyScalar(0.68).getHexString()}`;
   const darkBand = stdMat(darkColor, { roughness: 0.62 });
-  const cone = new THREE.ConeGeometry(0.5, 0.96, 7, 1, true);
-  cone.rotateY(Math.PI / 7);
-  const coneMesh = new THREE.Mesh(cone, paper);
-  coneMesh.position.set(0, 0.47, 0);
-  coneMesh.castShadow = true;
-  geometrySet.add(cone);
-  group.add(coneMesh);
-  for (let i = 0; i < 4; i++) {
-    const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.39, 0.83), paper);
-    panel.position.set(Math.sin(angle) * 0.2, 0.47, Math.cos(angle) * 0.2);
-    panel.rotation.set(-0.14, angle, (i % 2 ? 1 : -1) * 0.05);
-    panel.scale.set(0.85, 1, 1);
-    panel.castShadow = true;
-    geometrySet.add(panel.geometry);
-    group.add(panel);
-  }
-  const bandMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.4, 0.095, 9), band);
-  bandMesh.position.set(0, 0.51, 0);
-  bandMesh.scale.z = 0.78;
+  const paperGeometry = makePaperFunnelGeometry();
+  const paperMesh = new THREE.Mesh(paperGeometry, paper);
+  paperMesh.name = 'three-overlapping-paper-sheets';
+  paperMesh.castShadow = true;
+  paperMesh.receiveShadow = true;
+  geometrySet.add(paperGeometry);
+  group.add(paperMesh);
+
+  const bandMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.51, 0.46, 0.105, 12), band);
+  bandMesh.name = 'bouquet-ribbon-band';
+  bandMesh.position.set(0, 0.43, 0);
+  bandMesh.scale.z = 0.91;
   bandMesh.castShadow = true;
   geometrySet.add(bandMesh.geometry);
   group.add(bandMesh);
   for (const side of [-1, 1]) {
-    const loop = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.04, 6, 12), band);
-    loop.position.set(side * 0.15, 0.75, 0.02);
-    loop.rotation.set(0, side * 0.15, side * 0.45);
-    loop.scale.set(1.18, 0.76, 0.7);
+    const loop = new THREE.Mesh(makeRibbonLoopGeometry(side), band);
+    loop.name = 'ribbon-bow-loop';
+    loop.position.set(0, 0.62, 0.61);
+    loop.rotation.set(0, side * 0.1, side * 0.1);
     loop.castShadow = true;
     geometrySet.add(loop.geometry);
     group.add(loop);
   }
   const knot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), darkBand);
-  knot.position.set(0, 0.72, 0.08);
-  knot.scale.set(0.09, 0.095, 0.07);
+  knot.name = 'ribbon-bow-knot';
+  knot.position.set(0, 0.61, 0.64);
+  knot.scale.set(0.11, 0.105, 0.08);
   geometrySet.add(knot.geometry);
   group.add(knot);
   for (const side of [-1, 1]) {
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.36, 4), band);
-    tail.position.set(side * 0.14, 0.43, 0.1);
-    tail.rotation.set(side * -0.16, 0, side * 0.22);
-    tail.scale.z = 0.48;
+    const tail = new THREE.Mesh(makeRibbonTailGeometry(side), band);
+    tail.name = 'ribbon-tail';
+    tail.castShadow = true;
+    tail.receiveShadow = true;
     geometrySet.add(tail.geometry);
     group.add(tail);
   }
   root.add(group);
   group.userData.ownedGeometries = geometrySet;
+  group.userData.paperMesh = paperMesh;
+  group.userData.paperSheetCount = 3;
   return group;
 }
 

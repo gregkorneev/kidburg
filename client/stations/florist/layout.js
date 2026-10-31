@@ -74,7 +74,7 @@ function mergeStaticMeshes(root, geometrySet) {
   }
 }
 
-function addDesk(furniture, colliders, { x, z, width, depth }, { label, accent, work = false } = {}) {
+function addDesk(furniture, colliders, cameraBlockers, { x, z, width, depth }, { label, accent, work = false } = {}) {
   furniture.box(width, 0.88, depth - 0.12, x, 0.53, z, PALETTE.woodDark, { r: 0.075 });
   furniture.box(width + 0.16, 0.18, depth + 0.08, x, 1.04, z, PALETTE.wood, { r: 0.07 });
   furniture.box(width - 0.28, 0.07, 0.06, x, 0.59, z + depth / 2 - 0.06, PALETTE.trim, { r: 0.025 });
@@ -86,11 +86,13 @@ function addDesk(furniture, colliders, { x, z, width, depth }, { label, accent, 
   if (work) {
     furniture.box(width - 0.55, 0.045, 0.12, x, 0.64, z + depth / 2 - 0.02, '#db9376', { r: 0.02 });
   }
-  colliders.push({
+  const bounds = {
     minX: x - width / 2, maxX: x + width / 2,
     minY: 0, maxY: 1.18,
     minZ: z - depth / 2, maxZ: z + depth / 2,
-  });
+  };
+  colliders.push(bounds);
+  cameraBlockers.push(bounds);
   if (label) addLabel(furniture.root, furniture.labels, label, [x, 1.9, z - depth * 0.55], 0.72, accent);
 }
 
@@ -128,6 +130,7 @@ export function buildFloristLayout() {
   const labels = [];
   const displayFlowers = [];
   const colliders = [];
+  const cameraBlockers = [];
   const furniture = createPrefabKit({ seed: 71, tint: 0.028 });
   furniture.root = root;
   furniture.labels = labels;
@@ -165,7 +168,7 @@ export function buildFloristLayout() {
   for (const [key, label, accent] of [
     ['mentor', 'ЛАВКА ЛИЛИИ', '#78a475'], ['handoff', 'ВЫДАЧА ЗАКАЗОВ', PALETTE.orange],
     ['workbench', 'РАБОЧИЙ СТОЛ', '#dca46a'], ['wrapping', 'УПАКОВКА', '#e88eab'],
-  ]) addDesk(furniture, colliders, FLORIST_PLAN.desks[key], { label, accent, work: key === 'workbench' });
+  ]) addDesk(furniture, colliders, cameraBlockers, FLORIST_PLAN.desks[key], { label, accent, work: key === 'workbench' });
 
   for (const [y, reelColors] of [
     [1.15, ['#f4e3d5', '#e7bfd0', '#b8d2df']],
@@ -179,6 +182,7 @@ export function buildFloristLayout() {
       furniture.box(0.42, 0.035, 0.04, 15.3 + i * 0.86, y + 0.5, 14.18, FLORA_COLORS.cream, { r: 0.015, tinted: false });
     }
   }
+  cameraBlockers.push({ minX: 14.95, maxX: 17.45, minY: 1.05, maxY: 3.5, minZ: 13.92, maxZ: 14.48 });
   addLabel(root, labels, 'БУМАГА · ЛЕНТЫ · ДЕКОР', [16.2, 4.08, 14.0], 0.7, '#75a8bd');
 
   // Витрины для четырёх видов цветов вдоль боковых стен.
@@ -247,6 +251,12 @@ export function buildFloristLayout() {
     { minX: ROOM.width - 0.3, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: ROOM.depth },
     { minX: 0, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: ROOM.depth - 0.3, maxZ: ROOM.depth },
   );
+  // Боковые и задняя стены существуют физически; фасад открыт и остаётся вне camera blockers.
+  cameraBlockers.push(
+    { minX: 0, maxX: 0.3, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: ROOM.depth },
+    { minX: ROOM.width - 0.3, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: ROOM.depth },
+    { minX: 0, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: ROOM.depth - 0.3, maxZ: ROOM.depth },
+  );
   mergeStaticMeshes(root, geometrySet);
 
   return {
@@ -255,6 +265,7 @@ export function buildFloristLayout() {
     plan: FLORIST_PLAN,
     buckets,
     colliders,
+    cameraBlockers,
     stations: FLORIST_PLAN.stations,
     bouquetPosition: new THREE.Vector3(FLORIST_PLAN.bouquet.x, FLORIST_PLAN.bouquet.y, FLORIST_PLAN.bouquet.z),
     wrappedBouquetPositions: FLORIST_PLAN.wrappedBouquet,

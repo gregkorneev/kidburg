@@ -37,6 +37,16 @@ test('комната расширена, игровые зоны входят в
   layout.dispose();
 });
 
+test('блокеры камеры учитывают стены комнаты 20×15 и крупные столы, фасад остаётся открытым', () => {
+  const layout = buildFloristLayout();
+  assert.ok(layout.cameraBlockers.some((box) => box.minX === 0 && box.maxX === 0.3 && box.maxZ === ROOM.depth));
+  assert.ok(layout.cameraBlockers.some((box) => box.minX === ROOM.width - 0.3 && box.maxX === ROOM.width));
+  assert.ok(layout.cameraBlockers.some((box) => box.maxZ === ROOM.depth && box.minZ === ROOM.depth - 0.3));
+  assert.ok(layout.cameraBlockers.some((box) => box.maxX === FLORIST_PLAN.desks.workbench.x + FLORIST_PLAN.desks.workbench.width / 2));
+  assert.ok(!layout.cameraBlockers.some((box) => box.minZ === 0 && box.maxZ === 0.3));
+  layout.dispose();
+});
+
 test('при ошибочном букете упаковка скрыта, остаётся исправление у стола', () => {
   const layout = buildFloristLayout();
   const invalid = { ...createInitialState(), stage: 'wrapping', stems: [
