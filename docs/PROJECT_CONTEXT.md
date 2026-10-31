@@ -191,7 +191,9 @@ HUD показывает: «Чанки: X из 144 (Y%), лимит 14». При
 | `task_state` | `taskId, state` | Состояние задачи |
 | `error` | `code, message` | `bad_msg`, `too_far`, `rate_limit`, `unauth` |
 
-Лимиты: `pos` до 30 в секунду, `chat` до 5 в секунду, `npc_talk` до 1 в секунду на пользователя.
+Лимиты: `pos` до 30 в секунду, `chat` до 5 в секунду, `npc_talk` до 1 в секунду на пользователя; `task_answer` — до 20 в секунду (серия попаданий по мишени).
+
+**`task_answer` / `task_state` (станция «Пожарный», `taskId: 'firefighter_station_v1'`).** Клиент отправляет только намерение: `payload: {action}`, где `action` — `start`, `accept_briefing`, `equip`, `fire_hit`, `pickup_mannequin`, `deliver_mannequin`, `report` или `resume` (только прочитать состояние). Остальные поля payload сервер не читает: владелец прогресса — `userId` соединения, позиция и взгляд (`ry` из принятого `pos`) — серверные, `state`/`done`/`progress` из клиента не принимаются. Ответ `task_state.state` — `{stage, equipped, fireHits, carryingMannequin, mannequinDelivered, done, feedback, changed}`; `changed: true` только если переход записан в SQLite. При сбое базы приходит `{error: 'storage', feedback}` (при сбое записи — с прежним состоянием), прогресс не меняется. `task_state` присылается и сразу после `welcome` (восстановление после входа и переподключения). Мировые координаты точек станции и преобразование из локальных координат preview — `client/stations/firefighter/layout.js`.
 
 ### 4.4. HTTP API
 
@@ -252,7 +254,7 @@ export async function handle(userId, taskId, payload) {}
 export function registerTasks(app, ctx) {}
 ```
 
-Результат сервер отправляет клиенту как `task_state` и сохраняет в `task_progress`.
+Результат сервер отправляет клиенту как `task_state` и сохраняет в `task_progress`. Обработчики лежат в `app.taskHandlers` (`taskIds`, `has`, `getState(userId, taskId)`, `handle(userId, taskId, payload, {position, yaw})`); `server/net/game.js` вызывает их синхронно, подставляя `userId` и позицию соединения.
 
 ### 4.9. Интерфейс клиента для UI (`api`, делает роль 1, использует роль 4)
 

@@ -1,5 +1,5 @@
 // Игровой WebSocket: проверка тикета до upgrade, hello, позиции, рассылка соседям.
-// В S1 обрабатываются hello и pos; chat, npc_talk и task_answer приходят в S3.
+// Обрабатываются hello, pos и task_answer; chat и npc_talk приходят в S3.
 
 import { WebSocketServer, WebSocket } from 'ws';
 import {
@@ -24,6 +24,11 @@ export const CLOSE = Object.freeze({ REPLACED: 4000, UNAUTH: 4001, BAD_PROTO: 40
 
 const MAX_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED = 512 * 1024;
+// task_answer: серия попаданий по мишени идёт примерно 8 раз в секунду.
+const TASK_PER_SEC = 20;
+/** Ответ обработчика {state, done, feedback, changed, error?} -> плоское поле `state` сообщения task_state. */
+const taskWire = (r) => ({ ...r.state, done: r.done, feedback: r.feedback, changed: r.changed, ...(r.error ? { error: r.error } : {}) });
+const TASK_UNAVAILABLE = 'Сервер сейчас не может прочитать прогресс. Попробуйте позже.';
 // Границы мира чуть внутри, чтобы чанк всегда лежал в 0..11.
 const EDGE = 0.001;
 // Расстояние проверяется за время между двумя pos: не меньше одного кадра лимита
@@ -70,6 +75,9 @@ function reject(socket, status, text) {
  * @param {ReturnType<import('../db/index.js').openDb>} deps.db
  * @param {ReturnType<import('./tickets.js').createTicketStore>} deps.tickets
  * @param {ReturnType<import('./world.js').loadWorld>} [deps.world] без мира чанки не передаются
+ * @param {{taskIds: readonly string[], has(id: string): boolean, getState(userId: number, id: string): object,
+ *   handle(userId: number, id: string, payload: unknown, context: object): object, forget?(userId: number): void}} [deps.tasks]
+ *   задания; прогресс принадлежит userId соединения, позиция берётся у сервера
  */
 export function createGame({
   app,
@@ -77,6 +85,7 @@ export function createGame({
   tickets,
   now = Date.now,
   world = null,
+  tasks = null,
   tickHz = TICK_HZ,
   pingMs = 10_000,
   helloTimeoutMs = 5_000,
@@ -111,6 +120,7 @@ export function createGame({
 
   function removePlayer(p) {
     if (p.dirty) savePlayers([p]);
+    tasks?.forget?.(p.id);
     players.delete(p.id);
     for (const other of players.values()) {
       if (other.known.delete(p.id)) send(other.conn, { t: S2C.PLAYER_LEAVE, id: p.id });
@@ -172,6 +182,7 @@ export function createGame({
       dirty: false,
       known: new Set(),
       posLimit: createLimiter(LIMITS.POS_PER_SEC),
+      taskLimit: createLimiter(TASK_PER_SEC),
       mirror: world && createChunkMirror(world, log),
     };
     conn.player = player;
@@ -187,6 +198,38 @@ export function createGame({
       consts: CLIENT_CONSTS,
     });
     streamChunks(player);
+    sendTaskStates(player);
+  }
+
+  /** Сохранённое состояние заданий: игрок видит прогресс после входа, перезагрузки и переподключения. */
+  function sendTaskStates(player) {
+    for (const taskId of tasks?.taskIds ?? []) {
+      try {
+        send(player.conn, { t: S2C.TASK_STATE, taskId, state: taskWire(tasks.getState(player.id, taskId)) });
+      } catch (err) {
+        log.error({ err, userId: player.id, taskId }, 'не удалось прочитать прогресс задания');
+        send(player.conn, { t: S2C.TASK_STATE, taskId, state: { error: 'storage', feedback: TASK_UNAVAILABLE } });
+      }
+    }
+  }
+
+  function handleTask(player, msg) {
+    const t = now();
+    if (!player.taskLimit.hit(t)) {
+      if (player.taskLimit.shouldNotify(t)) sendError(player.conn, ERROR_CODES.RATE_LIMIT, 'Слишком много task_answer');
+      return;
+    }
+    if (!tasks?.has(msg.taskId)) return sendError(player.conn, ERROR_CODES.BAD_MSG, 'Неизвестное задание');
+    // Владелец — игрок соединения, позиция и взгляд — последние принятые сервером. Из payload берёт только action.
+    const context = { position: { x: player.x, y: player.y, z: player.z }, yaw: player.ry };
+    let state;
+    try {
+      state = taskWire(tasks.handle(player.id, msg.taskId, msg.payload, context));
+    } catch (err) {
+      log.error({ err, userId: player.id, taskId: msg.taskId }, 'ошибка обработчика задания');
+      state = { error: 'storage', feedback: TASK_UNAVAILABLE };
+    }
+    send(player.conn, { t: S2C.TASK_STATE, taskId: msg.taskId, state });
   }
 
   function handlePos(player, msg) {
@@ -228,7 +271,8 @@ export function createGame({
     }
     if (msg.t === C2S.POS) return handlePos(conn.player, msg);
     if (msg.t === C2S.HELLO) return sendError(conn, ERROR_CODES.BAD_MSG, 'hello уже было');
-    // chat, npc_talk, task_answer: мосты появятся в S3.
+    if (msg.t === C2S.TASK_ANSWER) return handleTask(conn.player, msg);
+    // chat, npc_talk: мосты появятся в S3.
   }
 
   function onConnection(ws, user) {

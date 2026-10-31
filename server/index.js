@@ -38,10 +38,13 @@ export async function buildApp(overrides = {}) {
   }
 
   registerAuthRoutes(app, { db, tickets, now: config.now });
+  // Задания до игры: createGame берёт готовые обработчики и передаёт им userId и позицию соединения.
+  registerTasks(app, ctx);
   const game = createGame({
     app,
     db,
     tickets,
+    tasks: app.taskHandlers,
     now: config.now,
     world,
     tickHz: config.tickHz,
@@ -54,7 +57,6 @@ export async function buildApp(overrides = {}) {
   app.addHook('onClose', async () => db.close());
 
   registerAgents(app, ctx);
-  registerTasks(app, ctx);
   return app;
 }
 
