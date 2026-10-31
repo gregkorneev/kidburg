@@ -8,9 +8,12 @@ import { WebSocket } from 'ws';
 import { openDb } from '../server/db/index.js';
 import { buildApp } from '../server/index.js';
 import { decode, encode } from '../shared/protocol.js';
+import { makeFixtures } from '../tools/fixtures/make-fixtures.mjs';
 
 export async function makeApp(overrides = {}) {
-  return buildApp({ dbPath: ':memory:', logLevel: 'silent', ...overrides });
+  // Без worldDir чанки не передаются: тесты не зависят от локальной папки generated/.
+  const worldDir = path.join(tmpdir(), 'city-no-world');
+  return buildApp({ dbPath: ':memory:', logLevel: 'silent', worldDir, ...overrides });
 }
 
 /** Временный файл базы: { dbPath, cleanup }. */
@@ -120,4 +123,11 @@ export async function joinGame(app, port, name) {
   client.send({ t: 'hello', ticket: 'x', proto: 1 });
   const welcome = await client.nextOfType('welcome');
   return { client, welcome, user, token };
+}
+
+/** Генерирует фикстуры мира во временную папку: { worldDir, cleanup }. */
+export function tempWorld() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'city-world-'));
+  makeFixtures(dir);
+  return { worldDir: dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }

@@ -9,6 +9,7 @@ import { DEFAULT_DB_FILE, openDb } from './db/index.js';
 import { registerAuthRoutes } from './net/auth.js';
 import { createGame } from './net/game.js';
 import { createTicketStore } from './net/tickets.js';
+import { loadWorld } from './net/world.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -17,6 +18,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   port: 3000,
   distDir: path.join(ROOT, 'dist'),
   dbPath: DEFAULT_DB_FILE,
+  worldDir: path.join(ROOT, 'generated'),
   now: Date.now,
 });
 
@@ -25,8 +27,9 @@ export async function buildApp(overrides = {}) {
   const config = { ...DEFAULT_CONFIG, ...overrides };
   const app = Fastify({ logger: { level: config.logLevel ?? process.env.LOG_LEVEL ?? 'info' } });
   const db = openDb(config.dbPath);
+  const world = loadWorld(config.worldDir, app.log);
   const tickets = createTicketStore({ now: config.now });
-  const ctx = { db, config, log: app.log };
+  const ctx = { db, world, config, log: app.log };
 
   app.get('/health', async () => ({ ok: true }));
 
@@ -40,6 +43,7 @@ export async function buildApp(overrides = {}) {
     db,
     tickets,
     now: config.now,
+    world,
     tickHz: config.tickHz,
     pingMs: config.pingMs,
     helloTimeoutMs: config.helloTimeoutMs,

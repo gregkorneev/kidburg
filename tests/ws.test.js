@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { SPAWN, MAX_SPEED, SPEED_TOLERANCE } from '../shared/constants.js';
 import { CLOSE } from '../server/net/game.js';
-import { TestClient, getTicket, joinGame, listen, readPlayerState, register, seedPlayerState, tempDb } from './helpers.js';
+import { TestClient, getTicket, joinGame, listen, readPlayerState, register, seedPlayerState, tempDb, tempWorld } from './helpers.js';
 
 const pos = (x, z, seq = 1) => ({ t: 'pos', x, y: 0, z, ry: 0, anim: 1, seq });
 const isPlayers = (m) => m.t === 'players';
@@ -248,5 +248,101 @@ test('остановка сервера сохраняет позиции под
     assert.equal(saved.z, SPAWN.z);
   } finally {
     cleanup();
+  }
+});
+
+const CHUNK_TYPES = new Set(['chunk_unload', 'chunk_load', 'cache_stats']);
+const isChunkMsg = (m) => CHUNK_TYPES.has(m.t);
+
+/** Все сообщения чанков до очередного cache_stats включительно. */
+async function nextChunkBatch(client) {
+  const batch = [];
+  for (;;) {
+    const m = await client.next(isChunkMsg);
+    batch.push(m);
+    if (m.t === 'cache_stats') return batch;
+  }
+}
+
+test('чанки: после welcome идут chunk_load и cache_stats в пределах лимитов', async () => {
+  const { worldDir, cleanup } = tempWorld();
+  const { app, port } = await listen({ worldDir });
+  try {
+    const { client } = await joinGame(app, port, 'Аня');
+    const batch = await nextChunkBatch(client);
+    const stats = batch.at(-1);
+    const loads = batch.filter((m) => m.t === 'chunk_load');
+    assert.equal(batch.filter((m) => m.t === 'chunk_unload').length, 0);
+    assert.equal(loads.length, stats.loaded);
+    assert.ok(loads.length >= 9 && stats.loaded <= stats.max);
+    assert.ok(stats.bytes <= stats.bytesMax);
+    assert.equal(stats.worldTotal, 144);
+    assert.ok(loads.every((m) => m.data instanceof Uint8Array && m.data.length > 0));
+    const sum = loads.reduce((acc, m) => acc + m.data.length, 0);
+    assert.equal(sum, stats.bytes, 'байты в cache_stats совпадают с отправленными');
+  } finally {
+    await app.close();
+    cleanup();
+  }
+});
+
+test('чанки: переход, после которого набор не меняется, ничего не отправляет', async () => {
+  const { worldDir, cleanup } = tempWorld();
+  const { dbPath, cleanup: cleanupDb } = tempDb();
+  const { app, port } = await listen({ worldDir, dbPath });
+  try {
+    await register(app, 'Тишина');
+    seedPlayerState(dbPath, 'Тишина', { x: 7 * 64 - 0.2, y: 0, z: 6.5 * 64 }); // граница чанков 6 и 7
+    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { name: 'Тишина', password: 'secret' } });
+    const client = await TestClient.connect(port, await getTicket(app, login.json().token));
+    client.send({ t: 'hello', ticket: 'x', proto: 1 });
+    await client.nextOfType('welcome');
+    await nextChunkBatch(client);
+    client.send(pos(7 * 64 + 0.2, 6.5 * 64, 1)); // чанк сменился, а нужный набор тот же
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(client.inbox.filter(isChunkMsg).length, 0);
+  } finally {
+    await app.close();
+    cleanup();
+    cleanupDb();
+  }
+});
+
+test('чанки: при пересечении границы chunk_unload раньше chunk_load, cache_stats последний; в том же чанке тишина', async () => {
+  const { worldDir, cleanup } = tempWorld();
+  const { dbPath, cleanup: cleanupDb } = tempDb();
+  const { app, port } = await listen({ worldDir, dbPath });
+  try {
+    await register(app, 'Граница');
+    seedPlayerState(dbPath, 'Граница', { x: 10 * 64 - 0.2, y: 0, z: 6.5 * 64 }); // у края чанков 9 и 10
+    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { name: 'Граница', password: 'secret' } });
+    const client = await TestClient.connect(port, await getTicket(app, login.json().token));
+    client.send({ t: 'hello', ticket: 'x', proto: 1 });
+    await client.nextOfType('welcome');
+    const first = await nextChunkBatch(client);
+    const loadedBefore = new Set(first.filter((m) => m.t === 'chunk_load').map((m) => `${m.cx}_${m.cz}`));
+
+    client.send(pos(10 * 64 + 0.2, 6.5 * 64, 1));
+    const batch = await nextChunkBatch(client);
+    const types = batch.map((m) => m.t);
+    const lastUnload = types.lastIndexOf('chunk_unload');
+    const firstLoad = types.indexOf('chunk_load');
+    assert.ok(lastUnload >= 0 && firstLoad >= 0, JSON.stringify(types));
+    assert.ok(lastUnload < firstLoad, 'выгрузки идут раньше загрузок');
+    assert.equal(types.at(-1), 'cache_stats');
+    for (const m of batch.filter((x) => x.t === 'chunk_load')) {
+      assert.ok(!loadedBefore.has(`${m.cx}_${m.cz}`), `чанк ${m.cx},${m.cz} отправлен повторно`);
+    }
+    const stats = batch.at(-1);
+    assert.ok(stats.loaded <= stats.max && stats.bytes <= stats.bytesMax);
+
+    // Шаг внутри того же чанка: новых сообщений о чанках нет.
+    client.send(pos(10 * 64 + 0.4, 6.5 * 64, 2));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(client.inbox.filter(isChunkMsg).length, 0);
+  } finally {
+    await app.close();
+    cleanup();
+    cleanupDb();
   }
 });

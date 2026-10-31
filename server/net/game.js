@@ -17,6 +17,7 @@ import {
   WORLD_SIZE_Z,
 } from '../../shared/constants.js';
 import { C2S, ERROR_CODES, LIMITS, S2C, decode, encode, validate } from '../../shared/protocol.js';
+import { createChunkMirror } from './chunks.js';
 
 // Коды закрытия WebSocket (диапазон 4000–4999 отдан приложению).
 export const CLOSE = Object.freeze({ REPLACED: 4000, UNAUTH: 4001, BAD_PROTO: 4002 });
@@ -68,12 +69,14 @@ function reject(socket, status, text) {
  * @param {import('fastify').FastifyInstance} deps.app
  * @param {ReturnType<import('../db/index.js').openDb>} deps.db
  * @param {ReturnType<import('./tickets.js').createTicketStore>} deps.tickets
+ * @param {ReturnType<import('./world.js').loadWorld>} [deps.world] без мира чанки не передаются
  */
 export function createGame({
   app,
   db,
   tickets,
   now = Date.now,
+  world = null,
   tickHz = TICK_HZ,
   pingMs = 10_000,
   helloTimeoutMs = 5_000,
@@ -124,6 +127,23 @@ export function createGame({
     if (code !== undefined && conn.ws.readyState <= WebSocket.OPEN) conn.ws.close(code, reason);
   }
 
+  /** Отправляет разницу зеркала: сначала chunk_unload, потом chunk_load, затем cache_stats. */
+  function streamChunks(p) {
+    if (!world) return;
+    const diff = p.mirror.update(p.x, p.z);
+    if (!diff) return;
+    for (const { cx, cz } of diff.unload) send(p.conn, { t: S2C.CHUNK_UNLOAD, cx, cz });
+    for (const { cx, cz } of diff.load) {
+      try {
+        send(p.conn, { t: S2C.CHUNK_LOAD, cx, cz, data: world.readChunk(cx, cz) });
+      } catch (err) {
+        log.error({ err, cx, cz }, 'не удалось прочитать чанк');
+      }
+    }
+    send(p.conn, { t: S2C.CACHE_STATS, ...diff.stats });
+    if (diff.stats.loaded > diff.stats.max) log.error(diff.stats, 'нарушен лимит кеша клиента');
+  }
+
   function handleHello(conn, msg) {
     if (msg.proto !== PROTO_VERSION) {
       sendError(conn, ERROR_CODES.BAD_MSG, `Поддерживается протокол ${PROTO_VERSION}`);
@@ -151,6 +171,7 @@ export function createGame({
       dirty: false,
       known: new Set(),
       posLimit: createLimiter(LIMITS.POS_PER_SEC),
+      mirror: world && createChunkMirror(world, log),
     };
     conn.player = player;
     players.set(player.id, player);
@@ -164,6 +185,7 @@ export function createGame({
       state: { x, y: player.y, z, ry: player.ry, progress },
       consts: CLIENT_CONSTS,
     });
+    streamChunks(player);
   }
 
   function handlePos(player, msg) {
@@ -184,6 +206,7 @@ export function createGame({
     player.cx = chunkIndex(x, WORLD_CHUNKS_X);
     player.cz = chunkIndex(z, WORLD_CHUNKS_Z);
     if (x !== msg.x || z !== msg.z) send(player.conn, { t: S2C.CORRECT, x, y: player.y, z });
+    streamChunks(player);
   }
 
   function onMessage(conn, data, isBinary) {
