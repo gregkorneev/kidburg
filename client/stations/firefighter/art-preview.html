@@ -7,17 +7,18 @@
   <style>
     *{box-sizing:border-box} body{margin:0;background:#d5e9e0;color:#23463b;font:15px system-ui,sans-serif} #view{position:fixed;inset:0} canvas{display:block;width:100%;height:100%}
     .panel{position:fixed;z-index:1;background:#fffaf0eb;box-shadow:0 8px 30px #355b4c24;border:1px solid #fff;border-radius:20px;padding:16px 18px;backdrop-filter:blur(8px)}
-    header{top:18px;left:18px;max-width:290px} body.closeup header{display:none} h1{font-size:19px;margin:2px 0 5px} p{margin:5px 0;line-height:1.4} .small{color:#617b6b;font-size:12px} .actions{bottom:18px;left:18px;max-width:420px} button{border:0;border-radius:12px;background:#e3eee5;color:#285344;padding:10px 13px;font:600 13px system-ui;cursor:pointer;margin:3px} button.active{background:#dc624b;color:white} button:focus-visible{outline:3px solid #edb841} .hint{position:fixed;right:18px;bottom:18px;max-width:210px} @media(max-width:650px){header{top:8px;left:8px;padding:10px;max-width:220px} .actions{left:8px;bottom:8px;padding:9px;max-width:290px} .hint{display:none}}
+    header{top:18px;left:18px;max-width:290px} body.closeup header{display:none} h1{font-size:19px;margin:2px 0 5px} p{margin:5px 0;line-height:1.4} .small{color:#617b6b;font-size:12px} .actions{bottom:18px;left:18px;max-width:420px} button{border:0;border-radius:12px;background:#e3eee5;color:#285344;padding:10px 13px;font:600 13px system-ui;cursor:pointer;margin:3px} button.active{background:#dc624b;color:white} button:focus-visible{outline:3px solid #edb841} .hint{position:fixed;right:18px;bottom:18px;max-width:210px} #toggle-panel{position:fixed;right:8px;top:8px;z-index:3} body.clean .panel{display:none} @media(max-width:650px){header{top:8px;left:8px;padding:10px;max-width:180px} .actions{left:8px;bottom:8px;padding:7px;max-width:280px} .actions button{padding:7px 9px;margin:2px} .hint{display:none}}
   </style>
 </head>
 <body>
   <main id="view" aria-label="Трёхмерная сцена пожарной станции"></main>
+  <button type="button" id="toggle-panel" aria-pressed="false">Скрыть панель</button>
   <header class="panel"><span class="small">ГОРОД ПРОФЕССИЙ · ПРОТОТИП</span><h1>Учебная пожарная часть</h1><p>Новый образ персонажа и оформление сцены.</p></header>
   <div class="panel actions" aria-label="Настройки просмотра">
     <button type="button" id="casual">Повседневная</button><button type="button" id="fire" class="active">Пожарная форма</button>
     <br><button type="button" data-motion="idle" class="active">Ожидание</button><button type="button" data-motion="walk">Ходьба</button><button type="button" data-motion="run">Бег</button><button type="button" data-motion="wave">Приветствие</button><button type="button" data-motion="talk">Разговор</button>
     <br><button type="button" id="compare">Старый образ</button>
-    <br><button type="button" data-view="front">Спереди</button><button type="button" data-view="side">Сбоку</button><button type="button" data-view="back">Сзади</button><button type="button" data-view="face">Лицо</button><button type="button" data-view="scene">Вся сцена</button>
+    <br><button type="button" data-view="front">Спереди</button><button type="button" data-view="side">Сбоку</button><button type="button" data-view="back">Сзади</button><button type="button" data-view="face">Лицо</button><button type="button" data-view="npc">Маруся</button><button type="button" data-view="scene">Вся сцена</button>
   </div>
   <aside class="panel hint small"><span id="stats"></span><br>Мышь: вращение и масштаб колёсиком. Огонь и вода — демонстрационные эффекты.</aside>
   <script type="module" src="./art-preview.js"></script>

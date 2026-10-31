@@ -7,7 +7,8 @@ test('автономный просмотрщик подключает лока�
   const script = await readFile(new URL('./art-preview.js', import.meta.url), 'utf8');
   assert.match(html, /src="\.\/art-preview\.js"/);
   assert.doesNotMatch(html + script, /https?:\/\//i);
-  for (const name of ['front', 'back', 'face', 'scene']) {
+  for (const name of ['front', 'side', 'back', 'face', 'npc', 'scene']) {
     assert.match(html, new RegExp(`data-view="${name}"`));
   }
+  assert.match(html, /id="toggle-panel"/);
 });
