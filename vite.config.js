@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 const page = (name) => fileURLToPath(new URL(`./client/${name}`, import.meta.url));
 
 // Клиент лежит в client/, сборка уходит в dist/ (раздаётся сервером).
-// Страницы: основной клиент, игровой пожарный preview и художественный прототип.
+// Страницы: основной клиент, превью станций и художественный прототип.
 export default defineConfig({
   root: 'client',
   build: {
@@ -13,6 +13,7 @@ export default defineConfig({
     rollupOptions: { input: {
       main: page('index.html'),
       firefighter: page('firefighter-preview.html'),
+      bakery: page('bakery-preview.html'),
       firefighterArtPreview: page('stations/firefighter/art-preview.html'),
     } },
   },
