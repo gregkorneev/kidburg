@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { hashPassword, normalizeName, sha256, verifyPassword, SESSION_TTL_MS } from '../server/net/auth.js';
+import { hashPassword, normalizeName, sha256, verifyPassword, PASSWORD_MAX, SESSION_TTL_MS } from '../server/net/auth.js';
 import { createTicketStore } from '../server/net/tickets.js';
 import { getTicket, makeApp, register } from './helpers.js';
 
@@ -99,6 +99,21 @@ test('вход: верный пароль, неверный пароль, неи
   assert.equal(unknown.statusCode, 401);
   assert.equal(unknown.json().error, 'bad_credentials');
   assert.equal((await post(app, '/api/login', {})).statusCode, 401);
+  await app.close();
+});
+
+test('вход: верный пароль с добавленным суффиксом длиннее лимита отклоняется', async () => {
+  const app = await makeApp();
+  const password = 'p'.repeat(PASSWORD_MAX);
+  await register(app, 'Егор', password);
+  assert.equal((await post(app, '/api/login', { name: 'Егор', password })).statusCode, 200);
+  for (const extra of ['x', 'x'.repeat(500)]) {
+    const res = await post(app, '/api/login', { name: 'Егор', password: password + extra });
+    assert.equal(res.statusCode, 401, `суффикс из ${extra.length} симв.`);
+    assert.equal(res.json().token, undefined);
+  }
+  const long = await post(app, '/api/register', { name: 'Жора', password: password + 'x' });
+  assert.equal(long.statusCode, 400);
   await app.close();
 });
 

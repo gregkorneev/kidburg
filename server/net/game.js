@@ -175,8 +175,8 @@ export function createGame({
     const x = clampX(msg.x);
     const z = clampZ(msg.z);
     const dt = clamp((t - player.lastAt) / 1000, MIN_DT_S, MAX_DT_S);
-    // Скорость считается по горизонтали: падение и подъём по высотам её не нарушают.
-    if (Math.hypot(x - player.x, z - player.z) > MAX_SPEED * SPEED_TOLERANCE * dt) {
+    // Полное расстояние, включая Y (lead-spec, S1, шаг 9).
+    if (Math.hypot(x - player.x, msg.y - player.y, z - player.z) > MAX_SPEED * SPEED_TOLERANCE * dt) {
       send(player.conn, { t: S2C.CORRECT, x: player.x, y: player.y, z: player.z });
       return;
     }

@@ -83,11 +83,12 @@ export function registerAuthRoutes(app, { db, tickets, now = Date.now }) {
   app.post('/api/login', async (req, reply) => {
     const body = req.body ?? {};
     const name = normalizeName(body.name);
-    const password = typeof body.password === 'string' ? body.password : '';
+    // Слишком длинный пароль не обрезается, а отклоняется: иначе подошёл бы верный префикс с любым хвостом.
+    const password = validPassword(body.password) ? body.password : null;
     const found = name ? db.findUserByName(name) : null;
     const { passHash, salt } = found ?? (await decoy());
-    const ok = await verifyPassword(password.slice(0, PASSWORD_MAX), passHash, salt);
-    if (!found || !ok) return fail(reply, 401, 'bad_credentials', 'Неверное имя или пароль');
+    const ok = await verifyPassword(password ?? '', passHash, salt);
+    if (!found || password === null || !ok) return fail(reply, 401, 'bad_credentials', 'Неверное имя или пароль');
     const t = now();
     db.purgeExpiredSessions(t);
     return { token: issueSession(db, found.id, t), user: publicUser(found) };

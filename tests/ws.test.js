@@ -172,6 +172,18 @@ test('превышение скорости даёт correct и возврат �
   await app.close();
 });
 
+test('вертикальный телепорт: расстояние считается с Y, приходит correct', async () => {
+  const { app, port } = await listen();
+  const { client } = await joinGame(app, port, 'Аня');
+  client.send({ ...pos(SPAWN.x, SPAWN.z, 1), y: 100 });
+  const fix = await client.nextOfType('correct');
+  assert.deepEqual([fix.x, fix.y, fix.z], [SPAWN.x, SPAWN.y, SPAWN.z]);
+  client.send({ ...pos(SPAWN.x, SPAWN.z, 2), y: 0.2 });
+  await client.next((m) => isPlayers(m) || m.t === 'correct', 150).catch(() => {});
+  assert.equal(client.inbox.filter((m) => m.t === 'correct').length, 0, 'небольшой подъём допустим');
+  await app.close();
+});
+
 test('лимит pos: 30 в секунду, остальное отбрасывается с rate_limit', async () => {
   const { app, port } = await listen();
   const { client } = await joinGame(app, port, 'Аня');
