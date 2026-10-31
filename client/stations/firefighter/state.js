@@ -47,6 +47,19 @@ export function transitionTask(state, action) {
     return unchanged(state, 'Не удалось распознать действие. Попробуйте ещё раз.');
   }
 
+  // Повтор — единственное действие после завершения: новая смена начинается с инструктажа,
+  // прогресс прошлой (экипировка, окна, манекен) обнуляется. До завершения сбросить нельзя.
+  if (action.type === 'repeat') {
+    if (state.stage === 'completed') {
+      return {
+        state: { ...createInitialState(), stage: 'briefing' },
+        changed: true,
+        feedback: 'Новая учебная смена: Маруся снова проводит инструктаж.',
+      };
+    }
+    return unchanged(state, 'Повторить смену можно только после её завершения.');
+  }
+
   if (state.stage === 'completed') {
     return unchanged(state, 'Эта учебная смена уже завершена.');
   }

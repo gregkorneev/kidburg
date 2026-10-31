@@ -526,3 +526,122 @@ test('handle требует положительный целый userId', () =>
   const { task } = setup();
   for (const id of [0, -1, 1.5, '1', null, undefined]) assert.throws(() => task.handle(id, { action: 'start' }, {}), TypeError);
 });
+
+/** Доводит игрока до завершённой смены. */
+function complete(task, userId, tick) {
+  toFireDrill(task, userId);
+  extinguishAll(task, userId, tick);
+  act(task, userId, 'pickup_mannequin', { position: at(WORLD_POINTS.mannequin) });
+  act(task, userId, 'deliver_mannequin', { position: at(WORLD_POINTS.safe_zone) });
+  return act(task, userId, 'report', { position: at(WORLD_POINTS.npc) });
+}
+
+test('повтор: после завершения смена начинается заново с инструктажа, результат сохраняется в SQLite', () => {
+  const { db, anna, boris, make, task, tick } = setup();
+  assert.equal(complete(task, anna.id, tick).state.stage, 'completed');
+  assert.equal(stored(db, anna.id).done, true);
+
+  const again = act(task, anna.id, 'repeat', { position: at(WORLD_POINTS.npc) });
+  assert.equal(again.changed, true);
+  assert.equal(again.done, false);
+  assert.deepEqual(again.state, {
+    stage: 'briefing',
+    equipped: false,
+    windows: [0, 0, 0, 0],
+    carryingMannequin: false,
+    mannequinDelivered: false,
+  });
+  assert.equal(stored(db, anna.id).state.stage, 'briefing');
+  assert.equal(stored(db, anna.id).done, false);
+  // после перезапуска сервера состояние то же, а новая смена проходится как обычная
+  const restarted = make();
+  assert.equal(restarted.getState(anna.id).state.stage, 'briefing');
+  assert.equal(act(restarted, anna.id, 'accept_briefing', { position: at(WORLD_POINTS.npc) }).state.stage, 'equipping');
+  // чужой прогресс не затронут
+  assert.equal(task.getState(boris.id).state.stage, 'not_started');
+});
+
+test('повтор: сбросить незавершённую смену нельзя ни на одном этапе', () => {
+  const { db, anna, task, tick } = setup();
+  const atNpc = { position: at(WORLD_POINTS.npc) };
+  const check = (stage) => {
+    const before = stored(db, anna.id)?.state ?? null;
+    const r = act(task, anna.id, 'repeat', atNpc);
+    assert.equal(r.changed, false, stage);
+    assert.equal(r.state.stage, stage);
+    assert.match(r.feedback, /только после её завершения/);
+    assert.deepEqual(stored(db, anna.id)?.state ?? null, before, `база не изменилась на ${stage}`);
+  };
+  check('not_started');
+  act(task, anna.id, 'start', atNpc);
+  check('briefing');
+  act(task, anna.id, 'accept_briefing', atNpc);
+  check('equipping');
+  act(task, anna.id, 'equip', { position: at(WORLD_POINTS.locker) });
+  hitWindow(task, anna.id, tick, 0, 5);
+  check('fire_drill');
+  assert.equal(stored(db, anna.id).state.windows[0], 5, 'прогресс окна сохранился');
+  hitWindow(task, anna.id, tick, 0, WINDOW_HIT_LIMIT - 5);
+  extinguishAll(task, anna.id, tick);
+  check('rescue');
+  act(task, anna.id, 'pickup_mannequin', { position: at(WORLD_POINTS.mannequin) });
+  check('rescue');
+  act(task, anna.id, 'deliver_mannequin', { position: at(WORLD_POINTS.safe_zone) });
+  check('debrief');
+});
+
+test('повтор: нужен подход к Марусе, а лишние поля payload и клиентское состояние игнорируются', () => {
+  const { db, anna, task, tick } = setup();
+  complete(task, anna.id, tick);
+  const far = act(task, anna.id, 'repeat', { position: at(WORLD_POINTS.locker) });
+  assert.equal(far.changed, false);
+  assert.equal(far.state.stage, 'completed');
+  assert.equal(stored(db, anna.id).state.stage, 'completed');
+
+  const forged = task.handle(
+    anna.id,
+    { action: 'repeat', state: { stage: 'equipping', equipped: true }, stage: 'fire_drill', windows: [12, 12, 12, 12] },
+    { position: at(WORLD_POINTS.npc) },
+  );
+  assert.equal(forged.state.stage, 'briefing', 'сервер сам решает, куда идти: всегда инструктаж');
+  assert.equal(forged.state.equipped, false);
+  assert.deepEqual(forged.state.windows, [0, 0, 0, 0]);
+});
+
+test('describe: ход задания собран из сохранённого состояния и не зависит от клиента', () => {
+  const { anna, task, tick } = setup();
+  assert.equal(task.agentId, 'marusya');
+  const first = task.describe(anna.id);
+  assert.equal(first.key, 'not_started');
+  assert.match(first.text, /ещё не начата/);
+
+  act(task, anna.id, 'start', { position: at(WORLD_POINTS.npc) });
+  assert.equal(task.describe(anna.id).key, 'briefing');
+  act(task, anna.id, 'accept_briefing', { position: at(WORLD_POINTS.npc) });
+  assert.match(task.describe(anna.id).text, /ещё не надел/);
+  act(task, anna.id, 'equip', { position: at(WORLD_POINTS.locker) });
+  hitWindow(task, anna.id, tick, 0, WINDOW_HIT_LIMIT);
+  hitWindow(task, anna.id, tick, 1, 3);
+  const drill = task.describe(anna.id);
+  assert.equal(drill.key, 'fire_drill');
+  assert.match(drill.text, /экипировку игрок уже надел/);
+  assert.match(drill.text, /окон потушено 1 из 4, ещё 1 в процессе/);
+
+  // Попытка подделать состояние через payload ничего не меняет в описании.
+  task.handle(anna.id, { action: 'resume', state: { stage: 'completed' } }, {});
+  assert.equal(task.describe(anna.id).key, 'fire_drill');
+
+  extinguishAll(task, anna.id, tick);
+  assert.equal(task.describe(anna.id).key, 'rescue');
+  act(task, anna.id, 'pickup_mannequin', { position: at(WORLD_POINTS.mannequin) });
+  assert.match(task.describe(anna.id).text, /манекен поднят/);
+  act(task, anna.id, 'deliver_mannequin', { position: at(WORLD_POINTS.safe_zone) });
+  assert.equal(task.describe(anna.id).key, 'debrief');
+  act(task, anna.id, 'report', { position: at(WORLD_POINTS.npc) });
+  const finished = task.describe(anna.id);
+  assert.equal(finished.key, 'completed');
+  assert.match(finished.text, /полностью завершена/);
+  assert.match(finished.text, /Повторить смену/);
+  assert.match(finished.text, /выполняет только игрок/);
+  assert.ok(finished.text.length <= 900, 'описание помещается в лимит контекста агента');
+});

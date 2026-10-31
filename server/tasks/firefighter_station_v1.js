@@ -31,6 +31,7 @@ const POINT_BY_ACTION = Object.freeze({
   pickup_mannequin: 'mannequin',
   deliver_mannequin: 'safe_zone',
   report: 'npc',
+  repeat: 'npc',
 });
 
 const STAGES = ['not_started', 'briefing', 'equipping', 'fire_drill', 'rescue', 'debrief', 'completed'];
@@ -42,6 +43,19 @@ const RESCUE = stageIndex('rescue');
 const LEGACY_FIRE_HIT_LIMIT = 18;
 
 const STORAGE_ERROR = 'Сервер не смог сохранить прогресс. Действие не засчитано, попробуйте ещё раз.';
+
+/** Кого из NPC и как описывает это задание для разговора (см. describeForAgent). */
+export const FIREFIGHTER_AGENT_ID = 'marusya';
+
+const STAGE_LABELS = Object.freeze({
+  not_started: 'знакомство',
+  briefing: 'инструктаж',
+  equipping: 'экипировка',
+  fire_drill: 'тушение окон',
+  rescue: 'перенос манекена',
+  debrief: 'итог смены',
+  completed: 'смена завершена',
+});
 
 const finite = (v) => Number.isFinite(v);
 
@@ -147,6 +161,40 @@ function isAimedAt(position, yaw, point) {
   return Math.abs(delta) <= AIM_TOLERANCE_RAD;
 }
 
+
+/**
+ * Описание хода тренировки для наставника в разговоре: собирается из сохранённого в SQLite состояния
+ * по перечислениям и числам, строк игрока в нём нет. Модель может предлагать действия, но выполняет их
+ * только игрок через task_answer, поэтому текст прямо говорит, что засчитано, а что нет.
+ */
+export function describeState(state) {
+  const done = state.windows.filter((hits) => hits === WINDOW_HIT_LIMIT).length;
+  const partial = state.windows.filter((hits) => hits > 0 && hits < WINDOW_HIT_LIMIT).length;
+  const gear = state.equipped ? 'экипировку игрок уже надел' : 'экипировку игрок ещё не надел';
+  const windows = `окон потушено ${done} из ${WINDOW_COUNT}${partial ? `, ещё ${partial} в процессе` : ''}`;
+  const mannequin = state.mannequinDelivered
+    ? 'манекен доставлен в безопасную зону'
+    : state.carryingMannequin
+      ? 'манекен поднят и несётся к зелёной отметке'
+      : 'манекен ещё не поднят';
+  const byStage = {
+    not_started: 'Тренировка ещё не начата: игрок только пришёл к тебе. Чтобы начать, он сам нажмёт кнопку «Начать тренировку».',
+    briefing: 'Игрок начал тренировку и сейчас слушает твой инструктаж. Когда ему всё понятно, он сам нажмёт «Понятно, к экипировке».',
+    equipping: `Инструктаж пройден. ${gear[0].toUpperCase()}${gear.slice(1)}: её надевают в шкафу у полигона, не у тебя.`,
+    fire_drill: `Игрок на учебном полигоне: ${gear}, ${windows}. Он тушит окна учебной стены из учебного рукава.`,
+    rescue: `Все окна учебной стены потушены (${done} из ${WINDOW_COUNT}), экипировка надета, ${mannequin}. Осталось отнести манекен к зелёной отметке.`,
+    debrief: 'Манекен доставлен, окна потушены, экипировка надета. Игрок вернулся к тебе за итогом и сам нажмёт «Завершить смену».',
+    completed: 'Учебная смена полностью завершена: экипировка надета, все четыре окна потушены, манекен доставлен, итог подведён. Игрок может узнать больше о профессии или сам нажать «Повторить смену»: тогда начнётся новая смена с инструктажа.',
+  };
+  const text = [
+    `Этап: ${STAGE_LABELS[state.stage]}.`,
+    byStage[state.stage],
+    'Порядок тренировки: инструктаж, экипировка в шкафу, тушение четырёх окон учебной стены, перенос манекена к зелёной отметке, итог у тебя.',
+    'Кнопки и действия в игре выполняет только игрок: ты можешь предложить нажать нужную, но не нажимаешь её сам и не говоришь, что действие засчитано, если этого нет выше. Это учебная игра, а не инструкция для настоящего пожара.',
+  ].join(' ');
+  return { key: state.stage, label: STAGE_LABELS[state.stage], text };
+}
+
 /**
  * @param {object} deps
  * @param {{getTaskProgress: Function, saveTaskProgress: Function}} deps.db
@@ -165,6 +213,12 @@ export function createFirefighterTask({ db, now = Date.now, log = console, point
 
   return {
     taskId: FIREFIGHTER_TASK_ID,
+    agentId: FIREFIGHTER_AGENT_ID,
+
+    /** Описание хода тренировки для разговора с Марусей: {key, label, text} из сохранённого состояния. */
+    describe(userId) {
+      return describeState(load(userId));
+    },
 
     /** Сохранённое состояние (после hello и переподключения). Бросает, если база недоступна. */
     getState(userId) {

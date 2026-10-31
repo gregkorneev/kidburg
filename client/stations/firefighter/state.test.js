@@ -125,3 +125,41 @@ test('сообщения: тихие попадания, окно потушен
   state = hit(state, 3, WINDOW_HIT_LIMIT - 1);
   assert.match(act(state, 'window_hit', { index: 3 }).feedback, /Все окна потушены/);
 });
+
+test('repeat: из completed начинается новая смена с инструктажа, ничего не остаётся от прошлой', () => {
+  let state = extinguishAll(startAndEquip());
+  state = act(state, 'pickup_mannequin').state;
+  state = act(state, 'deliver_mannequin').state;
+  state = act(state, 'report').state;
+  assert.equal(state.stage, 'completed');
+  const again = act(state, 'repeat');
+  assert.equal(again.changed, true);
+  assert.deepEqual(again.state, { ...createInitialState(), stage: 'briefing' });
+  assert.notEqual(again.state.windows, state.windows);
+});
+
+test('repeat: на любом незавершённом этапе ничего не сбрасывает', () => {
+  let state = createInitialState();
+  const stages = [];
+  const check = () => {
+    const r = act(state, 'repeat');
+    assert.equal(r.changed, false, state.stage);
+    assert.equal(r.state, state);
+    stages.push(state.stage);
+  };
+  check();
+  state = act(state, 'start').state;
+  check();
+  state = act(state, 'accept_briefing').state;
+  check();
+  state = act(state, 'equip').state;
+  state = hit(state, 0, 4);
+  check();
+  state = extinguishAll(state);
+  check();
+  state = act(state, 'pickup_mannequin').state;
+  check();
+  state = act(state, 'deliver_mannequin').state;
+  check();
+  assert.deepEqual(stages, ['not_started', 'briefing', 'equipping', 'fire_drill', 'rescue', 'rescue', 'debrief']);
+});
