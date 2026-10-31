@@ -3,12 +3,16 @@
 import { createInitialState, transitionTask } from '../../client/stations/firefighter/state.js';
 
 export const FIREFIGHTER_TASK_ID = 'firefighter_station_v1';
+export const FIRE_HIT_COOLDOWN_MS = 160;
+
+const AIM_TOLERANCE_RADIANS = 0.35;
+const lastFireAtByDb = new WeakMap();
 
 const INTERACTION_BY_ACTION = Object.freeze({
   start: 'npc',
   accept_briefing: 'npc',
   equip: 'locker',
-  fire_hit: 'target',
+  fire_hit: 'hose',
   pickup_mannequin: 'mannequin',
   deliver_mannequin: 'safe_zone',
   report: 'npc',
@@ -30,6 +34,26 @@ function isNear(playerPosition, point) {
       playerPosition.y - point.y,
       playerPosition.z - point.z,
     ) <= point.radius;
+}
+
+function isAimedAt(playerPosition, playerYaw, point) {
+  if (!Number.isFinite(playerYaw) || !point
+    || !Number.isFinite(point.x) || !Number.isFinite(point.z)) return false;
+  const dx = point.x - playerPosition.x;
+  const dz = point.z - playerPosition.z;
+  if (Math.hypot(dx, dz) < 0.25) return false;
+  const targetYaw = Math.atan2(dx, dz);
+  const delta = Math.atan2(Math.sin(targetYaw - playerYaw), Math.cos(targetYaw - playerYaw));
+  return Math.abs(delta) <= AIM_TOLERANCE_RADIANS;
+}
+
+function lastFireByUser(db) {
+  let map = lastFireAtByDb.get(db);
+  if (!map) {
+    map = new Map();
+    lastFireAtByDb.set(db, map);
+  }
+  return map;
 }
 
 function isPersistedState(state) {
@@ -62,6 +86,7 @@ export function handleFirefighterTask({
   taskId = FIREFIGHTER_TASK_ID,
   payload,
   playerPosition,
+  playerYaw,
   interactionPoints,
   now = Date.now,
 }) {
@@ -76,6 +101,7 @@ export function handleFirefighterTask({
   const saved = db.getTaskProgress(userId, FIREFIGHTER_TASK_ID);
   const state = saved && isPersistedState(saved.state) ? saved.state : createInitialState();
   const actionType = payload && typeof payload.action === 'string' ? payload.action : '';
+  if (actionType === 'resume') return result(state, '');
   const pointName = INTERACTION_BY_ACTION[actionType];
   if (!pointName) return result(state, 'Это действие сейчас недоступно.');
 
@@ -84,13 +110,25 @@ export function handleFirefighterTask({
     return result(state, 'Подойдите к нужному объекту, чтобы выполнить действие.');
   }
 
+  const actionAt = now();
+  if (actionType === 'fire_hit') {
+    if (!isAimedAt(playerPosition, playerYaw, interactionPoints?.target)) {
+      return result(state, 'Направьте учебный рукав на мишень.');
+    }
+    const lastFireAt = lastFireByUser(db).get(userId);
+    if (lastFireAt !== undefined && actionAt - lastFireAt < FIRE_HIT_COOLDOWN_MS) {
+      return result(state, 'Подождите мгновение перед следующим попаданием.');
+    }
+  }
+
   // Only the action name is read from payload. Client state/progress/done/position
   // fields are ignored; the transition and done flag are derived on the server.
   const transition = transitionTask(state, { type: actionType });
   if (!transition.changed) return result(state, transition.feedback);
 
   const done = transition.state.stage === 'completed';
-  db.saveTaskProgress(userId, FIREFIGHTER_TASK_ID, { state: transition.state, done }, now());
+  db.saveTaskProgress(userId, FIREFIGHTER_TASK_ID, { state: transition.state, done }, actionAt);
+  if (actionType === 'fire_hit') lastFireByUser(db).set(userId, actionAt);
   return result(transition.state, transition.feedback, true);
 }
 

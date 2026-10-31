@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { openDb } from '../db/index.js';
 import { createInitialState, FIRE_HIT_LIMIT } from '../../client/stations/firefighter/state.js';
 import {
+  FIRE_HIT_COOLDOWN_MS,
   FIREFIGHTER_TASK_ID,
   getFirefighterTaskState,
   handleFirefighterTask,
@@ -12,19 +13,37 @@ const points = Object.freeze({
   npc: { x: 0, y: 0, z: 0, radius: 3 },
   locker: { x: 10, y: 0, z: 0, radius: 3 },
   target: { x: 20, y: 0, z: 0, radius: 3 },
+  hose: { x: 22, y: 0, z: 1, radius: 3 },
   mannequin: { x: 30, y: 0, z: 0, radius: 3 },
   safe_zone: { x: 40, y: 0, z: 0, radius: 3 },
 });
 
 const at = (name) => ({ x: points[name].x, y: points[name].y, z: points[name].z });
-const invoke = (db, userId, action, object = 'npc', extra = {}) => handleFirefighterTask({
-  db,
-  userId,
-  payload: { action, ...extra },
-  playerPosition: at(object),
-  interactionPoints: points,
-  now: () => 1000 + userId,
-});
+const playerAt = (name) => name === 'hose'
+  ? { x: points.hose.x, y: points.hose.y, z: points.hose.z }
+  : at(name);
+const invoke = (db, userId, action, object = 'npc', extra = {}, options = {}) => {
+  const position = options.position ?? playerAt(object);
+  const point = action === 'fire_hit' ? points.target : points[object];
+  const playerYaw = options.playerYaw ?? (point
+    ? Math.atan2(point.x - position.x, point.z - position.z)
+    : 0);
+  return handleFirefighterTask({
+    db,
+    userId,
+    payload: { action, ...extra },
+    playerPosition: position,
+    playerYaw,
+    interactionPoints: points,
+    now: options.now ?? (() => 1000 + userId),
+  });
+};
+
+function prepareFireDrill(db, userId) {
+  invoke(db, userId, 'start');
+  invoke(db, userId, 'accept_briefing');
+  invoke(db, userId, 'equip', 'locker');
+}
 
 function setup() {
   const db = openDb(':memory:');
@@ -87,6 +106,35 @@ test('отказывает без серверной позиции и при у
   }
 });
 
+test('fire_hit требует точного направления и ограничивает частоту зачёта', () => {
+  const { db, userA } = setup();
+  try {
+    prepareFireDrill(db, userA);
+    const aimed = playerAt('hose');
+    const first = invoke(db, userA, 'fire_hit', 'hose', {}, { now: () => 5000 });
+    assert.equal(first.state.fireHits, 1);
+
+    const tooSoon = invoke(db, userA, 'fire_hit', 'hose', {}, { now: () => 5000 + FIRE_HIT_COOLDOWN_MS - 1 });
+    assert.equal(tooSoon.changed, false);
+    assert.equal(tooSoon.state.fireHits, 1);
+
+    const wrongDirection = invoke(db, userA, 'fire_hit', 'hose', {}, {
+      now: () => 5000 + FIRE_HIT_COOLDOWN_MS,
+      position: aimed,
+      playerYaw: 0,
+    });
+    assert.equal(wrongDirection.changed, false);
+    assert.equal(wrongDirection.state.fireHits, 1);
+
+    const ready = invoke(db, userA, 'fire_hit', 'hose', {}, {
+      now: () => 5000 + FIRE_HIT_COOLDOWN_MS,
+    });
+    assert.equal(ready.state.fireHits, 2);
+  } finally {
+    db.close();
+  }
+});
+
 test('игнорирует переданные клиентом state, done и процент выполнения', () => {
   const { db, userA } = setup();
   try {
@@ -109,7 +157,10 @@ test('SQLite восстанавливает прогресс после пере
     invoke(db, userA, 'start');
     invoke(db, userA, 'accept_briefing');
     invoke(db, userA, 'equip', 'locker');
-    for (let hit = 0; hit < 7; hit++) invoke(db, userA, 'fire_hit', 'target');
+    let timestamp = 2000;
+    for (let hit = 0; hit < 7; hit++) {
+      invoke(db, userA, 'fire_hit', 'hose', {}, { now: () => (timestamp += FIRE_HIT_COOLDOWN_MS) });
+    }
 
     const restored = getFirefighterTaskState(db, userA);
     assert.equal(restored.state.stage, 'fire_drill');
@@ -126,7 +177,10 @@ test('полный успех хранится один раз и повторн
     invoke(db, userA, 'start');
     invoke(db, userA, 'accept_briefing');
     invoke(db, userA, 'equip', 'locker');
-    for (let hit = 0; hit < FIRE_HIT_LIMIT; hit++) invoke(db, userA, 'fire_hit', 'target');
+    let timestamp = 2000;
+    for (let hit = 0; hit < FIRE_HIT_LIMIT; hit++) {
+      invoke(db, userA, 'fire_hit', 'hose', {}, { now: () => (timestamp += FIRE_HIT_COOLDOWN_MS) });
+    }
     invoke(db, userA, 'pickup_mannequin', 'mannequin');
     invoke(db, userA, 'deliver_mannequin', 'safe_zone');
     const completed = invoke(db, userA, 'report');
