@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createPerson, setPersonEquipment } from './scene.js';
+
+test('экипировка меняет одежду, сохраняя лицо, волосы и конечности', () => {
+  const person = createPerson({ player: true });
+  const { face, hair, body, torso, casual, uniform, helmet, arms } = person.userData;
+  const shoulders = arms.map((arm) => arm.shoulder);
+  const hands = arms.map((arm) => arm.hand);
+  setPersonEquipment(person, false);
+  const casualMaterial = torso.material;
+  assert.equal(casual.visible, true);
+  assert.equal(uniform.visible, false);
+  assert.ok(hands.every((hand) => hand.visible));
+  setPersonEquipment(person, true);
+  assert.equal(casual.visible, false);
+  assert.equal(uniform.visible, true);
+  assert.equal(helmet.visible, true);
+  assert.notEqual(torso.material, casualMaterial);
+  assert.equal(person.userData.face, face);
+  assert.equal(person.userData.hair, hair);
+  assert.equal(person.userData.body, body);
+  assert.deepEqual(arms.map((arm) => arm.shoulder), shoulders);
+  assert.deepEqual(arms.map((arm) => arm.hand), hands);
+  assert.ok(hands.every((hand) => hand.visible));
+  setPersonEquipment(person, false);
+  assert.equal(torso.material, casualMaterial);
+  assert.equal(casual.visible, true);
+  assert.equal(helmet.visible, false);
+});

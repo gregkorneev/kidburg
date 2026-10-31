@@ -10,6 +10,7 @@ const shared = {
   red: mat('#d65a42'), darkRed: mat('#a94436'), green: mat('#438266'), darkGreen: mat('#285f4c'),
   wood: mat('#b57d4f'), blue: mat('#6ca4ac'), navy: mat('#345568'), charcoal: mat('#374344'),
   white: mat('#fff4d9'), black: mat('#273232'), yellow: mat('#f0c85f'), orange: mat('#f3913e'),
+  skin: mat('#efc89e'),
 };
 
 function box(parent, x, y, z, sx, sy, sz, material, castShadow = true) {
@@ -128,7 +129,7 @@ function addFireTruck(parent) {
   parent.add(truck);
 }
 
-function createPerson({ name, outfit, helmet = false, player = false }) {
+export function createPerson({ name, outfit = shared.green, helmet = false, player = false }) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
@@ -139,23 +140,51 @@ function createPerson({ name, outfit, helmet = false, player = false }) {
     body.add(shoulder);
     const sleeve = cylinder(shoulder, 0, -0.45, 0, 0.15, 0.14, 0.9, outfit, 7);
     const stripe = cylinder(shoulder, 0, -0.62, 0, 0.155, 0.155, 0.13, shared.yellow, 7);
-    const hand = sphere(shoulder, 0, -0.92, 0, 0.16, 0.17, 0.16, shared.charcoal, 7);
-    stripe.visible = hand.visible = false;
-    return { shoulder, sleeve, stripe, hand };
+    const cuff = cylinder(shoulder, 0, -0.78, 0, 0.16, 0.16, 0.13, player ? shared.darkGreen : outfit, 7);
+    const hand = sphere(shoulder, 0, -0.92, 0, 0.16, 0.17, 0.16, shared.skin, 7);
+    stripe.visible = false;
+    return { shoulder, sleeve, stripe, cuff, hand };
   });
   root.userData.arms = arms;
   cylinder(body, -0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: 0.04 });
   cylinder(body, 0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: -0.04 });
-  sphere(body, 0, 1.95, 0.03, 0.48, 0.48, 0.43, mat('#efc89e'), 9);
-  sphere(body, -0.16, 2.02, 0.405, 0.045, 0.05, 0.035, shared.black, 6);
-  sphere(body, 0.16, 2.02, 0.405, 0.045, 0.05, 0.035, shared.black, 6);
-  sphere(body, 0, 1.88, 0.445, 0.07, 0.04, 0.025, mat('#ba705c'), 6);
+  const face = new THREE.Group();
+  body.add(face);
+  sphere(face, 0, 1.95, 0.03, 0.48, 0.48, 0.43, shared.skin, 9);
+  for (const x of [-0.16, 0.16]) {
+    sphere(face, x, 2.02, 0.405, 0.045, 0.05, 0.035, shared.black, 6);
+    box(face, x, 2.13, 0.414, 0.12, 0.035, 0.025, mat('#704c3a'));
+  }
+  sphere(face, 0, 1.94, 0.46, 0.07, 0.065, 0.065, mat('#dfa77f'), 7);
+  sphere(face, 0, 1.82, 0.435, 0.08, 0.035, 0.025, mat('#ba705c'), 6);
+  const hair = new THREE.Group();
+  const hairMaterial = mat('#704c3a');
+  sphere(hair, 0, 2.24, -0.05, 0.48, 0.22, 0.43, hairMaterial, 9);
+  sphere(hair, 0, 2.04, -0.28, 0.43, 0.35, 0.18, hairMaterial, 8);
+  sphere(hair, -0.3, 2.19, 0.28, 0.16, 0.14, 0.14, hairMaterial, 7);
+  body.add(hair);
+  root.userData.face = face;
+  root.userData.hair = hair;
   if (helmet) {
     sphere(body, 0, 2.35, 0, 0.56, 0.18, 0.5, shared.red, 8);
     box(body, 0, 2.25, 0.17, 0.73, 0.08, 0.46, shared.red);
     box(body, 0, 2.22, 0.4, 0.24, 0.11, 0.07, shared.yellow);
   }
   if (player) {
+    const casual = new THREE.Group();
+    // Jacket details sit just above the shared torso and follow its motion.
+    cylinder(casual, 0, 1.49, 0, 0.25, 0.32, 0.18, shared.darkGreen, 8);
+    box(casual, 0, 1.0, 0.305, 0.035, 0.75, 0.05, shared.cream);
+    for (const x of [-0.2, 0.2]) {
+      box(casual, x, 0.83, 0.285, 0.22, 0.16, 0.08, shared.darkGreen);
+      box(casual, x, 0.9, 0.33, 0.2, 0.025, 0.025, shared.cream);
+      box(casual, x, 0.12, 0.09, 0.36, 0.22, 0.48, shared.cream);
+      box(casual, x, 0.045, 0.1, 0.38, 0.07, 0.5, shared.charcoal);
+      box(casual, x, 0.2, 0.29, 0.18, 0.035, 0.025, shared.green);
+    }
+    box(casual, 0, 0.58, 0, 0.75, 0.12, 0.52, shared.darkGreen);
+    body.add(casual);
+    root.userData.casual = casual;
     const uniform = new THREE.Group();
     box(uniform, 0, 0.94, 0.02, 0.77, 0.12, 0.58, shared.yellow);
     for (const x of [-0.2, 0.2]) {
@@ -181,6 +210,20 @@ function createPerson({ name, outfit, helmet = false, player = false }) {
   }
   root.userData.body = body;
   return root;
+}
+
+export function setPersonEquipment(person, equipped) {
+  const active = Boolean(equipped);
+  person.userData.helmet.visible = active;
+  person.userData.uniform.visible = active;
+  person.userData.casual.visible = !active;
+  person.userData.torso.material = active ? shared.red : shared.green;
+  person.userData.arms.forEach(({ sleeve, stripe, cuff, hand }) => {
+    sleeve.material = active ? shared.red : shared.green;
+    stripe.visible = active;
+    cuff.visible = !active;
+    hand.material = active ? shared.charcoal : shared.skin;
+  });
 }
 
 function createMannequin() {
@@ -514,14 +557,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     if (stage !== previousStage && stage !== 'fire_drill') stopHose();
     previousStage = stage;
     npc.userData.body.rotation.z = 0;
-    const helmet = player.userData.helmet;
-    if (helmet) helmet.visible = Boolean(state?.equipped);
-    player.userData.uniform.visible = Boolean(state?.equipped);
-    player.userData.torso.material = state?.equipped ? shared.red : shared.green;
-    player.userData.arms.forEach(({ sleeve, stripe, hand }) => {
-      sleeve.material = state?.equipped ? shared.red : shared.green;
-      stripe.visible = hand.visible = Boolean(state?.equipped);
-    });
+    setPersonEquipment(player, state?.equipped);
     windows.forEach(({ flames }, index) => {
       const window = state.windows[index];
       flames.visible = stage === 'fire_drill' && window.status !== 'done';
