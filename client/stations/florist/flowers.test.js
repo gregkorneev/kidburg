@@ -6,7 +6,9 @@ import { disposeFlower, createFlower, createWrapping, disposeWrapping } from './
 test('четыре вида цветов имеют отдельные модели с геометрией', () => {
   const flowers = ['pink_tulip', 'white_daisy', 'red_rose', 'greenery'].map((type) => createFlower(type));
   assert.equal(new Set(flowers.map((flower) => flower.userData.flower.type)).size, 4);
-  assert.ok(flowers.every((flower) => flower.userData.ownedGeometries.size >= 5));
+  assert.ok(flowers.every((flower) => flower.children.length === 1));
+  assert.ok(flowers.every((flower) => flower.userData.ownedGeometries.size === 1));
+  assert.ok(flowers.every((flower) => flower.children[0].geometry.getAttribute('position').count > 180));
   flowers.forEach(disposeFlower);
 });
 

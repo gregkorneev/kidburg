@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFloristLayout } from './layout.js';
+import { FLORIST_PLAN, ROOM } from './layout-plan.js';
+import { createInitialState, ORDER } from './state.js';
+import { targetsForState } from './targets.js';
 
 test('интерьер безопасно освобождает вывески, цветы и геометрию', () => {
   const layout = buildFloristLayout();
@@ -19,5 +22,29 @@ test('точки четырёх действий доступны вокруг �
     const blocked = furniture.some((box) => point.x >= box.minX && point.x <= box.maxX && point.z >= box.minZ && point.z <= box.maxZ);
     assert.equal(blocked, false, `interaction target at ${point.x}, ${point.z} is inside furniture`);
   }
+  layout.dispose();
+});
+
+test('комната расширена, игровые зоны входят в границы и сохраняют проходы', () => {
+  assert.deepEqual(ROOM, { width: 20, depth: 15, height: 6 });
+  const layout = buildFloristLayout();
+  const allPoints = [FLORIST_PLAN.spawn, ...Object.values(layout.stations), ...Object.values(layout.buckets).map(({ position }) => position)];
+  for (const point of allPoints) {
+    assert.ok(point.x > 0.3 && point.x < ROOM.width - 0.3);
+    assert.ok(point.z > 0.3 && point.z < ROOM.depth - 0.3);
+    assert.ok(!layout.colliders.some((box) => point.x >= box.minX && point.x <= box.maxX && point.z >= box.minZ && point.z <= box.maxZ));
+  }
+  layout.dispose();
+});
+
+test('при ошибочном букете упаковка скрыта, остаётся исправление у стола', () => {
+  const layout = buildFloristLayout();
+  const invalid = { ...createInitialState(), stage: 'wrapping', stems: [
+    { type: 'pink_tulip' }, { type: 'pink_tulip' }, { type: 'white_daisy' }, { type: 'white_daisy' }, { type: 'red_rose' },
+  ] };
+  const targets = targetsForState(invalid, layout);
+  assert.deepEqual(targets.map(({ kind }) => kind), ['remove']);
+  const valid = { ...invalid, stems: [...invalid.stems.slice(0, 4), { type: 'greenery' }] };
+  assert.deepEqual(targetsForState(valid, layout).map(({ kind }) => kind).sort(), ['remove', 'wrap']);
   layout.dispose();
 });

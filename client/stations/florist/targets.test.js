@@ -13,7 +13,14 @@ const layout = {
 test('неправильный готовый букет можно исправить у рабочего стола', () => {
   const state = { stage: 'wrapping', stems: Array.from({ length: 5 }, (_, i) => ({ id: i, type: 'red_rose' })) };
   assert.deepEqual(targetsForState(state, layout).map(({ kind, position }) => [kind, position]), [
-    ['wrap', 'wrapping'], ['remove', 'workbench'],
+    ['remove', 'workbench'],
+  ]);
+  const valid = { ...state, stems: [
+    { type: 'pink_tulip' }, { type: 'pink_tulip' }, { type: 'white_daisy' },
+    { type: 'white_daisy' }, { type: 'greenery' },
+  ] };
+  assert.deepEqual(targetsForState(valid, layout).map(({ kind, position }) => [kind, position]), [
+    ['remove', 'workbench'], ['wrap', 'wrapping'],
   ]);
 });
 

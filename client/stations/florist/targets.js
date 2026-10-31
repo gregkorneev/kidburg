@@ -1,4 +1,4 @@
-import { ORDER } from './state.js';
+import { ORDER, orderMatches } from './state.js';
 
 export function targetsForState(state, layout) {
   if (!state) return [];
@@ -15,10 +15,9 @@ export function targetsForState(state, layout) {
     return targets;
   }
   if (state.stage === 'wrapping') {
-    return [
-      { kind: 'wrap', position: layout.stations.wrapping },
-      { kind: 'remove', position: layout.stations.workbench },
-    ];
+    const targets = [{ kind: 'remove', position: layout.stations.workbench }];
+    if (orderMatches(state.stems)) targets.push({ kind: 'wrap', position: layout.stations.wrapping });
+    return targets;
   }
   if (state.stage === 'handoff') return [{ kind: 'handoff', position: layout.stations.handoff }];
   return [];

@@ -11,6 +11,7 @@ import { createFlower, disposeFlower, createWrapping, disposeWrapping } from './
 import { FLOWERS, ORDER } from './state.js';
 import { characterYawForPlayer } from './orientation.js';
 import { targetsForState } from './targets.js';
+import { FLORIST_PLAN } from './layout-plan.js';
 
 const INTERACTION_RADIUS = 1.72;
 const MOUSE_SENSITIVITY = 0.0024;
@@ -62,7 +63,7 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
   scene.add(layout.root);
 
   const player = createPlayer();
-  setPlayerPosition(player, 4.3, 0, 3.3);
+  setPlayerPosition(player, FLORIST_PLAN.spawn.x, FLORIST_PLAN.spawn.y, FLORIST_PLAN.spawn.z);
   const avatar = createCharacter({ appearance: { outfit: '#6d9fa0', hairStyle: 'curly', hair: '#523b30' } });
   avatar.scale.setScalar(0.68);
   avatar.position.set(player.x, 0, player.z);
@@ -75,7 +76,7 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
     outfit: '#f2dfc8',
   });
   lilia.scale.setScalar(0.72);
-  lilia.position.set(7, 0, 1.45);
+  lilia.position.set(FLORIST_PLAN.lilia.x, FLORIST_PLAN.lilia.y, FLORIST_PLAN.lilia.z);
   addApron(lilia);
   scene.add(lilia);
   triggerGesture(lilia, 'wave');
@@ -147,8 +148,8 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
       next.stems.forEach((stem, index) => {
         const flower = createFlower(stem.type, { id: stem.id });
         const angle = index * (Math.PI * 2 / Math.max(1, next.stems.length)) + 0.3;
-        const radius = next.stems.length === 1 ? 0 : 0.19 + (index % 2) * 0.06;
-        flower.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius * 0.65);
+        const radius = next.stems.length === 1 ? 0 : 0.24 + (index % 2) * 0.1;
+        flower.position.set(Math.cos(angle) * radius, (index % 3) * 0.035, Math.sin(angle) * radius * 0.78);
         flower.rotation.set(0.08 * ((index % 3) - 1), angle * 0.25, 0.10 * ((index % 2) ? 1 : -1));
         bouquet.add(flower);
         bouquetModels.push(flower);
@@ -175,7 +176,7 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
       else if (target.kind === 'take') prompt = `E — Взять: ${FLOWERS[target.flower].label.toLowerCase()}`;
       else if (target.kind === 'add') prompt = 'E — Поставить цветок в букет';
       else if (target.kind === 'remove') prompt = 'E — Убрать последний стебель';
-      else if (target.kind === 'wrap') prompt = state?.ribbon ? 'E — Упаковать букет' : 'Выберите ленту в карточке заказа';
+      else if (target.kind === 'wrap') prompt = state?.ribbon === 'pink' ? 'E — Упаковать букет' : state?.ribbon ? 'Нужна розовая лента: выберите её в карточке заказа' : 'Выберите розовую ленту в карточке заказа';
       else if (target.kind === 'handoff') prompt = 'E — Сдать заказ Лилии';
     }
     if (prompt !== lastPrompt) {

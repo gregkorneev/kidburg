@@ -1,13 +1,12 @@
 import { h, render } from 'preact';
-import { FLOWERS, ORDER, RIBBONS } from './state.js';
+import { FLOWERS, ORDER, RIBBONS, orderMatches } from './state.js';
 import { QUALITY_LABELS, QUALITY_LEVELS } from '../../engine/art/quality.js';
 
 const flowerCount = (stems, type) => stems.filter((stem) => stem.type === type).length;
 
 function OrderCard({ state, onRibbon }) {
   const stageTitle = ({ briefing: 'Шаг 1 · знакомство', collecting: 'Шаг 2 · сборка', wrapping: 'Шаг 3 · упаковка', handoff: 'Шаг 4 · выдача' })[state.stage] ?? 'Заказ';
-  const correct = Object.entries(ORDER.stems).every(([type, count]) => flowerCount(state.stems, type) === count)
-    && state.stems.length === ORDER.total;
+  const correct = orderMatches(state.stems);
   return h('section', { class: 'order-card', 'aria-live': 'polite' },
     h('div', { class: 'card-eyebrow' }, state.stage === 'wrapping' ? 'ЗАКАЗ СОБРАН' : 'ЗАКАЗ ЛИЛИИ'),
     h('p', { class: 'order-stage' }, stageTitle),
@@ -26,8 +25,8 @@ function OrderCard({ state, onRibbon }) {
     h('p', { class: 'held-note' }, state.heldFlower
       ? `В руке: ${FLOWERS[state.heldFlower.type].label}. Отнесите на рабочий стол.`
       : `В букете: ${state.stems.length}/${ORDER.total} стеблей${state.stage === 'wrapping' ? ` · состав ${correct ? 'верный' : 'нужно исправить'}` : ''}.`),
-    state.stage === 'wrapping' && !correct && h('p', { class: 'correction-hint' }, 'Сверь количества и подойди к рабочему столу: E уберёт последний стебель.'),
-    state.stage === 'wrapping' && h('div', { class: 'ribbon-picker', role: 'group', 'aria-label': 'Выбрать ленту' },
+    state.stage === 'wrapping' && !correct && h('p', { class: 'correction-hint' }, 'В букете есть ошибка. Вернитесь к рабочему столу и исправьте состав. Уберите последний стебель и замените его.'),
+    state.stage === 'wrapping' && correct && h('div', { class: 'ribbon-picker', role: 'group', 'aria-label': 'Выбрать ленту' },
       h('span', { class: 'ribbon-label' }, `Лента: ${state.ribbon ? RIBBONS[state.ribbon] : 'не выбрана'}`),
       Object.entries(RIBBONS).map(([id, label]) => h('button', {
         key: id,

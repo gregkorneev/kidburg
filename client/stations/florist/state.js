@@ -95,12 +95,13 @@ export function transitionTask(state, action) {
 
     case 'choose_ribbon':
       if (state.stage !== 'wrapping') return unchanged(state, 'Сначала соберите пять стеблей.');
+      if (!orderMatches(state.stems)) return unchanged(state, 'В букете есть ошибка. Вернитесь к рабочему столу и исправьте состав.');
       if (!Object.hasOwn(RIBBONS, action.ribbon)) return unchanged(state, 'Такой ленты нет на полке.');
       return { state: { ...state, ribbon: action.ribbon, wrapped: false }, changed: true, feedback: `${RIBBONS[action.ribbon]} выбрана.` };
 
     case 'wrap':
       if (state.stage !== 'wrapping') return unchanged(state, 'Сначала соберите букет.');
-      if (!orderMatches(state.stems)) return unchanged(state, 'В букете неверный состав. Уберите последний цветок и проверьте заказ.');
+      if (!orderMatches(state.stems)) return unchanged(state, 'В букете есть ошибка. Вернитесь к рабочему столу и исправьте состав.');
       if (state.ribbon !== ORDER.ribbon) return unchanged(state, 'Для этого заказа нужна розовая лента. Выберите её на полке.');
       return { state: { ...state, wrapped: true, stage: 'handoff' }, changed: true, feedback: 'Букет упакован. Отнесите заказ на стойку выдачи.' };
 

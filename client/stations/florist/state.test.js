@@ -51,7 +51,9 @@ test('неверный состав не упаковывается, после�
   for (const flower of ['pink_tulip', 'white_daisy', 'pink_tulip', 'white_daisy', 'red_rose']) state = add(state, flower);
   assert.equal(state.stage, 'wrapping');
   assert.equal(orderMatches(state.stems), false);
-  assert.equal(act(state, 'choose_ribbon', { ribbon: 'pink' }).state.ribbon, 'pink');
+  const ribbon = act(state, 'choose_ribbon', { ribbon: 'pink' });
+  assert.equal(ribbon.changed, false);
+  assert.match(ribbon.feedback, /Вернитесь к рабочему столу/);
   assert.equal(act(state, 'wrap').changed, false);
   state = act(state, 'remove_last').state;
   state = add(state, 'greenery');
