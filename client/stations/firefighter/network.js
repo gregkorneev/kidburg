@@ -30,10 +30,11 @@ export function resolveStart(state, isWalkable) {
  * @param {object} deps
  * @param {{on(type: string, handler: Function): () => void, net: {send(msg: object): boolean}}} deps.api
  * @param {ReturnType<import('./scene.js').createFirefighterScene>} deps.world
+ * @param {() => void} [deps.onAuthRequired] called when this page has no valid session
  * @param {(online: boolean) => void} [deps.onSession] true после welcome, false после выхода
  * @param {() => number} [deps.now]
  */
-export function connectFireNetwork({ api, world, onSession = () => {}, now = () => performance.now() }) {
+export function connectFireNetwork({ api, world, onAuthRequired = () => {}, onSession = () => {}, now = () => performance.now() }) {
   let joined = false; // welcome получен после входа: можно играть
   let open = false; // сокет открыт и welcome получен на нём: можно слать pos
   let seq = 0;
@@ -85,6 +86,7 @@ export function connectFireNetwork({ api, world, onSession = () => {}, now = () 
       if (info) return;
       open = false;
       reset();
+      onAuthRequired();
       if (joined) {
         joined = false;
         onSession(false);

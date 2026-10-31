@@ -5,7 +5,7 @@ import { validate } from '../../../shared/protocol.js';
 import { createEmitter } from '../../engine/emitter.js';
 import { ORIGIN, START, connectFireNetwork, headingFromYaw, resolveStart, toLocal, toServer, yawFromHeading } from './network.js';
 
-function setup({ walkable = () => true, sendOk = true } = {}) {
+function setup({ walkable = () => true, sendOk = true, onAuthRequired = () => {} } = {}) {
   const emitter = createEmitter();
   const sent = [];
   const api = {
@@ -29,7 +29,7 @@ function setup({ walkable = () => true, sendOk = true } = {}) {
   };
   let t = 0;
   const sessions = [];
-  const network = connectFireNetwork({ api, world, now: () => t, onSession: (v) => sessions.push(v) });
+  const network = connectFireNetwork({ api, world, now: () => t, onAuthRequired, onSession: (v) => sessions.push(v) });
   return { emitter, sent, calls, world, network, sessions, tick: (ms) => (t += ms) };
 }
 
@@ -61,6 +61,13 @@ test('welcome ставит игрока и открывает сессию од�
   assert.deepEqual(sessions, [true]);
   const local = calls.find((c) => c[0] === 'local');
   assert.deepEqual(local[1], { x: START.x, z: START.z, heading: Math.PI });
+});
+
+test('пожарный preview требует активную сессию и возвращает на главный экран при её отсутствии', () => {
+  const redirects = [];
+  const { emitter } = setup({ onAuthRequired: () => redirects.push('/') });
+  emitter.emit('auth', null);
+  assert.deepEqual(redirects, ['/']);
 });
 
 test('pos уходит только после welcome, в серверных координатах и проходит validate()', () => {
