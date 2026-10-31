@@ -7,6 +7,7 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { TALK_DISTANCE } from '../../shared/constants.js';
 import { createHud } from '../hud/index.js';
 import { applyStylizedLook } from './art/lighting.js';
+import { readQuality } from './art/quality.js';
 import { createChunkManager, makeLabel } from './chunks.js';
 import { FIRE_STATION_ENTRANCE, isNearFireStationEntrance } from './city-entrance.js';
 import { createEmitter } from './emitter.js';
@@ -181,13 +182,18 @@ export function createClient({ container, networkOnly = false }) {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 400);
     camera.rotation.order = 'YXZ';
-    // Свет, небо и туман общие с пожарной частью (art/lighting.js); тени в городе выключены ради FPS.
-    const stylized = applyStylizedLook({ renderer, scene, camera, fog: [90, 260], shadowExtent: 0, exposure: 1.0 });
+    // Свет, небо и туман общие с пожарной частью (art/lighting.js).
+    // Тени: карта следует за игроком (±30 м), на «Низкой» графике выключена (art/quality.js). Измерения — docs/graphics-overhaul.
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    const stylized = applyStylizedLook({ renderer, scene, camera, fog: [90, 260], shadowExtent: 30, exposure: 1.0 });
+    const quality = readQuality(win.location.search, win.localStorage);
+    stylized.setQuality(quality);
     const skyline = createCitySkyline();
     scene.add(skyline.group);
 
     const pool = createPool();
-    const world = createChunkManager({ scene, pool });
+    const world = createChunkManager({ scene, pool, quality });
     const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel });
     const hud = createHud(container);
     const player = createPlayer();
@@ -208,7 +214,7 @@ export function createClient({ container, networkOnly = false }) {
 
     runtime = { input };
     // Отладочный доступ для проверки графики: только при ?debug=1.
-    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, remote, player, stylized };
+    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, remote, player, stylized, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
     hud.setStatus(net.status);
     hud.setCache(state.cache);
 
