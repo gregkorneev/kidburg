@@ -6,6 +6,7 @@
 
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
+import { isServerOwner, ownAddresses } from './local.js';
 import { createAttemptLimiter, normalizeRoomCode } from './room.js';
 
 const scryptAsync = promisify(scrypt);
@@ -74,12 +75,12 @@ const fail = (reply, status, error, message) => reply.code(status).send({ error,
 /**
  * Регистрирует /api/join, /api/me, /api/ws-ticket (и /api/register, /api/login при passwordAuth).
  * @param {object} deps
- * @param {{matches(code: unknown): boolean}} deps.room комната текущего запуска сервера
+ * @param {{code: string, matches(code: unknown): boolean}} deps.room комната текущего запуска сервера
  * @param {(userId: number) => boolean} [deps.isOnline] есть ли у пользователя открытый сокет
  */
 export function registerAuthRoutes(
   app,
-  { db, tickets, room, isOnline = () => false, passwordAuth = false, limiter = createAttemptLimiter(), now = Date.now },
+  { db, tickets, room, isOnline = () => false, passwordAuth = false, limiter = createAttemptLimiter(), localAddresses = ownAddresses, now = Date.now },
 ) {
   app.post('/api/join', async (req, reply) => {
     const body = req.body ?? {};
@@ -108,6 +109,14 @@ export function registerAuthRoutes(
     }
     db.purgeExpiredSessions(t);
     return { token: issueSession(db, user.id, t), user: publicUser(user) };
+  });
+
+  // Код для экрана владельца сервера. Чужому компьютеру отвечаем 404, как будто пути нет:
+  // получить код по сети можно только от того, кто его уже знает (владелец называет его вслух).
+  app.get('/api/local-room', async (req, reply) => {
+    if (!isServerOwner(req, localAddresses)) return fail(reply, 404, 'not_found', 'Не найдено');
+    reply.header('cache-control', 'no-store');
+    return { room: room.code };
   });
 
   if (passwordAuth) registerPasswordRoutes(app, { db, now });

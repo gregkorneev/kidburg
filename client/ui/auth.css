@@ -21,3 +21,5 @@
 .auth-badge__details span { color: #65766c; font-size: 10px; }
 .auth-button--small { min-height: 31px; }
 @media (max-width: 520px) { .auth-panel { padding: 22px; } .auth-badge { right: 8px; bottom: 8px; } }
+.auth-invite { margin: 14px 0 0; color: #66766c; font-size: 12px; line-height: 1.45; }
+.auth-invite__code { color: #1f3a2b; font-size: 15px; letter-spacing: 0.2em; }

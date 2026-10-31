@@ -67,6 +67,18 @@ export function createClient({ container, networkOnly = false }) {
       const { token, user } = await http.join(name, room);
       return startSession(token, user);
     },
+    /**
+     * Код комнаты, если страница открыта на компьютере сервера; иначе null. Нигде не сохраняется.
+     * @returns {Promise<string|null>}
+     */
+    async localRoom() {
+      try {
+        const { room } = await http.localRoom();
+        return typeof room === 'string' && /^[A-Za-z]{4}$/.test(room) ? room.toUpperCase() : null;
+      } catch {
+        return null;
+      }
+    },
     logout() {
       net.disconnect();
       session.clear();

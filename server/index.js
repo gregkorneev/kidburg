@@ -51,6 +51,7 @@ export async function buildApp(overrides = {}) {
     isOnline: (userId) => game?.isOnline(userId) ?? false,
     passwordAuth: config.passwordAuth,
     limiter: config.joinLimiter,
+    localAddresses: config.localAddresses,
     now: config.now,
   });
   // Задания до игры: createGame берёт готовые обработчики и передаёт им userId и позицию соединения.

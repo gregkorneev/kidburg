@@ -27,6 +27,8 @@ export function mountUI(api) {
   let message = '';
   let draftName = ''; // введённое не теряется при ошибке входа
   let draftRoom = '';
+  let roomTouched = false; // игрок сам правил поле кода: подставленный код его не затирает
+  let hostRoom = null; // код от сервера, только если игра открыта на компьютере сервера; лишь в памяти страницы
 
   function render() {
     root.replaceChildren();
@@ -50,7 +52,9 @@ export function mountUI(api) {
     panel.setAttribute('aria-labelledby', 'auth-title');
     const title = element('h1', '', 'Вход в игру');
     title.id = 'auth-title';
-    const intro = element('p', 'auth-intro', 'Введите своё имя и код комнаты, который показан на экране сервера.');
+    const intro = element('p', 'auth-intro', hostRoom
+      ? 'Вы на компьютере сервера: код комнаты подставлен. Введите имя и войдите.'
+      : 'Введите своё имя и код комнаты, который показан на экране сервера.');
     const form = element('form', 'auth-form');
     const nameLabel = element('label', 'auth-label', 'Имя');
     const nameInput = element('input', 'auth-input');
@@ -72,8 +76,10 @@ export function mountUI(api) {
     roomInput.autocapitalize = 'characters';
     roomInput.spellcheck = false;
     roomInput.placeholder = 'ABCD';
+    if (hostRoom && !roomTouched && !draftRoom) draftRoom = hostRoom;
     roomInput.value = draftRoom;
     roomInput.addEventListener('input', () => {
+      roomTouched = true;
       // Только латинские буквы, всегда заглавные: код состоит из четырёх латинских букв.
       roomInput.value = roomInput.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
       draftRoom = roomInput.value;
@@ -97,6 +103,7 @@ export function mountUI(api) {
         message = '';
         draftName = '';
         draftRoom = '';
+        roomTouched = false;
       } catch (error) {
         message = error?.message || 'Не удалось войти. Проверьте подключение к серверу.';
       } finally {
@@ -105,13 +112,34 @@ export function mountUI(api) {
       }
     });
     panel.append(title, intro, form);
+    if (hostRoom) {
+      const invite = element('p', 'auth-invite');
+      invite.append('Код для игроков по сети: ', element('strong', 'auth-invite__code', hostRoom));
+      panel.append(invite);
+    }
     root.append(panel);
+  }
+
+  let hostRoomAsked = false;
+  /** На компьютере сервера просит у него код комнаты; с других компьютеров ответа нет, поле остаётся пустым. */
+  function loadHostRoom() {
+    if (user || hostRoomAsked) return;
+    hostRoomAsked = true;
+    Promise.resolve(api.auth.localRoom()).catch(() => null).then((code) => {
+      if (!code) return;
+      hostRoom = code;
+      if (user) return;
+      const focused = document.activeElement?.name; // render пересоздаёт форму: вернём фокус на поле
+      render(); // введённые draftName и draftRoom сохраняются
+      if (focused) root.querySelector(`[name="${focused}"]`)?.focus?.();
+    });
   }
 
   const offAuth = api.on('auth', (info) => {
     user = info?.user ?? null;
     message = '';
     render();
+    loadHostRoom();
   });
   const offStatus = api.net.on('status', ({ status: next }) => {
     status = next;
@@ -128,6 +156,7 @@ export function mountUI(api) {
   });
 
   render();
+  loadHostRoom();
   return () => {
     offAuth();
     offStatus();

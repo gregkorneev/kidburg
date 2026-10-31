@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS task_progress (
 2. HTTP API:
    - `POST /api/register {name,password}` → `{token,user}`; имя 3–20 символов, пароль минимум 4.
    - `POST /api/login` → `{token,user}`.
-   - Упрощённый вход LAN: `POST /api/join {name, room}` → `{token,user}`; `/api/register` и `/api/login` по умолчанию выключены (`passwordAuth`). Код комнаты создаётся при каждом запуске сервера, сессии прошлого запуска закрываются.
+   - Упрощённый вход LAN: `POST /api/join {name, room}` → `{token,user}`; `/api/register` и `/api/login` по умолчанию выключены (`passwordAuth`). Код комнаты создаётся при каждом запуске сервера, сессии прошлого запуска закрываются. `GET /api/local-room` отдаёт код только владельцу сервера (loopback или собственный LAN-адрес), экран входа на компьютере сервера подставляет его в поле.
    - `POST /api/ws-ticket` (заголовок `Authorization: Bearer <token>`) → `{ticket, expiresIn: 30}`.
    - `GET /api/me`.
 3. Пароли хешируются `crypto.scrypt` с отдельной солью, сравнение `crypto.timingSafeEqual`. Токен — 32 случайных байта (base64url), в БД хранится SHA-256 от токена, срок жизни 7 дней.
