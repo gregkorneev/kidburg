@@ -1,0 +1,89 @@
+:root { color-scheme: light; font-family: Inter, "Segoe UI", Arial, sans-serif; font-synthesis: none; text-rendering: optimizeLegibility; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #cde4e6; }
+body { color: #2c3c45; }
+button, input { font: inherit; }
+.preview-shell, .scene-stage, .ui-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
+.scene-stage { background: linear-gradient(150deg, #dbeef0, #e7dbc0); }
+.scene-stage canvas { display: block; width: 100%; height: 100%; outline: none; }
+.ui-layer { z-index: 1; pointer-events: none; }
+.pianist-ui { position: absolute; inset: 0; pointer-events: none; }
+.brand-card, .lesson-card, .controls-card, .interaction-prompt, .toast, .welcome-hint, .piano-mode-badge, .footer-note { position: absolute; pointer-events: auto; border: 1px solid rgba(255,255,255,.72); box-shadow: 0 12px 34px rgba(41,57,60,.14); backdrop-filter: blur(12px); }
+.brand-card { top: 22px; left: 24px; display: flex; align-items: center; gap: 13px; min-width: 284px; padding: 12px 17px 12px 12px; border-radius: 18px; background: rgba(255,251,240,.92); }
+.brand-icon { display: grid; width: 46px; height: 46px; place-items: center; border-radius: 14px; background: #dbe9df; color: #a34d61; font-size: 27px; }
+.brand-card strong, .brand-card span { display: block; }
+.brand-card strong { color: #32434b; font-size: 12px; letter-spacing: .1em; }
+.brand-card span { margin-top: 4px; color: #718087; font-size: 12px; }
+.lesson-card { top: 22px; right: 24px; width: min(400px, calc(100vw - 48px)); padding: 17px; border-radius: 20px; background: rgba(255,251,240,.95); }
+.eyebrow { color: #a05a61; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.lesson-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.lesson-heading h2 { margin: 0; color: #33464e; font-size: 19px; }
+.lesson-heading p { margin: 5px 0 0; color: #77848a; font-size: 12px; }
+.listen-button, .sound-toggle { border: 0; border-radius: 11px; padding: 9px 11px; background: #e5eee4; color: #486555; font-size: 11px; font-weight: 700; cursor: pointer; }
+.next-note { display: flex; align-items: center; gap: 12px; margin: 14px 0 10px; padding: 9px 12px; border-radius: 13px; background: #f0e5cf; }
+.next-note span { color: #88785f; font-size: 9px; font-weight: 800; letter-spacing: .1em; }
+.next-note strong { color: #a54f60; font-size: 24px; }
+.next-note kbd { margin-left: auto; }
+.progress-track { overflow: hidden; height: 6px; border-radius: 10px; background: #e9e5db; }
+.progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #80af9a, #dfb66b); transition: width .2s ease; }
+.score-strip { display: flex; gap: 5px; margin-top: 10px; }
+.score-note { display: grid; flex: 1; min-width: 0; height: 26px; place-items: center; border-radius: 8px; background: #f0eee7; color: #889095; font-size: 10px; }
+.score-note.is-done { background: #dceadd; color: #557961; }
+.score-note.is-next { outline: 2px solid #d7a85c; background: #fff6da; color: #75562e; }
+.metronome { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #67777b; font-size: 11px; }
+.metronome span { width: 8px; height: 8px; border-radius: 50%; background: #bf5f68; animation: tick .666s ease-in-out infinite alternate; }
+@keyframes tick { from { transform: scale(.72); opacity: .55; } to { transform: scale(1.45); opacity: 1; } }
+.keyboard-map { display: flex; gap: 4px; margin-top: 12px; }
+.keyboard-map > span { display: grid; flex: 1; min-width: 0; gap: 3px; place-items: center; padding: 5px 1px; border-radius: 8px; background: #fff; color: #66777c; font-size: 9px; transition: .16s ease; }
+.keyboard-map > span.is-target { transform: translateY(-2px); background: #f5e4bb; color: #815a2c; box-shadow: 0 3px 0 #d3ad6c; }
+kbd { display: inline-grid; min-width: 24px; height: 22px; place-items: center; padding: 0 5px; border: 1px solid #d8d5ca; border-bottom-width: 2px; border-radius: 6px; background: #fffdf8; color: #526168; font-size: 10px; font-weight: 800; }
+.controls-card { top: 128px; left: 24px; width: 234px; overflow: hidden; border-radius: 17px; background: rgba(255,251,240,.91); }
+.controls-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 13px 15px; border: 0; background: transparent; color: #788582; font-size: 10px; font-weight: 800; letter-spacing: .12em; cursor: pointer; }
+.controls-body { display: grid; gap: 8px; padding: 0 15px 14px; color: #68777c; font-size: 11px; }
+.controls-body > div:not(.sound-row) { display: flex; align-items: center; gap: 8px; }
+.controls-body kbd { min-width: auto; }
+.quality-picker { margin: 3px 0 0; padding: 8px 0 0; border: 0; border-top: 1px solid #e9e3d7; }
+.quality-picker legend { padding: 0; color: #84908e; font-size: 10px; }
+.quality-options { display: flex; gap: 4px; margin-top: 7px; }
+.quality-choice { flex: 1; padding: 6px 2px; border: 1px solid #dfddd4; border-radius: 7px; background: #fffdf8; color: #6d797d; font-size: 9px; cursor: pointer; }
+.quality-choice.is-selected { border-color: #9ab9a0; background: #e7efe2; color: #42614c; }
+.sound-row { display: flex; align-items: center; gap: 8px; }
+.sound-row input { width: 100%; accent-color: #9e6871; }
+.interaction-prompt { left: 50%; bottom: 74px; display: flex; align-items: center; gap: 11px; transform: translateX(-50%); padding: 11px 16px; border-radius: 14px; background: rgba(255,251,240,.95); color: #52636a; font-size: 13px; }
+.interaction-prompt kbd { width: 30px; height: 30px; font-size: 13px; }
+.welcome-hint { left: 50%; bottom: 82px; transform: translateX(-50%); padding: 11px 16px; border-radius: 14px; background: rgba(255,251,240,.91); color: #52636a; font-size: 13px; white-space: nowrap; }
+.toast { left: 50%; bottom: 22px; transform: translateX(-50%); max-width: min(580px, calc(100vw - 32px)); padding: 10px 15px; border-radius: 12px; background: rgba(255,251,240,.95); color: #496458; font-size: 12px; text-align: center; }
+.toast--error { color: #a54f60; }
+.piano-mode-badge { left: 50%; bottom: 21px; transform: translateX(-50%); padding: 9px 14px; border-radius: 12px; background: rgba(51,66,68,.9); color: #fff8e7; font-size: 11px; }
+.footer-note { right: 16px; bottom: 12px; padding: 7px 10px; border-radius: 10px; background: rgba(255,251,240,.76); color: #7b8787; font-size: 9px; }
+.dialog-backdrop { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; pointer-events: auto; background: rgba(43,57,61,.26); backdrop-filter: blur(5px); }
+.dialog-card { width: min(520px, 100%); padding: 30px; border: 1px solid rgba(255,255,255,.85); border-radius: 24px; background: #fffaf0; box-shadow: 0 24px 80px rgba(27,43,47,.24); text-align: center; }
+.dialog-card h2 { margin: 12px 0 10px; color: #32464d; font-size: 25px; line-height: 1.15; }
+.dialog-card p { margin: 10px 0; color: #68787d; font-size: 14px; line-height: 1.55; text-align: left; }
+.maestro-mark { display: grid; width: 64px; height: 64px; margin: 0 auto 12px; place-items: center; border-radius: 20px; background: #f4e0b9; color: #a35767; font-size: 35px; }
+.maestro-mark.applause { background: #d9eadb; color: #668d69; }
+.primary-button { width: 100%; margin-top: 14px; padding: 13px 18px; border: 0; border-radius: 13px; background: #8baa91; color: #fffdf7; font-size: 14px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 0 #718f78; }
+.primary-button:hover { background: #7ea185; }
+@media (max-width: 1050px) {
+  .lesson-card { width: 350px; }
+  .controls-card { top: auto; bottom: 19px; width: 220px; }
+  .footer-note { display: none; }
+}
+@media (max-width: 720px) {
+  .brand-card { top: 10px; left: 10px; min-width: 0; padding: 7px 10px 7px 7px; }
+  .brand-icon { width: 36px; height: 36px; font-size: 22px; }
+  .brand-card strong { font-size: 9px; }
+  .brand-card span { font-size: 10px; }
+  .lesson-card { top: 62px; right: 10px; width: min(360px, calc(100vw - 20px)); padding: 12px; }
+  .lesson-heading h2 { font-size: 15px; }
+  .lesson-heading p { font-size: 10px; }
+  .listen-button { padding: 7px; font-size: 9px; }
+  .controls-card { bottom: 10px; left: 10px; width: 194px; }
+  .controls-body { gap: 6px; font-size: 10px; }
+  .interaction-prompt, .welcome-hint { bottom: 10px; left: auto; right: 10px; max-width: calc(100vw - 216px); transform: none; font-size: 10px; white-space: normal; }
+  .piano-mode-badge { bottom: 12px; left: auto; right: 10px; transform: none; font-size: 10px; }
+  .toast { bottom: 55px; font-size: 10px; }
+  .dialog-card { padding: 22px; }
+  .dialog-card h2 { font-size: 21px; }
+  .dialog-card p { font-size: 12px; }
+}
