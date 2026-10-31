@@ -1,4 +1,5 @@
 import { createClient } from '../../engine/app.js';
+import { bindCityExit } from '../../engine/room-exit.js';
 import { mountUI } from '../../ui/index.js';
 import { connectFireNetwork } from './network.js';
 import { createMarusyaChat } from './chat-flow.js';
@@ -141,9 +142,15 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'Escape' && dialog) closeDialog();
 });
 
+const unbindCityExit = bindCityExit({
+  onExit: () => window.location.assign('/'),
+  isBlocked: () => dialog !== null || chatOpen,
+});
+
 window.addEventListener('pagehide', (event) => {
   if (event.persisted) return; // страница уходит в bfcache и может вернуться
   clearTimeout(noticeTimer);
+  unbindCityExit();
   sync?.dispose();
   network?.dispose();
   unmountAuth?.();
