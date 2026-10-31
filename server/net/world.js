@@ -1,7 +1,7 @@
 // Индекс мира (generated/world.json) и чтение чанков. Размеры берутся из индекса,
 // сами файлы читаются только в момент отправки клиенту.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { CACHE_FRACTION, CHUNK_SIZE, WORLD_CHUNKS_X, WORLD_CHUNKS_Z } from '../../shared/constants.js';
 
@@ -25,12 +25,34 @@ export function loadWorld(dir, log) {
   }
 
   const chunks = [];
+  let indexedBytes = 0;
   for (const [key, size] of Object.entries(index.bytes)) {
     const [cx, cz] = key.split('_').map(Number);
-    if (!Number.isInteger(cx) || !Number.isInteger(cz) || !(size > 0)) {
+    if (
+      !Number.isInteger(cx) || !Number.isInteger(cz) ||
+      cx < 0 || cx >= WORLD_CHUNKS_X || cz < 0 || cz >= WORLD_CHUNKS_Z ||
+      !Number.isInteger(size) || size <= 0
+    ) {
       throw new Error(`world.json: неверная запись bytes[${key}]`);
     }
+    const chunkFile = path.join(dir, 'chunks', `${cx}_${cz}.bin`);
+    let actualSize;
+    try {
+      actualSize = statSync(chunkFile).size;
+    } catch (err) {
+      throw new Error(`world.json: отсутствует чанк ${key} (${chunkFile}): ${err.message}`);
+    }
+    if (actualSize !== size) {
+      throw new Error(`world.json: размер чанка ${key} (${actualSize}) не совпадает с индексом (${size})`);
+    }
+    indexedBytes += size;
     chunks.push({ cx, cz, key: cx + cz * WORLD_CHUNKS_X, bytes: size });
+  }
+  if (chunks.length !== WORLD_CHUNKS_X * WORLD_CHUNKS_Z) {
+    throw new Error(`world.json: найдено ${chunks.length} чанков, ожидалось ${WORLD_CHUNKS_X * WORLD_CHUNKS_Z}`);
+  }
+  if (indexedBytes !== index.totalBytes) {
+    throw new Error(`world.json: сумма размеров чанков ${indexedBytes} не совпадает с totalBytes ${index.totalBytes}`);
   }
   chunks.sort((a, b) => a.key - b.key);
 

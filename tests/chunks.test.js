@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { decode } from '@msgpack/msgpack';
@@ -14,6 +14,7 @@ import {
 } from '../shared/constants.js';
 import { chunkOf, createChunkMirror, planChunks } from '../server/net/chunks.js';
 import { loadWorld } from '../server/net/world.js';
+import { makeFixtures } from '../tools/fixtures/make-fixtures.mjs';
 import { tempWorld } from './helpers.js';
 
 const { worldDir, cleanup } = tempWorld();
@@ -66,6 +67,22 @@ test('loadWorld: без индекса возвращает null, поврежд
     assert.throws(() => loadWorld(bad), /версия/);
   } finally {
     rmSync(bad, { recursive: true, force: true });
+  }
+});
+
+test('loadWorld: отсутствующий или изменённый чанк отклоняется до запуска кеш-зеркала', () => {
+  const damaged = tempWorld();
+  const chunk = path.join(damaged.worldDir, 'chunks', '0_0.bin');
+  try {
+    unlinkSync(chunk);
+    assert.throws(() => loadWorld(damaged.worldDir), /отсутствует чанк 0_0/);
+
+    makeFixtures(damaged.worldDir);
+    const data = readFileSync(chunk);
+    writeFileSync(chunk, Buffer.concat([data, Buffer.from([0])]));
+    assert.throws(() => loadWorld(damaged.worldDir), /размер чанка 0_0/);
+  } finally {
+    damaged.cleanup();
   }
 });
 
