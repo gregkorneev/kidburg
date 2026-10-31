@@ -86,6 +86,73 @@ test('после hello сервер присылает task_state; новый и
   });
 });
 
+test('подтверждённая экипировка сразу рассылается игрокам в зоне видимости', async () => {
+  await withServer({}, async ({ app, port, dbPath, track }) => {
+    const equipping = {
+      stage: 'equipping', equipped: false, windows: [0, 0, 0, 0],
+      carryingMannequin: false, mannequinDelivered: false,
+    };
+    const anna = await connect(app, port, 'Аня', {
+      dbPath,
+      position: at(WORLD_POINTS.locker),
+      progress: equipping,
+    });
+    track(anna.client);
+    const boris = await connect(app, port, 'Борис', { dbPath, position: at(WORLD_POINTS.locker, 1, 0) });
+    track(boris.client);
+    const join = await boris.client.next((m) => m.t === 'player_join' && m.id === anna.user.id);
+    assert.equal(join.appearance.firefighterEquipped, false);
+
+    assert.equal((await ask(anna.client, 'equip')).equipped, true);
+    const changed = await boris.client.next((m) => m.t === 'player_appearance' && m.id === anna.user.id);
+    assert.equal(changed.appearance.firefighterEquipped, true);
+  });
+});
+
+test('поздний вход и переподключение получают экипировку из сохранённого состояния', async () => {
+  await withServer({}, async ({ app, port, dbPath, track }) => {
+    const equipped = {
+      stage: 'fire_drill', equipped: true, windows: [0, 0, 0, 0],
+      carryingMannequin: false, mannequinDelivered: false,
+    };
+    const anna = await connect(app, port, 'Аня', { dbPath, position: at(WORLD_POINTS.locker) });
+    track(anna.client);
+    const boris = await connect(app, port, 'Борис', {
+      dbPath,
+      position: at(WORLD_POINTS.locker, 1, 0),
+      progress: equipped,
+    });
+    track(boris.client);
+    let join = await anna.client.next((m) => m.t === 'player_join' && m.id === boris.user.id);
+    assert.equal(join.appearance.firefighterEquipped, true);
+
+    await boris.client.close();
+    await anna.client.next((m) => m.t === 'player_leave' && m.id === boris.user.id);
+    const reconnected = await connect(app, port, 'Борис', { dbPath, position: at(WORLD_POINTS.locker, 1, 0) });
+    track(reconnected.client);
+    join = await anna.client.next((m) => m.t === 'player_join' && m.id === reconnected.user.id);
+    assert.equal(join.appearance.firefighterEquipped, true);
+  });
+});
+
+test('отклонённая экипировка не меняет внешность удалённых игроков', async () => {
+  await withServer({}, async ({ app, port, dbPath, track }) => {
+    const equipping = {
+      stage: 'equipping', equipped: false, windows: [0, 0, 0, 0],
+      carryingMannequin: false, mannequinDelivered: false,
+    };
+    const anna = await connect(app, port, 'Аня', { dbPath, position: at(WORLD_POINTS.npc), progress: equipping });
+    track(anna.client);
+    const boris = await connect(app, port, 'Борис', { dbPath, position: at(WORLD_POINTS.npc, 1, 0) });
+    track(boris.client);
+    await boris.client.next((m) => m.t === 'player_join' && m.id === anna.user.id);
+
+    const result = await ask(anna.client, 'equip');
+    assert.equal(result.equipped, false);
+    assert.equal(boris.client.inbox.some((m) => m.t === 'player_appearance' && m.id === anna.user.id), false);
+  });
+});
+
 test('прогресс сохраняется и восстанавливается: перезагрузка страницы, другое соединение, перезапуск сервера', async () => {
   const { dbPath, cleanup } = tempDb();
   try {

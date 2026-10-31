@@ -20,6 +20,7 @@ import {
 import { C2S, ERROR_CODES, LIMITS, S2C, decode, encode, validate } from '../../shared/protocol.js';
 import { reply as defaultReply } from '../agents/index.js';
 import { createChunkMirror } from './chunks.js';
+import { FIREFIGHTER_TASK_ID } from '../tasks/index.js';
 
 // Коды закрытия WebSocket (диапазон 4000–4999 отдан приложению).
 export const CLOSE = Object.freeze({ REPLACED: 4000, UNAUTH: 4001, BAD_PROTO: 4002 });
@@ -243,6 +244,15 @@ export function createGame({
       state = { error: 'storage', feedback: TASK_UNAVAILABLE };
     }
     send(player.conn, { t: S2C.TASK_STATE, taskId: msg.taskId, state });
+    if (msg.taskId === FIREFIGHTER_TASK_ID && msg.payload?.action === 'equip' && state.changed && state.equipped) {
+      const appearance = { ...player.appearance, firefighterEquipped: true };
+      player.appearance = appearance;
+      for (const other of players.values()) {
+        if (other !== player && other.known.has(player.id)) {
+          send(other.conn, { t: S2C.PLAYER_APPEARANCE, id: player.id, appearance });
+        }
+      }
+    }
   }
 
   function handlePos(player, msg) {
@@ -427,7 +437,18 @@ export function createGame({
       const seen = new Set(near.map((q) => q.id));
       for (const q of near) {
         if (!p.known.has(q.id)) {
-          send(p.conn, { t: S2C.PLAYER_JOIN, id: q.id, name: q.name, appearance: q.appearance });
+          let firefighterEquipped = false;
+          try {
+            firefighterEquipped = tasks?.getState(q.id, FIREFIGHTER_TASK_ID)?.state?.equipped === true;
+          } catch (err) {
+            log.error({ err, userId: q.id, taskId: FIREFIGHTER_TASK_ID }, 'не удалось прочитать экипировку игрока');
+          }
+          send(p.conn, {
+            t: S2C.PLAYER_JOIN,
+            id: q.id,
+            name: q.name,
+            appearance: { ...q.appearance, firefighterEquipped },
+          });
         }
       }
       for (const id of p.known) if (!seen.has(id)) send(p.conn, { t: S2C.PLAYER_LEAVE, id });

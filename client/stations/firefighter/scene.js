@@ -149,6 +149,7 @@ export function createPerson({ name, outfit = shared.green, helmet = false, play
     return { shoulder, sleeve, stripe, hand };
   });
   root.userData.arms = arms;
+  root.userData.outfit = outfit;
   cylinder(body, -0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: 0.04 });
   cylinder(body, 0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: -0.04 });
   sphere(body, 0, 1.95, 0.03, 0.48, 0.48, 0.43, mat('#efc89e'), 9);
@@ -193,9 +194,9 @@ export function setPersonEquipment(person, equipped) {
   const active = Boolean(equipped);
   person.userData.helmet.visible = active;
   person.userData.uniform.visible = active;
-  person.userData.torso.material = active ? shared.red : shared.green;
+  person.userData.torso.material = active ? shared.red : person.userData.outfit;
   person.userData.arms.forEach(({ sleeve, stripe, hand }) => {
-    sleeve.material = active ? shared.red : shared.green;
+    sleeve.material = active ? shared.red : person.userData.outfit;
     stripe.visible = hand.visible = active;
   });
 }
@@ -556,15 +557,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     if (stage !== previousStage && stage !== 'fire_drill') stopHose();
     previousStage = stage;
     npc.userData.body.rotation.z = 0;
-    const helmet = player.userData.helmet;
-    if (helmet) helmet.visible = Boolean(state?.equipped);
-    const equipped = Boolean(state?.equipped);
-    player.userData.uniform.visible = equipped;
-    player.userData.torso.material = equipped ? shared.red : shared.green;
-    player.userData.arms.forEach(({ sleeve, stripe, hand }) => {
-      sleeve.material = equipped ? shared.red : shared.green;
-      stripe.visible = hand.visible = equipped;
-    });
+    setPersonEquipment(player, state?.equipped);
     // Состояние окон приходит с сервера (task_state): огонь гаснет и уменьшается по числу подтверждённых попаданий.
     windows.forEach(({ flames }, index) => {
       const hits = state?.windows?.[index] ?? 0;
@@ -743,10 +736,14 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     camera.lookAt(target);
   }
 
-  function addRemotePlayer(id, name) {
+  function addRemotePlayer(id, name, equipped = false) {
     const known = remotePlayers.get(id);
-    if (known) return known;
-    const model = createPerson({ name: name || `Игрок ${id}`, outfit: shared.blue });
+    if (known) {
+      setPersonEquipment(known.model, equipped);
+      return known;
+    }
+    const model = createPerson({ name: name || `Игрок ${id}`, outfit: shared.blue, player: true });
+    setPersonEquipment(model, equipped);
     model.visible = false;
     scene.add(model);
     const remote = { model, x: 0, z: 0, heading: 0, moving: false, ready: false };
@@ -760,6 +757,11 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     scene.remove(remote.model);
     disposeModel(remote.model);
     remotePlayers.delete(id);
+  }
+
+  function setRemotePlayerEquipment(id, equipped) {
+    const remote = remotePlayers.get(id);
+    if (remote) setPersonEquipment(remote.model, equipped);
   }
 
   function clearRemotePlayers() {
@@ -898,6 +900,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   return {
     setTaskState,
     addRemotePlayer,
+    setRemotePlayerEquipment,
     removeRemotePlayer,
     clearRemotePlayers,
     updateRemotePlayers,

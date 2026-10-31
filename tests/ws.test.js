@@ -104,7 +104,7 @@ test('два клиента видят друг друга: player_join и по�
   const join = await a.client.nextOfType('player_join');
   assert.equal(join.id, b.user.id);
   assert.equal(join.name, 'Борис');
-  assert.deepEqual(join.appearance, {});
+  assert.deepEqual(join.appearance, { firefighterEquipped: false });
 
   b.client.send({ ...pos(SPAWN.x + 0.2, SPAWN.z + 0.1, 5), ry: 1.5, anim: 2 });
   const seen = await a.client.next((m) => isPlayers(m) && m.list[0][1] === SPAWN.x + 0.2);
