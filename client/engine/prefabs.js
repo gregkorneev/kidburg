@@ -3,6 +3,7 @@
 // На данном этапе здания — цветные объёмы. Детализированные фасады потребуют
 // расширения клиентского рендеринга (не сетевого формата).
 import * as THREE from 'three';
+import { buildBakeryGeometry } from './bakery.js';
 import { buildFireStationGeometry } from './fire-station.js';
 import { buildCityHallGeometry } from './procedural-city.js';
 
@@ -16,7 +17,7 @@ const PREFABS = {
   5: { name: 'cabinet', color: 0xb9c4cf, collider: [1, 2, 1], build: box(1, 2, 1) },
   10: { name: 'city_hall', color: 0xffffff, vertexColors: true, collider: [22, 9, 14], build: buildCityHallGeometry },
   11: { name: 'fire_station', color: 0xffffff, vertexColors: true, collider: [24, 9, 16], build: buildFireStationGeometry },
-  12: { name: 'bakery', color: 0xf0c85f, collider: [18, 9, 14], build: box(18, 9, 14) },
+  12: { name: 'bakery', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildBakeryGeometry },
   13: { name: 'flower_shop', color: 0x83aa70, collider: [18, 9, 14], build: box(18, 9, 14) },
   14: { name: 'music_school', color: 0x6ca4ac, collider: [22, 9, 14], build: box(22, 9, 14) },
   15: { name: 'radio_station', color: 0xb57d4f, collider: [18, 9, 14], build: box(18, 9, 14) },
