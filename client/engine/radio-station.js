@@ -1,97 +1,97 @@
-// Радиостанция городского хаба: один цветной префаб, фасад направлен к +Z.
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+// Радиостанция: самое «современное» здание площади — плоская крыша с парапетом, круглая студия-башня со стеклянным
+// поясом, решётчатая мачта с маячком и спутниковая тарелка. Фасад смотрит в +Z.
+import { createPrefabKit } from './art/prefab-kit.js';
+import { bin } from './art/flora.js';
+
+const C = {
+  wall: 0xf3e9d6, wallTeal: 0x6ca4ac, trim: 0xfff8e9, dark: 0x345568, roofFlat: 0xc9b99a, parapet: 0xfff1d8, orange: 0xf28b35,
+  glass: 0x86c2d2, glassDark: 0x3d6f82, door: 0x3a6872, brass: 0xf0c85f, stone: 0xd0c8b4, aerial: 0x506875, red: 0xe0462f, white: 0xffffff,
+};
+
+export const RADIO_STATION_SIGNS = Object.freeze([
+  { text: 'РАДИО', x: 0, y: 7.55, z: 5.95, w: 3.8, h: 1.05, color: '#345568', border: '#f28b35', background: '#fff5df' },
+]);
 
 export function buildRadioStationGeometry() {
-  const parts = [];
-  const C = {
-    wall: 0xf3e9d6, trim: 0xfff8e9, teal: 0x6ca4ac, dark: 0x345568,
-    roof: 0xb65744, roofDark: 0x7e352e, window: 0x86b9ca, door: 0x3a6872,
-    brass: 0xf0c85f, sign: 0xfff5df, darkSign: 0x315467,
-    base: 0xbab6a5, aerial: 0x506875, red: 0xd65a42,
-  };
-  function add(g, hex, x=0, y=0, z=0, rx=0, ry=0, rz=0) {
-    if (rx) g.rotateX(rx); if (ry) g.rotateY(ry); if (rz) g.rotateZ(rz);
-    g.translate(x,y,z);
-    if (g.index) { const expanded = g.toNonIndexed(); g.dispose(); g=expanded; }
-    const c=new THREE.Color(hex), data=new Float32Array(g.attributes.position.count*3);
-    for (let i=0;i<data.length;i+=3) {data[i]=c.r;data[i+1]=c.g;data[i+2]=c.b;}
-    g.setAttribute('color',new THREE.BufferAttribute(data,3));
-    parts.push(g);
+  const k = createPrefabKit({ seed: 15 });
+
+  // Основание и корпус студии с цветным цоколем.
+  k.slab(16.2, 0.45, 11.9, 0, 0, 0, C.stone, { r: 0.1 });
+  k.slab(15.4, 8.3, 11.3, 0, 0.45, 0, C.wall);
+  k.slab(15.6, 1.0, 11.5, 0, 0.45, 0, C.wallTeal);
+  k.box(15.7, 0.3, 11.6, 0, 4.85, 0, C.wallTeal, { r: 0.07 });
+  // Плоская крыша с парапетом и козырьком над входом.
+  k.box(16.0, 0.34, 11.9, 0, 9.0, 0, C.parapet, { r: 0.09 });
+  k.slab(15.0, 0.12, 10.9, 0, 9.17, 0, C.roofFlat);
+  for (const [w, d, x, z] of [[16.0, 0.34, 0, 5.8], [16.0, 0.34, 0, -5.8], [0.34, 11.9, 7.9, 0], [0.34, 11.9, -7.9, 0]]) k.box(w, 0.5, d, x, 9.45, z, C.parapet, { r: 0.07 });
+  k.slab(5.6, 0.22, 1.5, 0, 9.0, 6.3, C.orange, { r: 0.06 }); // оранжевый «язык» над вывеской
+
+  // Круглая студия-башня слева: стеклянный пояс и купол.
+  const tx = -7.0;
+  const tz = 3.6;
+  k.cyl(2.4, 2.5, 8.2, 24, tx, 4.55, tz, C.wall);
+  k.cyl(2.55, 2.55, 0.4, 24, tx, 4.9, tz, C.wallTeal);
+  k.cyl(2.48, 2.48, 2.2, 24, tx, 6.6, tz, C.glass, { tinted: false });
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    k.box(0.12, 2.3, 0.12, tx + Math.cos(a) * 2.5, 6.6, tz + Math.sin(a) * 2.5, C.trim, { tinted: false });
   }
-  const box=(w,h,d,x,y,z,c)=>add(new THREE.BoxGeometry(w,h,d),c,x,y,z);
-  const cylinder=(rt,rb,h,n,x,y,z,c,rx=0)=>add(new THREE.CylinderGeometry(rt,rb,h,n),c,x,y,z,rx);
-  const line=(pts,c,r=0.045)=> {
-    const curve=new THREE.CatmullRomCurve3(pts.map(([x,y,z])=>new THREE.Vector3(x,y,z)),false,'centripetal');
-    add(new THREE.TubeGeometry(curve,Math.max(12,pts.length*12),r,7,false),c);
-  };
-  function windowAt(x,y,w=2.15,h=1.95) {
-    box(w,h,0.14,x,y,5.68,C.window);
-    box(w+0.22,0.16,0.22,x,y+h/2,5.75,C.trim);
-    box(w+0.22,0.16,0.22,x,y-h/2,5.75,C.trim);
-    for(const side of [-1,1]) box(0.13,h,0.21,x+side*w/2,y,5.76,C.trim);
-    box(0.12,h,0.22,x,y,5.79,C.trim);
-    box(w,0.1,0.22,x,y,5.80,C.trim);
-    box(w+0.3,0.13,0.35,x,y-h/2-0.15,5.82,C.teal);
+  k.cyl(2.65, 2.65, 0.34, 24, tx, 8.8, tz, C.parapet);
+  k.sphere(2.4, tx, 9.0, tz, C.orange, { s: [1, 0.55, 1], w: 18, h: 8 });
+  k.sphere(0.2, tx, 10.4, tz, C.brass, { w: 8, h: 6 });
+
+  // Студийные витрины и верхние окна.
+  for (const sx of [-1, 1]) {
+    const x = sx * 3.5;
+    k.window(x, 2.7, 5.65, { w: 3.1, h: 3.0, glass: C.glassDark, frame: C.trim, sill: C.wallTeal, mullions: 2, rows: 2 });
+    for (let i = 0; i < 4; i++) k.box(0.04, 2.6 - (i % 2) * 0.4, 0.04, x - 1.2 + i * 0.8, 2.7, 5.98, C.glass, { tinted: false }); // блики-ленты
   }
-  // Корпус и фундамент в пределах отведённой станции 18x14 м.
-  box(16.0,0.42,11.9,0,0.21,0,C.base);
-  box(15.5,8.45,11.35,0,4.65,0,C.wall);
-  box(15.8,0.26,11.6,0,4.45,0,C.teal);
-  box(16.2,0.32,11.9,0,8.96,0,C.trim);
-  for(const x of [-7.42,7.42]) {
-    box(0.53,8.4,0.55,x,4.65,5.5,C.teal);
-    box(0.69,0.52,0.8,x,8.58,5.53,C.trim);
+  for (const x of [-4.2, -1.4, 1.4, 4.2, 6.6]) {
+    k.window(x, 6.9, 5.65, { w: 1.9, h: 2.0, glass: C.glass, frame: C.trim, sill: C.wallTeal, lintel: null });
   }
-  // Цельная крыша с треугольным фронтоном.
-  const shape=new THREE.Shape();
-  shape.moveTo(-8.55,8.99);shape.lineTo(0,11.68);shape.lineTo(8.55,8.99);shape.closePath();
-  const roof=new THREE.ExtrudeGeometry(shape,{depth:12.7,bevelEnabled:false});
-  roof.translate(0,0,-6.35);add(roof,C.roof);
-  box(17.2,0.2,0.28,0,8.99,6.39,C.roofDark);
-  // Верхние окна и две широкие витрины радиостудии.
-  for(const x of [-5.65,-3.05,3.05,5.65]) windowAt(x,6.52,2.08,1.92);
-  windowAt(-4.72,2.48,3.3,2.8); windowAt(4.72,2.48,3.3,2.8);
-  // Вход — симметричная двухстворчатая дверь.
-  box(2.3,3.15,0.22,0,2.30,5.77,C.dark);
-  box(1.0,2.82,0.14,-0.56,2.3,5.91,C.door);
-  box(1.0,2.82,0.14,0.56,2.3,5.91,C.door);
-  box(0.13,2.84,0.18,0,2.3,6.01,C.trim);
-  for(const x of [-0.16,0.16]) box(0.10,0.13,0.08,x,2.23,6.06,C.brass);
-  box(2.85,0.2,1.0,0,0.5,6.0,C.base);
-  // Козырёк и контрастная вывеска с радиоволнами.
-  box(4.6,0.24,1.23,0,4.14,6.03,C.teal);
-  box(5.5,1.02,0.20,0,8.15,5.79,C.sign);
-  box(5.62,0.11,0.25,0,8.70,5.82,C.brass);
-  box(5.62,0.11,0.25,0,7.60,5.82,C.brass);
-  // Круглая центральная эмблема: микрофон + три дуги радиосигнала.
-  cylinder(0.29,0.29,0.16,24,0,8.15,5.96,C.dark,Math.PI/2);
-  cylinder(0.19,0.19,0.20,24,0,8.15,6.09,C.brass,Math.PI/2);
-  for(const side of [-1,1]) for(let k=0;k<2;k++) {
-    const radius=0.66+k*0.29;
-    const pts=[];
-    for(let t=-0.84;t<=0.84+0.001;t+=0.14) {
-      const xx=side*(0.48+Math.cos(t)*radius);
-      const yy=8.15+Math.sin(t)*radius;
-      pts.push([xx,yy,5.94]);
+  // Вход: двустворчатая дверь, ступени, поручни.
+  k.door(0, 2.4, 5.65, { w: 2.4, h: 3.2, leaf: C.door, frame: C.trim, glass: C.glass, handle: C.brass, step: C.stone });
+  k.box(4.6, 0.26, 1.5, 0, 4.35, 6.4, C.wallTeal, { r: 0.07 });
+  for (const sx of [-1, 1]) k.box(0.14, 3.4, 0.14, sx * 2.1, 2.5, 6.9, C.trim);
+  // Эмблема: микрофон и три дуги сигнала по сторонам вывески.
+  k.at([0, 7.55, 5.65], 0, () => {
+    for (const sx of [-1, 1]) for (let r = 0; r < 3; r++) {
+      const pts = [];
+      for (let t = -0.8; t <= 0.8 + 1e-3; t += 0.16) pts.push([sx * (2.6 + Math.cos(t) * (0.35 + r * 0.28)), Math.sin(t) * (0.35 + r * 0.28), 0.55]);
+      k.tube(pts, 0.05, r === 0 ? C.orange : C.dark, { radial: 5 });
     }
-    line(pts,C.darkSign,0.055);
+  });
+
+  // Боковые и задние окна.
+  for (const [pos, rot, zs] of [[[7.7, 0, 0], Math.PI / 2, [-2.6, 1.6]], [[-7.7, 0, -1.2], -Math.PI / 2, [-2.4, 0.8]]]) {
+    k.at(pos, rot, () => zs.forEach((z) => {
+      k.window(z, 2.9, 0, { w: 1.7, h: 2.2, glass: C.glass, frame: C.trim, sill: C.wallTeal });
+      k.window(z, 6.9, 0, { w: 1.7, h: 2.0, glass: C.glass, frame: C.trim, sill: C.wallTeal });
+    }));
   }
-  // Антенна над крышей: центральная мачта с поперечинами и маячком.
-  cylinder(0.10,0.16,4.6,8,3.8,13.4,-0.8,C.aerial);
-  cylinder(0.19,0.19,0.24,8,3.8,15.78,-0.8,C.red);
-  for(const y of [12.3,13.3,14.3]) {
-    box(2.0,0.1,0.13,3.8,y,-0.8,C.aerial);
-    for(const dx of [-0.88,0.88]) cylinder(0.04,0.04,0.43,6,3.8+dx,y+0.19,-0.8,C.aerial);
+
+  // Решётчатая мачта на крыше с поперечинами, оттяжками и красным маячком.
+  const mx = 4.6;
+  const mz = -2.4;
+  for (const [dx, dz] of [[-0.4, -0.4], [0.4, -0.4], [-0.4, 0.4], [0.4, 0.4]]) k.cyl(0.07, 0.1, 7.2, 6, mx + dx, 12.8, mz + dz, C.aerial);
+  for (let i = 0; i < 6; i++) {
+    const y = 9.7 + i * 1.15;
+    k.box(0.9, 0.06, 0.06, mx, y, mz - 0.4, C.aerial, { tinted: false });
+    k.box(0.9, 0.06, 0.06, mx, y, mz + 0.4, C.aerial, { tinted: false });
+    k.box(0.06, 0.06, 0.9, mx - 0.4, y, mz, C.aerial, { tinted: false });
+    k.box(0.06, 0.06, 0.9, mx + 0.4, y, mz, C.aerial, { tinted: false });
   }
-  // Боковые фонари возле входа.
-  for(const x of [-1.85,1.85]) {
-    box(0.22,0.55,0.24,x,3.10,5.85,C.brass);
-    box(0.30,0.14,0.30,x,3.43,5.85,C.dark);
-  }
-  const merged=mergeGeometries(parts,false);
-  if(!merged) throw new Error('Не удалось объединить геометрии радиостанции');
-  merged.computeVertexNormals();
-  for(const g of parts) g.dispose();
-  return merged;
+  for (const y of [14.1, 15.0]) k.box(2.4, 0.09, 0.09, mx, y, mz, C.aerial, { tinted: false });
+  k.sphere(0.28, mx, 16.5, mz, C.red, { w: 8, h: 6, tinted: false });
+  for (const [ex, ez] of [[-3.5, -3.0], [3.0, 2.5], [-3.5, 3.5]]) k.tube([[mx, 14.2, mz], [mx + ex * 0.5, 11.8, mz + ez * 0.5], [mx + ex, 9.2, mz + ez]], 0.025, C.aerial, { radial: 4 });
+  // Спутниковая тарелка.
+  k.cyl(0.08, 0.1, 1.2, 6, -1.5, 9.8, -3.4, C.aerial);
+  k.sphere(1.0, -1.5, 10.55, -3.2, C.white, { s: [1, 0.35, 1], w: 14, h: 6, rot: [0.9, 0, 0] });
+  k.cyl(0.04, 0.04, 0.9, 5, -1.5, 11.0, -2.8, C.aerial, { rot: [0.9, 0, 0] });
+
+  bin(k, 7.0, 8.0);
+  k.bench(-3.5, 8.2, 0, { width: 2.0, metal: C.dark });
+  k.bench(3.5, 8.2, 0, { width: 2.0, metal: C.dark });
+
+  return k.build({ groundAO: { height: 2.0, strength: 0.28 }, bands: [{ y0: 8.6, y1: 9.0, strength: 0.14 }] });
 }
