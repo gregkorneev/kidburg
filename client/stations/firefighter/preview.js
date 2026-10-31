@@ -105,7 +105,7 @@ function showBriefingStep() {
   showDialog({
     title: 'Короткий инструктаж',
     body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
-    options: [acceptBriefingOption()],
+    options: [acceptBriefingOption(), { label: 'Поговорить свободно', onSelect: openChat }],
   });
 }
 
@@ -127,7 +127,7 @@ function openBriefing() {
     showDialog({
       title: 'Короткий инструктаж',
       body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
-      options: [acceptBriefingOption()],
+      options: [acceptBriefingOption(), { label: 'Поговорить свободно', onSelect: openChat }],
     });
   } else {
     openProfessionCard();
