@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { encode } from '@msgpack/msgpack';
 import { CHUNK_SIZE, WORLD_CHUNKS_X, WORLD_CHUNKS_Z } from '../../shared/constants.js';
+import { WORLD_POINTS } from '../../client/stations/firefighter/layout.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const DEFAULT_OUT_DIR = path.join(ROOT, 'generated');
@@ -29,6 +30,8 @@ const PREFABS_BY_ZONE = { plain: [1, 3], park: [1, 2, 3], hospital: [4, 5, 3] };
 const NPCS = [
   { id: 'npc_therapist', agentId: 'therapist', x: 6 * CHUNK_SIZE + 40, y: 0, z: 6 * CHUNK_SIZE + 32, ry: 3.14 },
   { id: 'npc_nurse', agentId: 'nurse', x: 6 * CHUNK_SIZE + 24, y: 0, z: 6 * CHUNK_SIZE + 30, ry: 0 },
+  // Маруся Громова стоит там же, где наставница на полигоне пожарной части (layout.js).
+  { id: 'npc_marusya', agentId: 'marusya', x: WORLD_POINTS.npc.x, y: 0, z: WORLD_POINTS.npc.z, ry: 0 },
 ];
 
 export function zoneOf(cx, cz) {
