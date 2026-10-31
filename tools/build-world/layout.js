@@ -11,7 +11,7 @@ export const BUILDINGS = Object.freeze([
   Object.freeze({ id: 'bakery', name: 'Пекарня', x: 450, z: 412, width: 18, depth: 14, rotationY: -Math.PI / 2 }),
   Object.freeze({ id: 'flower_shop', name: 'Цветочная лавка', x: 384, z: 449, width: 18, depth: 14, rotationY: 2.37 }),
   Object.freeze({ id: 'music_school', name: 'Музыкальная школа', x: 416, z: 456, width: 22, depth: 14, rotationY: Math.PI }),
-  Object.freeze({ id: 'radio_station', name: 'Радиостанция', x: 448, z: 449, width: 18, depth: 14, rotationY: -Math.PI / 2 }),
+  Object.freeze({ id: 'radio_station', name: 'Радиостанция', x: 448, z: 449, width: 18, depth: 14, rotationY: -2.37 }),
 ]);
 
 // Небольшие пешеходные сегменты от площади к фасадам.
