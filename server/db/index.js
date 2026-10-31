@@ -39,10 +39,12 @@ export function openDb(file = DEFAULT_DB_FILE) {
     ),
     userById: handle.prepare('SELECT * FROM users WHERE id = ?'),
     userByName: handle.prepare('SELECT * FROM users WHERE name = ?'),
+    allUsers: handle.prepare('SELECT * FROM users'),
     insertSession: handle.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)'),
     sessionByHash: handle.prepare('SELECT user_id, expires_at FROM sessions WHERE token_hash = ? AND expires_at > ?'),
     deleteSession: handle.prepare('DELETE FROM sessions WHERE token_hash = ?'),
     purgeSessions: handle.prepare('DELETE FROM sessions WHERE expires_at <= ?'),
+    clearSessions: handle.prepare('DELETE FROM sessions'),
     stateByUser: handle.prepare('SELECT x, y, z, ry, updated_at FROM player_state WHERE user_id = ?'),
     upsertState: handle.prepare(
       `INSERT INTO player_state (user_id, x, y, z, ry, updated_at) VALUES (?, ?, ?, ?, ?, ?)
@@ -107,6 +109,19 @@ export function openDb(file = DEFAULT_DB_FILE) {
       const row = q.userByName.get(name);
       return row ? { ...toUser(row), passHash: row.pass_hash, salt: row.salt } : null;
     },
+    /**
+     * Как findUserByName, но регистр не важен для любого алфавита: уникальный индекс SQLite
+     * сравнивает без учёта регистра только латиницу, а «аня» не должна быть вторым игроком «Аня».
+     */
+    findUserByNameAnyCase(name) {
+      const exact = this.findUserByName(name);
+      if (exact) return exact;
+      const folded = name.toLowerCase();
+      for (const row of q.allUsers.iterate()) {
+        if (row.name.toLowerCase() === folded) return { ...toUser(row), passHash: row.pass_hash, salt: row.salt };
+      }
+      return null;
+    },
 
     // Сессии: хранится только SHA-256 токена.
     createSession: (tokenHash, userId, expiresAt) => void q.insertSession.run(tokenHash, userId, expiresAt),
@@ -117,6 +132,8 @@ export function openDb(file = DEFAULT_DB_FILE) {
     },
     deleteSession: (tokenHash) => void q.deleteSession.run(tokenHash),
     purgeExpiredSessions: (now = Date.now()) => q.purgeSessions.run(now).changes,
+    /** Удаляет все сессии (при старте сервера: токены прошлого запуска не должны действовать). */
+    clearSessions: () => q.clearSessions.run().changes,
 
     // Позиция игрока.
     getPlayerState(userId) {

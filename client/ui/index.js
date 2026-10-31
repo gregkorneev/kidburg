@@ -23,10 +23,10 @@ export function mountUI(api) {
 
   let user = api.auth.session()?.user ?? null;
   let status = api.net.status;
-  let mode = 'login';
   let busy = false;
   let message = '';
-  let draftName = ''; // имя не теряется при ошибке входа
+  let draftName = ''; // введённое не теряется при ошибке входа
+  let draftRoom = '';
 
   function render() {
     root.replaceChildren();
@@ -48,50 +48,55 @@ export function mountUI(api) {
 
     const panel = element('section', 'auth-panel');
     panel.setAttribute('aria-labelledby', 'auth-title');
-    const title = element('h1', '', mode === 'login' ? 'Вход в город' : 'Новый житель');
+    const title = element('h1', '', 'Вход в игру');
     title.id = 'auth-title';
-    const intro = element('p', 'auth-intro', 'Для каждого компьютера используйте отдельный аккаунт.');
+    const intro = element('p', 'auth-intro', 'Введите своё имя и код комнаты, который показан на экране сервера.');
     const form = element('form', 'auth-form');
     const nameLabel = element('label', 'auth-label', 'Имя');
     const nameInput = element('input', 'auth-input');
     nameInput.name = 'name';
     nameInput.autocomplete = 'username';
     nameInput.required = true;
-    nameInput.maxLength = 24;
+    nameInput.maxLength = 20;
     nameInput.autocapitalize = 'none';
     nameInput.value = draftName;
     nameInput.addEventListener('input', () => { draftName = nameInput.value; });
     nameLabel.append(nameInput);
 
-    const passwordLabel = element('label', 'auth-label', 'Пароль');
-    const passwordInput = element('input', 'auth-input');
-    passwordInput.name = 'password';
-    passwordInput.type = 'password';
-    passwordInput.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
-    passwordInput.required = true;
-    passwordInput.maxLength = 128;
-    passwordLabel.append(passwordInput);
+    const roomLabel = element('label', 'auth-label', 'Код комнаты');
+    const roomInput = element('input', 'auth-input auth-input--code');
+    roomInput.name = 'room';
+    roomInput.autocomplete = 'off';
+    roomInput.required = true;
+    roomInput.maxLength = 4;
+    roomInput.autocapitalize = 'characters';
+    roomInput.spellcheck = false;
+    roomInput.placeholder = 'ABCD';
+    roomInput.value = draftRoom;
+    roomInput.addEventListener('input', () => {
+      // Только латинские буквы, всегда заглавные: код состоит из четырёх латинских букв.
+      roomInput.value = roomInput.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
+      draftRoom = roomInput.value;
+    });
+    roomLabel.append(roomInput);
 
     const feedback = element('p', 'auth-message', message);
     feedback.hidden = !message;
-    const submit = element('button', 'auth-button auth-button--primary', busy ? 'Подключаем…' : mode === 'login' ? 'Войти' : 'Создать аккаунт');
+    const submit = element('button', 'auth-button auth-button--primary', busy ? 'Подключаем…' : 'Войти');
     submit.type = 'submit';
     submit.disabled = busy;
-    form.append(nameLabel, passwordLabel, feedback, submit);
+    form.append(nameLabel, roomLabel, feedback, submit);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (busy) return;
       busy = true;
       message = '';
       render();
-      const name = nameInput.value.trim();
-      const password = passwordInput.value;
       try {
-        user = mode === 'login'
-          ? await api.auth.login(name, password)
-          : await api.auth.register(name, password);
+        user = await api.auth.join(nameInput.value.trim(), roomInput.value);
         message = '';
         draftName = '';
+        draftRoom = '';
       } catch (error) {
         message = error?.message || 'Не удалось войти. Проверьте подключение к серверу.';
       } finally {
@@ -99,15 +104,7 @@ export function mountUI(api) {
         render();
       }
     });
-
-    const toggle = element('button', 'auth-link', mode === 'login' ? 'Создать аккаунт' : 'Уже есть аккаунт? Войти');
-    toggle.type = 'button';
-    toggle.addEventListener('click', () => {
-      mode = mode === 'login' ? 'register' : 'login';
-      message = '';
-      render();
-    });
-    panel.append(title, intro, form, toggle);
+    panel.append(title, intro, form);
     root.append(panel);
   }
 

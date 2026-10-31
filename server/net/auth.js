@@ -1,9 +1,12 @@
-// REST-авторизация: регистрация, вход, /api/me, тикет для WebSocket.
-// Пароль: crypto.scrypt с отдельной солью. Токен: 32 случайных байта (base64url),
-// в БД лежит только SHA-256 токена.
+// REST-авторизация: вход по имени и коду комнаты (/api/join), /api/me, тикет для WebSocket.
+// Личность игрока задаёт только сервер: токен из /api/join -> одноразовый тикет -> сокет.
+// Токен: 32 случайных байта (base64url), в БД лежит только SHA-256 токена.
+// Вход по паролю (/api/register, /api/login, crypto.scrypt с отдельной солью) включается
+// только флагом passwordAuth: по умолчанию выключен, иначе он обходил бы код комнаты.
 
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
+import { createAttemptLimiter, normalizeRoomCode } from './room.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -33,13 +36,18 @@ export async function verifyPassword(password, passHash, salt) {
 let decoyPromise;
 const decoy = () => (decoyPromise ??= hashPassword('decoy'));
 
+// Буквы любого алфавита и цифры; внутри допустимы пробел, точка, дефис и подчёркивание.
+const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u;
+
 /** Возвращает очищенное имя или null, если оно не подходит. */
 export function normalizeName(name) {
   if (typeof name !== 'string') return null;
-  const trimmed = name.trim();
+  const trimmed = name.trim().replace(/ {2,}/g, ' ');
   const len = [...trimmed].length;
   if (len < NAME_MIN || len > NAME_MAX) return null;
-  if (/[\p{Cc}\p{Cf}]/u.test(trimmed)) return null;
+  if (!NAME_PATTERN.test(trimmed)) return null;
+  // Латиница вместе с кириллицей в одном имени: «Аnna» с русской «А» выдавала бы себя за «Anna».
+  if (/\p{Script=Latin}/u.test(trimmed) && /\p{Script=Cyrillic}/u.test(trimmed)) return null;
   return trimmed;
 }
 
@@ -63,8 +71,61 @@ function issueSession(db, userId, now) {
 
 const fail = (reply, status, error, message) => reply.code(status).send({ error, message });
 
-/** Регистрирует /api/register, /api/login, /api/me, /api/ws-ticket. */
-export function registerAuthRoutes(app, { db, tickets, now = Date.now }) {
+/**
+ * Регистрирует /api/join, /api/me, /api/ws-ticket (и /api/register, /api/login при passwordAuth).
+ * @param {object} deps
+ * @param {{matches(code: unknown): boolean}} deps.room комната текущего запуска сервера
+ * @param {(userId: number) => boolean} [deps.isOnline] есть ли у пользователя открытый сокет
+ */
+export function registerAuthRoutes(
+  app,
+  { db, tickets, room, isOnline = () => false, passwordAuth = false, limiter = createAttemptLimiter(), now = Date.now },
+) {
+  app.post('/api/join', async (req, reply) => {
+    const body = req.body ?? {};
+    const key = req.ip;
+    if (limiter.blocked(key)) return fail(reply, 429, 'too_many', 'Слишком много неверных попыток. Подождите минуту.');
+    const name = normalizeName(body.name);
+    if (!name) {
+      return fail(reply, 400, 'bad_name', `Имя: от ${NAME_MIN} до ${NAME_MAX} символов — буквы, цифры, пробел, точка, дефис`);
+    }
+    if (normalizeRoomCode(body.room) === null) {
+      limiter.fail(key);
+      return fail(reply, 400, 'bad_room', 'Код комнаты — четыре латинские буквы');
+    }
+    if (!room.matches(body.room)) {
+      limiter.fail(key);
+      return fail(reply, 403, 'bad_room', 'Неверный код комнаты');
+    }
+    const t = now();
+    let user = db.findUserByNameAnyCase(name);
+    // Имя играющего человека не отдаём: иначе по имени можно было бы вытеснить его из игры.
+    if (user && isOnline(user.id)) return fail(reply, 409, 'name_taken', 'Это имя сейчас занято. Выберите другое.');
+    if (!user) {
+      // Пароля нет: в БД лежит случайный хеш, которому не соответствует ни один пароль.
+      user = db.createUser({ name, passHash: randomBytes(KEY_LEN).toString('hex'), salt: randomBytes(SALT_LEN).toString('hex'), now: t });
+      if (!user) return fail(reply, 409, 'name_taken', 'Это имя сейчас занято. Выберите другое.');
+    }
+    db.purgeExpiredSessions(t);
+    return { token: issueSession(db, user.id, t), user: publicUser(user) };
+  });
+
+  if (passwordAuth) registerPasswordRoutes(app, { db, now });
+
+  app.get('/api/me', async (req, reply) => {
+    const user = authenticate(db, req, now());
+    if (!user) return fail(reply, 401, 'unauth', 'Нужна авторизация');
+    return { user: publicUser(user) };
+  });
+
+  app.post('/api/ws-ticket', async (req, reply) => {
+    const user = authenticate(db, req, now());
+    if (!user) return fail(reply, 401, 'unauth', 'Нужна авторизация');
+    return { ticket: tickets.issue(user.id), expiresIn: tickets.ttlMs / 1000 };
+  });
+}
+
+function registerPasswordRoutes(app, { db, now }) {
   app.post('/api/register', async (req, reply) => {
     const body = req.body ?? {};
     const name = normalizeName(body.name);
@@ -92,17 +153,5 @@ export function registerAuthRoutes(app, { db, tickets, now = Date.now }) {
     const t = now();
     db.purgeExpiredSessions(t);
     return { token: issueSession(db, found.id, t), user: publicUser(found) };
-  });
-
-  app.get('/api/me', async (req, reply) => {
-    const user = authenticate(db, req, now());
-    if (!user) return fail(reply, 401, 'unauth', 'Нужна авторизация');
-    return { user: publicUser(user) };
-  });
-
-  app.post('/api/ws-ticket', async (req, reply) => {
-    const user = authenticate(db, req, now());
-    if (!user) return fail(reply, 401, 'unauth', 'Нужна авторизация');
-    return { ticket: tickets.issue(user.id), expiresIn: tickets.ttlMs / 1000 };
   });
 }

@@ -15,13 +15,13 @@ export function mountUI(api) { /* ... */ }
 
 | Метод | Что делает |
 |---|---|
-| `await api.auth.register(name, password)` | `POST /api/register`, сохраняет сессию, подключает сокет. Возвращает `user` |
-| `await api.auth.login(name, password)` | `POST /api/login`, то же самое |
+| `await api.auth.join(name, room)` | `POST /api/join`: имя и код комнаты (четыре латинские буквы, показан в терминале сервера). Сохраняет сессию, подключает сокет. Возвращает `user` |
 | `api.auth.logout()` | Закрывает сокет, стирает сессию, событие `auth` с `null` |
 | `api.auth.session()` | `{user}` или `null` — текущая сессия окна |
 
-Ошибки — `ApiError` с полями `status` и `code`: `bad_name` (400), `bad_password` (400), `name_taken` (409),
-`bad_credentials` (401), `unauth` (401), `network` (status 0, сервер недоступен), `message` — текст на русском.
+Ошибки — `ApiError` с полями `status` и `code`: `bad_name` (400), `bad_room` (400 — не четыре буквы, 403 — неверный код),
+`name_taken` (409, имя занято играющим), `too_many` (429), `unauth` (401), `network` (status 0, сервер недоступен), `message` — текст на русском.
+Пароля нет: имя на сервере принадлежит тому, кто вошёл с верным кодом. После перезапуска сервера код новый, старые токены не действуют (событие `auth` с `null`).
 
 ## Сеть
 

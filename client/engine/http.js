@@ -3,7 +3,7 @@
 export class ApiError extends Error {
   /**
    * @param {number} status HTTP-статус; 0 — сервер недоступен
-   * @param {string} code код из ответа сервера (bad_name, name_taken, bad_credentials, unauth, network ...)
+   * @param {string} code код из ответа сервера (bad_name, bad_room, name_taken, too_many, unauth, network ...)
    */
   constructor(status, code, message) {
     super(message);
@@ -37,8 +37,7 @@ export function createHttp({ fetch: fetchImpl = globalThis.fetch?.bind(globalThi
 
   return {
     /** @returns {Promise<{token: string, user: {id: number, name: string, appearance: object}}>} */
-    register: (name, password) => request('POST', '/api/register', { body: { name, password } }),
-    login: (name, password) => request('POST', '/api/login', { body: { name, password } }),
+    join: (name, room) => request('POST', '/api/join', { body: { name, room } }),
     me: (token) => request('GET', '/api/me', { token }),
     /** @returns {Promise<{ticket: string, expiresIn: number}>} */
     wsTicket: (token) => request('POST', '/api/ws-ticket', { token }),

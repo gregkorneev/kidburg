@@ -139,7 +139,7 @@ network = connectFireNetwork({
     online = value;
     if (!online) {
       dialog = null;
-      setNotice('Вы вышли. Войдите снова, чтобы вернуться на полигон.');
+      setNotice('Вы вышли. Введите имя и код комнаты, чтобы вернуться на полигон.');
     }
     syncBlocked();
     refresh();

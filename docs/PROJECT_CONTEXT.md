@@ -197,8 +197,8 @@ HUD показывает: «Чанки: X из 144 (Y%), лимит 14». При
 
 | Метод и путь | Назначение |
 |---|---|
-| `POST /api/register` `{name, password}` | Регистрация, ответ `{token, user}` |
-| `POST /api/login` `{name, password}` | Вход |
+| `POST /api/join` `{name, room}` | Вход по имени и коду комнаты (четыре латинские буквы, новый при каждом запуске сервера и показан в терминале), ответ `{token, user}`. Ошибки: `bad_name`, `bad_room` (400/403), `name_taken` (409, имя занято играющим), `too_many` (429, после 10 неверных кодов за минуту с одного адреса) |
+| `POST /api/register`, `POST /api/login` `{name, password}` | Только при `passwordAuth: true` в конфиге сервера (по умолчанию выключено, иначе обходят код комнаты) |
 | `POST /api/ws-ticket` (заголовок `Authorization: Bearer <token>`) | Одноразовый тикет WebSocket |
 | `GET /api/me` | Данные пользователя |
 | `GET /health` | `{ok: true, ...}` |

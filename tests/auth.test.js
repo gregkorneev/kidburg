@@ -6,7 +6,8 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { hashPassword, normalizeName, sha256, verifyPassword, PASSWORD_MAX, SESSION_TTL_MS } from '../server/net/auth.js';
 import { createTicketStore } from '../server/net/tickets.js';
-import { getTicket, makeApp, register } from './helpers.js';
+import { TestClient, getTicket, join, listen, makeApp, register } from './helpers.js';
+import { createAttemptLimiter } from '../server/net/room.js';
 
 const post = (app, url, payload, headers) => app.inject({ method: 'POST', url, payload, headers });
 const bearer = (token) => ({ authorization: `Bearer ${token}` });
@@ -21,7 +22,7 @@ test('hashPassword: соль отдельная, проверка timingSafeEqua
   assert.equal(await verifyPassword('Secret', a.passHash, a.salt), false);
 });
 
-test('normalizeName: длина 3–20, без управляющих символов', () => {
+test('normalizeName: длина 3–20, буквы и цифры, без управляющих символов и смешения алфавитов', () => {
   assert.equal(normalizeName('  Аня  '), 'Аня');
   assert.equal(normalizeName('ab'), null);
   assert.equal(normalizeName('a'.repeat(21)), null);
@@ -29,12 +30,18 @@ test('normalizeName: длина 3–20, без управляющих симво
   assert.equal(normalizeName('bad\nname'), null);
   assert.equal(normalizeName('zero​width'), null);
   assert.equal(normalizeName(42), null);
+  assert.equal(normalizeName('Маша  Иванова'), 'Маша Иванова', 'повторные пробелы схлопываются');
+  assert.equal(normalizeName('Anna_2.0-b'), 'Anna_2.0-b');
+  for (const bad of ['<b>Аня</b>', 'Аня!', '_Аня', 'Аня😀', 'Аня\u202Eabc']) {
+    assert.equal(normalizeName(bad), null, bad);
+  }
+  assert.equal(normalizeName('Аnna'), null, 'русская «А» вместе с латиницей');
 });
 
-test('регистрация: токен и пользователь, пароль и токен не лежат в базе открытым текстом', async () => {
+test('вход по паролю (passwordAuth): токен и пользователь, пароль и токен не лежат в базе открытым текстом', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'city-auth-'));
   const dbPath = path.join(dir, 'city.db');
-  const app = await makeApp({ dbPath });
+  const app = await makeApp({ dbPath, passwordAuth: true });
   try {
     const res = await post(app, '/api/register', { name: 'Аня', password: 'secret' });
     assert.equal(res.statusCode, 201);
@@ -58,8 +65,8 @@ test('регистрация: токен и пользователь, парол
   }
 });
 
-test('регистрация: отказы по имени, паролю и дублю', async () => {
-  const app = await makeApp();
+test('регистрация (passwordAuth): отказы по имени, паролю и дублю', async () => {
+  const app = await makeApp({ passwordAuth: true });
   const cases = [
     [{ name: 'ab', password: 'secret' }, 400, 'bad_name'],
     [{ name: 'a'.repeat(21), password: 'secret' }, 400, 'bad_name'],
@@ -74,16 +81,16 @@ test('регистрация: отказы по имени, паролю и ду
   }
   assert.equal((await post(app, '/api/register')).statusCode, 400, 'пустое тело');
 
-  await register(app, 'Normal');
+  await post(app, '/api/register', { name: 'Normal', password: 'secret' });
   const dup = await post(app, '/api/register', { name: 'NORMAL', password: 'other' });
   assert.equal(dup.statusCode, 409);
   assert.equal(dup.json().error, 'name_taken');
   await app.close();
 });
 
-test('вход: верный пароль, неверный пароль, неизвестное имя', async () => {
-  const app = await makeApp();
-  const { user } = await register(app, 'Борис', 'secret');
+test('вход (passwordAuth): верный пароль, неверный пароль, неизвестное имя', async () => {
+  const app = await makeApp({ passwordAuth: true });
+  const { user } = (await post(app, '/api/register', { name: 'Борис', password: 'secret' })).json();
 
   const ok = await post(app, '/api/login', { name: 'борис'.replace('б', 'Б'), password: 'secret' });
   assert.equal(ok.statusCode, 200);
@@ -102,10 +109,10 @@ test('вход: верный пароль, неверный пароль, неи
   await app.close();
 });
 
-test('вход: верный пароль с добавленным суффиксом длиннее лимита отклоняется', async () => {
-  const app = await makeApp();
+test('вход (passwordAuth): верный пароль с добавленным суффиксом длиннее лимита отклоняется', async () => {
+  const app = await makeApp({ passwordAuth: true });
   const password = 'p'.repeat(PASSWORD_MAX);
-  await register(app, 'Егор', password);
+  await post(app, '/api/register', { name: 'Егор', password });
   assert.equal((await post(app, '/api/login', { name: 'Егор', password })).statusCode, 200);
   for (const extra of ['x', 'x'.repeat(500)]) {
     const res = await post(app, '/api/login', { name: 'Егор', password: password + extra });
@@ -180,4 +187,139 @@ test('тикет: одноразовый и живёт 30 секунд', () => {
   store.issue(2);
   assert.equal(store.size, 1, 'просроченные тикеты вычищаются');
   assert.equal(store.consume(old), null);
+});
+
+// ---- Вход по имени и коду комнаты ----
+
+test('join: имя и код комнаты дают токен; в базе нет пароля, только хеш токена', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'city-join-'));
+  const dbPath = path.join(dir, 'city.db');
+  const app = await makeApp({ dbPath, roomCode: 'BCDF' });
+  try {
+    const res = await post(app, '/api/join', { name: '  Аня ', room: 'bcdf' });
+    assert.equal(res.statusCode, 200, 'код без учёта регистра, имя без пробелов по краям');
+    const { token, user } = res.json();
+    assert.equal(user.name, 'Аня');
+    assert.equal(Buffer.from(token, 'base64url').length, 32);
+    assert.equal((await app.inject({ url: '/api/me', headers: bearer(token) })).json().user.id, user.id);
+
+    const raw = new Database(dbPath, { readonly: true });
+    const sessions = raw.prepare('SELECT token_hash FROM sessions').all();
+    const stored = raw.prepare('SELECT pass_hash FROM users WHERE id = ?').get(user.id).pass_hash;
+    raw.close();
+    assert.deepEqual(sessions, [{ token_hash: sha256(token) }]);
+    const guess = await post(app, '/api/login', { name: 'Аня', password: stored });
+    assert.equal(guess.statusCode, 404, 'вход по паролю выключен');
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('join: код создаётся при запуске — четыре латинские буквы, у каждого запуска свой', async () => {
+  const codes = new Set();
+  for (let i = 0; i < 8; i++) {
+    const app = await makeApp();
+    assert.match(app.room.code, /^[A-Z]{4}$/);
+    codes.add(app.room.code);
+    await app.close();
+  }
+  assert.ok(codes.size > 1, 'коды не должны быть одинаковыми');
+});
+
+test('join: неверный и неправильно записанный код, плохое имя — понятные отказы без токена', async () => {
+  const app = await makeApp({ roomCode: 'BCDF' });
+  const cases = [
+    [{ name: 'Аня', room: 'BCDG' }, 403, 'bad_room', 'Неверный код комнаты'],
+    [{ name: 'Аня', room: 'BCD' }, 400, 'bad_room', 'Код комнаты — четыре латинские буквы'],
+    [{ name: 'Аня', room: 'BCDFG' }, 400, 'bad_room'],
+    [{ name: 'Аня', room: 'ВСDF' }, 400, 'bad_room'], // кириллические В и С
+    [{ name: 'Аня', room: 1234 }, 400, 'bad_room'],
+    [{ name: 'Аня' }, 400, 'bad_room'],
+    [{ name: 'ab', room: 'BCDF' }, 400, 'bad_name'],
+    [{ name: '<script>', room: 'BCDF' }, 400, 'bad_name'],
+    [{ room: 'BCDF' }, 400, 'bad_name'],
+    [{ name: ['Аня'], room: 'BCDF' }, 400, 'bad_name'],
+  ];
+  for (const [payload, status, error, message] of cases) {
+    const res = await post(app, '/api/join', payload);
+    assert.equal(res.statusCode, status, JSON.stringify(payload));
+    assert.equal(res.json().error, error, JSON.stringify(payload));
+    assert.equal(res.json().token, undefined);
+    if (message) assert.equal(res.json().message, message);
+  }
+  assert.equal((await post(app, '/api/join')).statusCode, 400, 'пустое тело');
+  await app.close();
+});
+
+test('join: после серии неверных кодов адрес блокируется, верный вход считается отдельно', async () => {
+  let t = 0;
+  const limiter = createAttemptLimiter({ max: 3, windowMs: 60_000, now: () => t });
+  const app = await makeApp({ roomCode: 'BCDF', joinLimiter: limiter });
+  for (let i = 0; i < 3; i++) assert.equal((await post(app, '/api/join', { name: 'Аня', room: 'ZZZZ' })).statusCode, 403);
+  const blocked = await post(app, '/api/join', { name: 'Аня', room: 'BCDF' });
+  assert.equal(blocked.statusCode, 429, 'даже верный код не принимается во время блокировки');
+  assert.equal(blocked.json().error, 'too_many');
+  t = 60_000;
+  assert.equal((await post(app, '/api/join', { name: 'Аня', room: 'BCDF' })).statusCode, 200);
+  await app.close();
+});
+
+test('join: имя играющего человека занято, после выхода — свободно и возвращает того же игрока', async () => {
+  const { app, port } = await listen();
+  let client;
+  try {
+    const first = await join(app, 'Аня');
+    client = await TestClient.connect(port, await getTicket(app, first.token));
+    client.send({ t: 'hello', ticket: 'x', proto: 1 });
+    await client.nextOfType('welcome');
+
+    for (const name of ['аня', 'АНЯ', ' Аня ']) {
+      const taken = await post(app, '/api/join', { name, room: app.room.code });
+      assert.equal(taken.statusCode, 409, name);
+      assert.equal(taken.json().error, 'name_taken');
+      assert.equal(taken.json().token, undefined);
+    }
+    assert.equal((await app.inject({ url: '/api/me', headers: bearer(first.token) })).statusCode, 200, 'первый игрок не вытеснен');
+
+    client.ws.close();
+    await client.closed;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const again = await join(app, 'аня');
+    assert.equal(again.user.id, first.user.id, 'тот же игрок, а не двойник с другим регистром');
+  } finally {
+    client?.ws.terminate();
+    await app.close();
+  }
+});
+
+test('перезапуск: токен прошлого запуска и его код больше не пускают', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'city-restart-'));
+  const dbPath = path.join(dir, 'city.db');
+  try {
+    const first = await makeApp({ dbPath, roomCode: 'BCDF' });
+    const old = (await post(first, '/api/join', { name: 'Аня', room: 'BCDF' })).json();
+    assert.equal((await post(first, '/api/ws-ticket', undefined, bearer(old.token))).statusCode, 200);
+    await first.close();
+
+    const second = await makeApp({ dbPath, roomCode: 'GHJK' });
+    assert.equal((await second.inject({ url: '/api/me', headers: bearer(old.token) })).statusCode, 401, 'старый токен');
+    assert.equal((await post(second, '/api/ws-ticket', undefined, bearer(old.token))).statusCode, 401);
+    const stale = await post(second, '/api/join', { name: 'Аня', room: 'BCDF' });
+    assert.equal(stale.statusCode, 403, 'старый код');
+    const fresh = await post(second, '/api/join', { name: 'Аня', room: 'GHJK' });
+    assert.equal(fresh.statusCode, 200);
+    assert.equal(fresh.json().user.id, old.user.id, 'то же имя — тот же игрок, позиция сохраняется');
+    await second.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('вход по паролю выключен по умолчанию: /api/register и /api/login недоступны', async () => {
+  const app = await makeApp();
+  for (const url of ['/api/register', '/api/login']) {
+    assert.equal((await post(app, url, { name: 'Аня', password: 'secret' })).statusCode, 404, url);
+  }
+  await app.close();
 });

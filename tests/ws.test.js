@@ -125,8 +125,8 @@ test('игрок в далёком чанке не виден; соседний 
 
     const a = await joinGame(app, port, 'Аня');
     for (const name of ['Далеко', 'Рядом']) {
-      const login = await app.inject({ method: 'POST', url: '/api/login', payload: { name, password: 'secret' } });
-      const c = await TestClient.connect(port, await getTicket(app, login.json().token));
+      const again = await register(app, name);
+      const c = await TestClient.connect(port, await getTicket(app, again.token));
       c.send({ t: 'hello', ticket: 'x', proto: 1 });
       await c.nextOfType('welcome');
     }
@@ -146,8 +146,8 @@ test('границы мира: координаты за краем прижим
   try {
     await register(app, 'Край');
     seedPlayerState(dbPath, 'Край', { x: 0.2, y: 0, z: 0.2 });
-    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { name: 'Край', password: 'secret' } });
-    const client = await TestClient.connect(port, await getTicket(app, login.json().token));
+    const again = await register(app, 'Край');
+    const client = await TestClient.connect(port, await getTicket(app, again.token));
     client.send({ t: 'hello', ticket: 'x', proto: 1 });
     await client.nextOfType('welcome');
     client.send(pos(-0.3, 0.3));
@@ -293,8 +293,8 @@ test('чанки: переход, после которого набор не м
   try {
     await register(app, 'Тишина');
     seedPlayerState(dbPath, 'Тишина', { x: 7 * 64 - 0.2, y: 0, z: 6.5 * 64 }); // граница чанков 6 и 7
-    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { name: 'Тишина', password: 'secret' } });
-    const client = await TestClient.connect(port, await getTicket(app, login.json().token));
+    const again = await register(app, 'Тишина');
+    const client = await TestClient.connect(port, await getTicket(app, again.token));
     client.send({ t: 'hello', ticket: 'x', proto: 1 });
     await client.nextOfType('welcome');
     await nextChunkBatch(client);
@@ -315,8 +315,8 @@ test('чанки: при пересечении границы chunk_unload ра
   try {
     await register(app, 'Граница');
     seedPlayerState(dbPath, 'Граница', { x: 10 * 64 - 0.2, y: 0, z: 6.5 * 64 }); // у края чанков 9 и 10
-    const login = await app.inject({ method: 'POST', url: '/api/login', payload: { name: 'Граница', password: 'secret' } });
-    const client = await TestClient.connect(port, await getTicket(app, login.json().token));
+    const again = await register(app, 'Граница');
+    const client = await TestClient.connect(port, await getTicket(app, again.token));
     client.send({ t: 'hello', ticket: 'x', proto: 1 });
     await client.nextOfType('welcome');
     const first = await nextChunkBatch(client);
@@ -344,5 +344,26 @@ test('чанки: при пересечении границы chunk_unload ра
     await app.close();
     cleanup();
     cleanupDb();
+  }
+});
+
+test('hello не меняет личность: имя, код комнаты и userId из сообщения игнорируются', async () => {
+  const { app, port } = await listen();
+  try {
+    await register(app, 'Борис');
+    const { client, welcome, user } = await joinGame(app, port, 'Аня');
+    assert.equal(welcome.name, 'Аня');
+    assert.equal(welcome.playerId, user.id);
+
+    const sneaky = await register(app, 'Вера');
+    const ws = await TestClient.connect(port, await getTicket(app, sneaky.token));
+    ws.send({ t: 'hello', ticket: 'x', proto: 1, name: 'Борис', room: 'ZZZZ', userId: user.id, playerId: user.id });
+    const w = await ws.nextOfType('welcome');
+    assert.equal(w.name, 'Вера');
+    assert.equal(w.playerId, sneaky.user.id);
+    ws.ws.terminate();
+    client.ws.terminate();
+  } finally {
+    await app.close();
   }
 });

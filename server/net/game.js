@@ -320,6 +320,8 @@ export function createGame({
 
   return {
     flushAll,
+    /** Есть ли у пользователя открытое соединение (в том числе до hello). */
+    isOnline: (userId) => connByUser.has(userId),
     get online() {
       return players.size;
     },

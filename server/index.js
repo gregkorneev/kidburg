@@ -8,6 +8,7 @@ import { registerTasks } from './tasks/index.js';
 import { DEFAULT_DB_FILE, openDb } from './db/index.js';
 import { registerAuthRoutes } from './net/auth.js';
 import { createGame } from './net/game.js';
+import { createRoom } from './net/room.js';
 import { createTicketStore } from './net/tickets.js';
 import { loadWorld } from './net/world.js';
 
@@ -29,7 +30,12 @@ export async function buildApp(overrides = {}) {
   const db = config.db ?? openDb(config.dbPath);
   const world = loadWorld(config.worldDir, app.log);
   const tickets = createTicketStore({ now: config.now });
-  const ctx = { db, world, config, log: app.log };
+  // Код комнаты живёт только в памяти этого запуска. Сессии прошлого запуска закрываем:
+  // токен, выданный по старому коду, после перезапуска не должен пускать в игру.
+  const room = createRoom({ code: config.roomCode });
+  db.clearSessions();
+  app.decorate('room', room);
+  const ctx = { db, world, config, log: app.log, room };
 
   app.get('/health', async () => ({ ok: true }));
 
@@ -37,8 +43,17 @@ export async function buildApp(overrides = {}) {
     await app.register(fastifyStatic, { root: config.distDir });
   }
 
-  registerAuthRoutes(app, { db, tickets, now: config.now });
-  const game = createGame({
+  let game = null;
+  registerAuthRoutes(app, {
+    db,
+    tickets,
+    room,
+    isOnline: (userId) => game?.isOnline(userId) ?? false,
+    passwordAuth: config.passwordAuth,
+    limiter: config.joinLimiter,
+    now: config.now,
+  });
+  game = createGame({
     app,
     db,
     tickets,
@@ -69,6 +84,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const port = Number(process.env.PORT ?? DEFAULT_CONFIG.port);
   const app = await startServer({ port, dbPath: process.env.DB_PATH ?? DEFAULT_CONFIG.dbPath });
   console.log(`Сервер запущен: http://localhost:${port}`);
+  console.log(`Код комнаты: ${app.room.code}`);
 
   const stop = async () => {
     await app.close();

@@ -17,8 +17,10 @@ function fakeStorage() {
   };
 }
 
+const ROOM = 'BCDF';
+
 async function startServer() {
-  const app = await buildApp({ dbPath: ':memory:', logLevel: 'silent', worldDir: '/нет/такой/папки' });
+  const app = await buildApp({ roomCode: ROOM, dbPath: ':memory:', logLevel: 'silent', worldDir: '/нет/такой/папки' });
   await app.listen({ host: '127.0.0.1', port: 0 });
   return { app, port: app.server.address().port };
 }
@@ -64,11 +66,9 @@ test('http: ошибки сервера превращаются в ApiError с 
   const { app, port } = await startServer();
   try {
     const { http } = makeClient(port);
-    await assert.rejects(http.register('ab', 'secret'), (e) => e instanceof ApiError && e.status === 400 && e.code === 'bad_name');
-    await http.register('Аня', 'secret');
-    await assert.rejects(http.register('Аня', 'другой'), (e) => e.code === 'name_taken' && e.status === 409);
-    await assert.rejects(http.login('Аня', 'неверный'), (e) => e.code === 'bad_credentials');
-    const { user } = await http.me((await http.login('Аня', 'secret')).token);
+    await assert.rejects(http.join('ab', ROOM), (e) => e instanceof ApiError && e.status === 400 && e.code === 'bad_name');
+    await assert.rejects(http.join('Аня', 'ZZZZ'), (e) => e.status === 403 && e.code === 'bad_room' && e.message === 'Неверный код комнаты');
+    const { user } = await http.me((await http.join('Аня', 'bcdf')).token);
     assert.equal(user.name, 'Аня');
     assert.ok((await http.ping()) >= 0);
   } finally {
@@ -82,7 +82,7 @@ test('подключение: тикет → сокет → hello → welcome, �
   const { app, port } = await startServer();
   try {
     const c = makeClient(port);
-    const { token, user } = await c.http.register('Аня', 'secret');
+    const { token, user } = await c.http.join('Аня', ROOM);
     c.session.save(token, user);
     const welcome = waitFor(c.emitter, 'welcome');
     c.net.connect();
@@ -124,7 +124,7 @@ test('обрыв соединения: новый тикет, повторный
   const { app, port } = await startServer();
   try {
     const c = makeClient(port);
-    const { token, user } = await c.http.register('Аня', 'secret');
+    const { token, user } = await c.http.join('Аня', ROOM);
     c.session.save(token, user);
     let welcomes = 0;
     c.emitter.on('welcome', () => (welcomes += 1));
@@ -149,7 +149,7 @@ test('disconnect останавливает переподключение и з
   const { app, port } = await startServer();
   try {
     const c = makeClient(port);
-    const { token, user } = await c.http.register('Аня', 'secret');
+    const { token, user } = await c.http.join('Аня', ROOM);
     c.session.save(token, user);
     const ready = waitFor(c.emitter, 'welcome');
     c.net.connect();
@@ -168,7 +168,7 @@ test('тот же пользователь в другом окне: старо�
   const { app, port } = await startServer();
   try {
     const a = makeClient(port);
-    const { token, user } = await a.http.register('Аня', 'secret');
+    const { token, user } = await a.http.join('Аня', ROOM);
     a.session.save(token, user);
     const ready = waitFor(a.emitter, 'welcome');
     a.net.connect();

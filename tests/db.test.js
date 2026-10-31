@@ -135,3 +135,16 @@ test('прогресс задач: запись, обновление, спис�
   );
   db.close();
 });
+
+test('clearSessions удаляет все сессии, findUserByNameAnyCase не различает регистр кириллицы', () => {
+  const db = openDb(':memory:');
+  const user = newUser(db, 'Аня');
+  db.createSession('a', user.id, 5000);
+  db.createSession('b', user.id, 9000);
+  assert.equal(db.clearSessions(), 2);
+  assert.equal(db.findSession('a', 1000), null);
+  assert.equal(db.findUserByName('аня'), null, 'точный поиск различает регистр кириллицы');
+  assert.equal(db.findUserByNameAnyCase('аня').id, user.id);
+  assert.equal(db.findUserByNameAnyCase('Никто'), null);
+  db.close();
+});

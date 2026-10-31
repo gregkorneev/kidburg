@@ -62,13 +62,9 @@ export function createClient({ container, networkOnly = false }) {
   }
 
   const auth = {
-    /** @returns {Promise<{id: number, name: string, appearance: object}>} бросает ApiError */
-    async register(name, password) {
-      const { token, user } = await http.register(name, password);
-      return startSession(token, user);
-    },
-    async login(name, password) {
-      const { token, user } = await http.login(name, password);
+    /** Вход по имени и коду комнаты. @returns {Promise<{id: number, name: string, appearance: object}>} бросает ApiError */
+    async join(name, room) {
+      const { token, user } = await http.join(name, room);
       return startSession(token, user);
     },
     logout() {

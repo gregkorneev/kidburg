@@ -1,4 +1,4 @@
-// npm start. В S0 только запуск сервера и печать адресов;
+// npm start. Запуск сервера, печать адресов и кода комнаты;
 // проверки Ollama, QR-коды и автономный режим добавляются в S4.
 
 import os from 'node:os';
@@ -13,6 +13,8 @@ for (const list of Object.values(os.networkInterfaces())) {
     if (iface.family === 'IPv4' && !iface.internal) console.log(`  в сети: http://${iface.address}:${port}`);
   }
 }
+
+console.log(`\n  Код комнаты: ${app.room.code}\n  (новый при каждом запуске; игроки вводят имя и этот код)\n`);
 
 const stop = async () => {
   await app.close();

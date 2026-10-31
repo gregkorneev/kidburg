@@ -111,12 +111,9 @@ test('перезапуск сервера: игрок возвращается �
 
     const second = await listen({ dbPath });
     try {
-      const login = await second.app.inject({
-        method: 'POST',
-        url: '/api/login',
-        payload: { name: 'Аня', password: 'secret' },
-      });
-      const again = await TestClient.connect(second.port, await getTicket(second.app, login.json().token));
+      // Код комнаты у второго запуска свой: вход идёт по нему.
+      const login = await register(second.app, 'Аня');
+      const again = await TestClient.connect(second.port, await getTicket(second.app, login.token));
       again.send({ t: 'hello', ticket: 'x', proto: 1 });
       const welcome = await again.nextOfType('welcome');
       assert.equal(welcome.state.x, SPAWN.x + 0.4);
@@ -150,14 +147,18 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
       env: { ...process.env, PORT: String(port), DB_PATH: dbPath, LOG_LEVEL: 'silent' },
       stdio: ['ignore', 'pipe', 'inherit'],
     });
+    let output = '';
+    child.stdout.on('data', (chunk) => (output += chunk));
     try {
       for (let i = 0; i < 100 && !(await fetch(`http://127.0.0.1:${port}/health`).then(() => true, () => false)); i++) {
         await sleep(50);
       }
-      const reg = await fetch(`http://127.0.0.1:${port}/api/register`, {
+      const room = /Код комнаты: ([A-Z]{4})\b/.exec(output)?.[1];
+      assert.ok(room, `в выводе сервера нет кода комнаты: ${output}`);
+      const reg = await fetch(`http://127.0.0.1:${port}/api/join`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'Сигнал', password: 'secret' }),
+        body: JSON.stringify({ name: 'Сигнал', room }),
       }).then((r) => r.json());
       const { ticket } = await fetch(`http://127.0.0.1:${port}/api/ws-ticket`, {
         method: 'POST',

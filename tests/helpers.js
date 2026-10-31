@@ -44,11 +44,14 @@ export async function listen(overrides = {}) {
   return { app, port: app.server.address().port };
 }
 
-export async function register(app, name, password = 'secret') {
-  const res = await app.inject({ method: 'POST', url: '/api/register', payload: { name, password } });
-  if (res.statusCode !== 201) throw new Error(`register ${name}: ${res.statusCode} ${res.body}`);
+/** Вход по имени и коду комнаты этого приложения: { token, user }. */
+export async function join(app, name, room = app.room.code) {
+  const res = await app.inject({ method: 'POST', url: '/api/join', payload: { name, room } });
+  if (res.statusCode !== 200) throw new Error(`join ${name}: ${res.statusCode} ${res.body}`);
   return res.json();
 }
+
+export const register = join;
 
 export async function getTicket(app, token) {
   const res = await app.inject({
