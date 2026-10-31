@@ -97,6 +97,7 @@ if (new URLSearchParams(window.location.search).has('debug')) {
     if (canvas) {
       canvas.dataset.renderStats = JSON.stringify(scene.getRenderStats());
       canvas.dataset.keyPositions = JSON.stringify(scene.getKeyScreenPositions());
+      canvas.dataset.taskDebug = JSON.stringify({ stage: state.stage, pianoMode: state.pianoMode, position: scene.getPosition() });
     }
   }, 500);
 }

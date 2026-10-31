@@ -71,7 +71,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
   const focus = new THREE.Vector3(); const desired = new THREE.Vector3(); const ray = new THREE.Vector3();
   const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
   let state = null; let uiBlocked = false; let currentTarget = null; let lastPrompt = ''; let lastInteract = 0;
-  let cameraArmDistance = 5.2; let activePiano = pianos[0]; let instrumentMode = false; let quality = readQuality();
+  let cameraArmDistance = 5.2; let activePiano = pianos[0]; let instrumentMode = false; let instrumentReturn = null; let quality = readQuality();
   const keyTimers = new Set();
   const input = createInput({
     target: renderer.domElement, document, window,
@@ -111,6 +111,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     if (enabled === instrumentMode) return;
     instrumentMode = enabled;
     if (instrumentMode) {
+      instrumentReturn = { x: player.x, y: player.y, z: player.z, yaw: player.yaw };
       activePiano = state?.stage === 'concert_ready' ? pianos[1] : pianos[0];
       const front = Math.cos(activePiano.rotationY) >= 0 ? 1 : -1;
       player.x = activePiano.position.x + 0.82;
@@ -118,6 +119,9 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
       player.z = activePiano.position.z + front * 1.4;
       player.yaw = front > 0 ? 0 : Math.PI;
       player.moving = false;
+    } else if (instrumentReturn) {
+      Object.assign(player, instrumentReturn, { moving: false, running: false });
+      instrumentReturn = null;
     }
     if (instrumentMode) input.unlockPointer();
     else if (!uiBlocked) input.lockPointer();
