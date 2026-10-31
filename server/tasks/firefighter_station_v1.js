@@ -1,55 +1,111 @@
 // Серверное задание станции «Пожарный»: прогресс в SQLite (task_progress) по авторизованному userId.
 // Правила переходов — чистый автомат клиентского state.js (одна копия правил). Здесь добавляются
 // то, что клиенту доверять нельзя: владелец прогресса, позиция игрока, направление и частота.
-// Из payload читается только `action`; state, progress, done, координаты и userId игнорируются.
+// Из payload читаются только `action` и (для window_hit) `index`, причём индекс проверяется;
+// state, progress, done, координаты и userId игнорируются.
 //
 // Обработчик синхронный (better-sqlite3), поэтому два действия одного игрока не перемешиваются.
 
-import { FIRE_HIT_LIMIT, createInitialState, transitionTask } from '../../client/stations/firefighter/state.js';
-import { VERTICAL_TOLERANCE, WORLD_POINTS } from '../../client/stations/firefighter/layout.js';
+import {
+  WINDOW_COUNT,
+  WINDOW_HIT_LIMIT,
+  createInitialState,
+  transitionTask,
+} from '../../client/stations/firefighter/state.js';
+import { VERTICAL_TOLERANCE, WORLD_POINTS, WORLD_WINDOWS, toLocal } from '../../client/stations/firefighter/layout.js';
+import { insideSafetyZone } from '../../client/stations/firefighter/safety-zone.js';
 
 export const FIREFIGHTER_TASK_ID = 'firefighter_station_v1';
 export const FIRE_HIT_COOLDOWN_MS = 120;
-/** Допустимое отклонение взгляда игрока от направления на мишень при `fire_hit` (рад). */
+/** Допустимое отклонение взгляда игрока от направления на окно при `window_hit` (рад). */
 export const AIM_TOLERANCE_RAD = 0.45;
-/** Ближе этого расстояния до мишени направление не определено (м). */
+/** Ближе этого расстояния до окна направление не определено (м). */
 export const MIN_AIM_DISTANCE = 0.5;
 
-/** Какой точкой ограничено каждое действие. Для fire_hit дополнительно проверяется взгляд на target. */
+/** Какой точкой ограничено каждое действие. Для window_hit дополнительно проверяется взгляд на окно `index`. */
 const POINT_BY_ACTION = Object.freeze({
   start: 'npc',
   accept_briefing: 'npc',
   equip: 'locker',
-  fire_hit: 'hose',
+  window_hit: 'hose',
   pickup_mannequin: 'mannequin',
   deliver_mannequin: 'safe_zone',
   report: 'npc',
 });
 
 const STAGES = ['not_started', 'briefing', 'equipping', 'fire_drill', 'rescue', 'debrief', 'completed'];
+const stageIndex = (stage) => STAGES.indexOf(stage);
+const FIRE_DRILL = stageIndex('fire_drill');
+const RESCUE = stageIndex('rescue');
+
+/** Предел попаданий в записях старого формата (одна учебная мишень, поле `fireHits`). */
+const LEGACY_FIRE_HIT_LIMIT = 18;
 
 const STORAGE_ERROR = 'Сервер не смог сохранить прогресс. Действие не засчитано, попробуйте ещё раз.';
 
 const finite = (v) => Number.isFinite(v);
 
-function isStoredState(state) {
-  return (
-    state !== null &&
-    typeof state === 'object' &&
-    STAGES.includes(state.stage) &&
-    typeof state.equipped === 'boolean' &&
-    Number.isInteger(state.fireHits) &&
-    state.fireHits >= 0 &&
-    state.fireHits <= FIRE_HIT_LIMIT &&
-    typeof state.carryingMannequin === 'boolean' &&
-    typeof state.mannequinDelivered === 'boolean'
-  );
+const isFlag = (v) => typeof v === 'boolean';
+const isHits = (v) => Number.isInteger(v) && v >= 0 && v <= WINDOW_HIT_LIMIT;
+
+/**
+ * Окна старой записи: прогресс по единственной мишени (0..18) переносится на четыре окна
+ * пропорционально и заполняет их по порядку. Завершённая мишень — все окна потушены.
+ */
+function windowsFromLegacy(stage, fireHits) {
+  if (stageIndex(stage) >= RESCUE) return Array.from({ length: WINDOW_COUNT }, () => WINDOW_HIT_LIMIT);
+  let left = Math.round((fireHits / LEGACY_FIRE_HIT_LIMIT) * WINDOW_COUNT * WINDOW_HIT_LIMIT);
+  return Array.from({ length: WINDOW_COUNT }, () => {
+    const hits = Math.min(WINDOW_HIT_LIMIT, left);
+    left -= hits;
+    return hits;
+  });
+}
+
+/**
+ * Сохранённая запись -> актуальное состояние или null, если запись повреждена.
+ * Формат 2: `windows` — массив из WINDOW_COUNT целых 0..WINDOW_HIT_LIMIT (число попаданий по окну).
+ * Формат 1 (до окон): `fireHits` 0..18 без `windows` — переносится в память при чтении, база не меняется
+ * до следующего сохранённого действия игрока.
+ * Этап должен соответствовать окнам: до fire_drill все окна нетронуты, в fire_drill хоть одно не потушено,
+ * после — все потушены.
+ */
+export function restoreState(raw) {
+  if (raw === null || typeof raw !== 'object' || !STAGES.includes(raw.stage)) return null;
+  if (!isFlag(raw.equipped) || !isFlag(raw.carryingMannequin) || !isFlag(raw.mannequinDelivered)) return null;
+  const stage = stageIndex(raw.stage);
+
+  let windows;
+  if (raw.windows === undefined) {
+    const { fireHits } = raw;
+    if (!Number.isInteger(fireHits) || fireHits < 0 || fireHits > LEGACY_FIRE_HIT_LIMIT) return null;
+    if (stage < FIRE_DRILL && fireHits !== 0) return null;
+    if (stage === FIRE_DRILL && fireHits >= LEGACY_FIRE_HIT_LIMIT) return null;
+    if (stage > FIRE_DRILL && fireHits !== LEGACY_FIRE_HIT_LIMIT) return null;
+    windows = windowsFromLegacy(raw.stage, fireHits);
+  } else {
+    if (!Array.isArray(raw.windows) || raw.windows.length !== WINDOW_COUNT || !raw.windows.every(isHits)) return null;
+    windows = [...raw.windows];
+  }
+
+  const done = windows.filter((hits) => hits === WINDOW_HIT_LIMIT).length;
+  if (stage < FIRE_DRILL && windows.some((hits) => hits !== 0)) return null;
+  if (stage === FIRE_DRILL && done === WINDOW_COUNT) return null;
+  if (stage >= RESCUE && done !== WINDOW_COUNT) return null;
+
+  return {
+    stage: raw.stage,
+    equipped: raw.equipped,
+    windows,
+    carryingMannequin: raw.carryingMannequin,
+    mannequinDelivered: raw.mannequinDelivered,
+  };
 }
 
 /** Только известные поля: лишнее из базы клиенту не отдаётся. */
 function cleanState(state) {
-  const { stage, equipped, fireHits, carryingMannequin, mannequinDelivered } = state;
-  return { stage, equipped, fireHits, carryingMannequin, mannequinDelivered };
+  const { stage, equipped, windows, carryingMannequin, mannequinDelivered } = state;
+  return { stage, equipped, windows: [...windows], carryingMannequin, mannequinDelivered };
 }
 
 const reply = (state, feedback = '', changed = false, error) => ({
@@ -59,6 +115,12 @@ const reply = (state, feedback = '', changed = false, error) => ({
   changed,
   ...(error ? { error } : {}),
 });
+
+/** Центр игрока в локальных координатах полигона: радиус 0, граница зоны допускается. */
+function zoneCoordinates(position) {
+  const { x, z } = toLocal(position.x, position.z);
+  return [x, z, 0];
+}
 
 function horizontalDistance(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z);
@@ -91,13 +153,14 @@ function isAimedAt(position, yaw, point) {
  * @param {() => number} [deps.now]
  * @param {{warn?: Function, error?: Function}} [deps.log]
  * @param {typeof WORLD_POINTS} [deps.points] мировые точки станции (тестам нужны свои)
+ * @param {typeof WORLD_WINDOWS} [deps.windows] мировые центры окон учебной стены
  */
-export function createFirefighterTask({ db, now = Date.now, log = console, points = WORLD_POINTS }) {
+export function createFirefighterTask({ db, now = Date.now, log = console, points = WORLD_POINTS, windows = WORLD_WINDOWS }) {
   const lastHitAt = new Map();
 
   function load(userId) {
     const saved = db.getTaskProgress(userId, FIREFIGHTER_TASK_ID);
-    return saved && isStoredState(saved.state) ? saved.state : createInitialState();
+    return (saved && restoreState(saved.state)) || createInitialState();
   }
 
   return {
@@ -119,7 +182,9 @@ export function createFirefighterTask({ db, now = Date.now, log = console, point
       if (action === 'resume') return reply(state);
       if (!Object.hasOwn(POINT_BY_ACTION, action)) return reply(state, 'Это действие сейчас недоступно.');
 
-      const transition = transitionTask(state, { type: action });
+      // Из payload берётся только индекс окна; transitionTask сам отвергает всё, кроме целого 0..WINDOW_COUNT-1.
+      const index = action === 'window_hit' ? payload.index : undefined;
+      const transition = transitionTask(state, { type: action, index });
       if (!transition.changed) return reply(state, transition.feedback);
 
       const position = context?.position;
@@ -127,8 +192,9 @@ export function createFirefighterTask({ db, now = Date.now, log = console, point
         return reply(state, 'Подойдите к нужному объекту, чтобы выполнить действие.');
       }
       const t = now();
-      if (action === 'fire_hit') {
-        if (!isAimedAt(position, context?.yaw, points.target)) return reply(state, 'Направьте учебный рукав на мишень.');
+      if (action === 'window_hit') {
+        if (insideSafetyZone(...zoneCoordinates(position))) return reply(state, 'Не пересекайте ограничительную линию!');
+        if (!isAimedAt(position, context?.yaw, windows[index])) return reply(state, 'Направьте учебный рукав на окно.');
         const last = lastHitAt.get(userId);
         if (last !== undefined && t - last < FIRE_HIT_COOLDOWN_MS) return reply(state);
       }
@@ -140,7 +206,7 @@ export function createFirefighterTask({ db, now = Date.now, log = console, point
         log.error?.({ err, userId }, 'не удалось сохранить прогресс задания');
         return reply(state, STORAGE_ERROR, false, 'storage');
       }
-      if (action === 'fire_hit') lastHitAt.set(userId, t);
+      if (action === 'window_hit') lastHitAt.set(userId, t);
       return reply(next, transition.feedback, true);
     },
 

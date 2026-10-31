@@ -1,5 +1,5 @@
 import { h, render } from 'preact';
-import { FIRE_HIT_LIMIT, OBJECTIVES } from './state.js';
+import { OBJECTIVES, WINDOW_COUNT, WINDOW_HIT_LIMIT, countDoneWindows } from './state.js';
 
 function Button({ option, onChoose, busy }) {
   return h('button', {
@@ -10,8 +10,10 @@ function Button({ option, onChoose, busy }) {
   }, option.label);
 }
 
-function StationUI({ state, prompt, notice, dialog, hoseActive, busy = false, onChoose, onCloseDialog }) {
-  const progress = Math.round((state.fireHits / FIRE_HIT_LIMIT) * 100);
+export function StationUI({ state, prompt, notice, dialog, hoseActive, targetWindow = null, busy = false, onChoose, onCloseDialog }) {
+  const done = countDoneWindows(state.windows);
+  const target = targetWindow === null ? undefined : state.windows[targetWindow];
+  const progress = target === undefined ? 0 : Math.round((target / WINDOW_HIT_LIMIT) * 100);
   return h('div', { class: 'station-ui' },
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' },
@@ -29,14 +31,14 @@ function StationUI({ state, prompt, notice, dialog, hoseActive, busy = false, on
       h('h1', null, OBJECTIVES[state.stage]),
       state.stage === 'fire_drill' && h('div', { class: 'progress-wrap' },
         h('div', { class: 'progress-label' },
-          h('span', null, 'Учебная мишень'),
-          h('strong', null, `${progress}%`),
+          h('span', null, `Потушено окон: ${done}/${WINDOW_COUNT}`),
+          h('strong', null, target === undefined ? 'Наведите прицел на окно' : `Окно ${targetWindow + 1}: ${progress}%`),
         ),
         h('div', { class: 'progress-track' },
           h('div', { class: 'progress-value', style: { width: `${progress}%` } }),
         ),
       ),
-      state.stage === 'completed' && h('p', { class: 'completion-copy' }, 'Ты прошёл инструктаж, подготовился и завершил два учебных задания.'),
+      state.stage === 'completed' && h('p', { class: 'completion-copy' }, 'Ты потушил все окна учебной стены и доставил манекен в безопасную зону.'),
     ),
 
     h('div', { class: 'center-reticle', 'aria-hidden': 'true' }, h('span')),
@@ -47,7 +49,7 @@ function StationUI({ state, prompt, notice, dialog, hoseActive, busy = false, on
       h('div', { class: 'control-row' }, h('kbd', null, 'SHIFT'), h('span', null, 'быстрее')),
       h('div', { class: 'control-row' }, h('kbd', null, 'E'), h('span', null, 'действие')),
       h('div', { class: 'control-row' }, h('kbd', null, 'ESC'), h('span', null, 'курсор')),
-      hoseActive && h('p', { class: 'hose-tip' }, 'Наведите прицел на огонь и удерживайте левую кнопку мыши.'),
+      hoseActive && h('p', { class: 'hose-tip' }, 'Наведите прицел на окно с огнём и удерживайте левую кнопку мыши.'),
       h('p', { class: 'demo-note' }, 'Прогресс хранится на сервере.'),
     ),
 

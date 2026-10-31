@@ -1,20 +1,39 @@
-export const FIRE_HIT_LIMIT = 18;
+/** Учебная стена: четыре окна, каждое тушится независимо. */
+export const WINDOW_COUNT = 4;
+/** Попаданий струи, после которых окно считается потушенным. */
+export const WINDOW_HIT_LIMIT = 12;
+/** Всего попаданий на все окна (прогресс этапа). */
+export const FIRE_HIT_LIMIT = WINDOW_COUNT * WINDOW_HIT_LIMIT;
 
 export const OBJECTIVES = Object.freeze({
   not_started: 'Поговорите с наставником у пожарной части',
   briefing: 'Выслушайте инструктаж Маруси',
   equipping: 'Наденьте экипировку в шкафу',
-  fire_drill: 'Потушите учебную мишень',
+  fire_drill: 'Потушите окна учебной стены',
   rescue: 'Доставьте манекен в безопасную зону',
   debrief: 'Вернитесь к Марусе за итогом тренировки',
   completed: 'Учебная смена завершена',
 });
 
+/** Состояние окна по числу попаданий: active (огонь не тронут), extinguishing или done. */
+export function windowStatus(hits) {
+  if (hits >= WINDOW_HIT_LIMIT) return 'done';
+  return hits > 0 ? 'extinguishing' : 'active';
+}
+
+export const isValidWindowIndex = (index) => Number.isInteger(index) && index >= 0 && index < WINDOW_COUNT;
+
+export const countDoneWindows = (windows) => windows.filter((hits) => hits >= WINDOW_HIT_LIMIT).length;
+
+/**
+ * Состояние задания. `windows[i]` — число попаданий по окну i (0..WINDOW_HIT_LIMIT): единственное
+ * хранимое поле тушения; статус окна и общий прогресс вычисляются из него.
+ */
 export function createInitialState() {
   return {
     stage: 'not_started',
     equipped: false,
-    fireHits: 0,
+    windows: Array.from({ length: WINDOW_COUNT }, () => 0),
     carryingMannequin: false,
     mannequinDelivered: false,
   };
@@ -51,18 +70,26 @@ export function transitionTask(state, action) {
       }
       return unchanged(state, state.equipped ? 'Экипировка уже надета.' : 'Сначала получите инструктаж.');
 
-    case 'fire_hit':
+    case 'window_hit': {
       if (state.stage !== 'fire_drill') return unchanged(state, 'Сначала подготовьтесь к упражнению на полигоне.');
-      if (state.fireHits >= FIRE_HIT_LIMIT) return unchanged(state, 'Учебная мишень уже потушена.');
-      {
-        const fireHits = state.fireHits + 1;
-        const stage = fireHits >= FIRE_HIT_LIMIT ? 'rescue' : state.stage;
+      if (!isValidWindowIndex(action.index)) return unchanged(state, 'Эта цель сейчас недоступна.');
+      if (state.windows[action.index] >= WINDOW_HIT_LIMIT) return unchanged(state, 'Это окно уже потушено.');
+      const windows = state.windows.map((hits, i) => (i === action.index ? hits + 1 : hits));
+      const done = countDoneWindows(windows);
+      if (done === WINDOW_COUNT) {
         return {
-          state: { ...state, fireHits, stage },
+          state: { ...state, windows, stage: 'rescue' },
           changed: true,
-          feedback: stage === 'rescue' ? 'Мишень потушена. Теперь найдите учебный манекен.' : 'Струя попала по учебной мишени!',
+          feedback: 'Все окна потушены! Теперь найдите учебный манекен.',
         };
       }
+      const justDone = windows[action.index] >= WINDOW_HIT_LIMIT;
+      return {
+        state: { ...state, windows },
+        changed: true,
+        feedback: justDone ? `Окно ${action.index + 1} потушено! Осталось: ${WINDOW_COUNT - done}.` : '',
+      };
+    }
 
     case 'pickup_mannequin':
       if (state.stage !== 'rescue') return unchanged(state, 'Манекен станет доступен после упражнения на полигоне.');

@@ -26,7 +26,7 @@ export const CLOSE = Object.freeze({ REPLACED: 4000, UNAUTH: 4001, BAD_PROTO: 40
 
 const MAX_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED = 512 * 1024;
-// task_answer: серия попаданий по мишени идёт примерно 8 раз в секунду.
+// task_answer: серия попаданий по окнам идёт примерно 8 раз в секунду.
 const TASK_PER_SEC = 20;
 /** Ответ обработчика {state, done, feedback, changed, error?} -> плоское поле `state` сообщения task_state. */
 const taskWire = (r) => ({ ...r.state, done: r.done, feedback: r.feedback, changed: r.changed, ...(r.error ? { error: r.error } : {}) });

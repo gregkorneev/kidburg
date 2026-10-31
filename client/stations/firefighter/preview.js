@@ -19,6 +19,7 @@ let dialog = null;
 let prompt = '';
 let notice = 'Сетевой режим: прогресс станции хранится на сервере.';
 let hoseActive = false;
+let targetWindow = null;
 let noticeTimer;
 
 const refresh = () => {
@@ -28,6 +29,7 @@ const refresh = () => {
     notice,
     dialog,
     hoseActive,
+    targetWindow,
     busy,
     onChoose: (option) => option.onSelect?.(),
     onCloseDialog: closeDialog,
@@ -61,12 +63,11 @@ function dispatch(actionType, handlers) {
 }
 
 function onServerState(next, meta) {
-  const previous = state;
   state = next;
   world?.setTaskState(state);
   refresh();
-  // Каждое попадание по мишени не комментируем, остальные подтверждённые действия — да.
-  if (meta.changed && meta.feedback && (state.stage !== previous.stage || state.fireHits === previous.fireHits)) setNotice(meta.feedback);
+  // Сервер присылает feedback для всех подтверждённых действий, кроме обычных попаданий по окну.
+  if (meta.changed && meta.feedback) setNotice(meta.feedback);
 }
 
 function openProfessionCard() {
@@ -90,7 +91,7 @@ function acceptBriefingOption() {
 function showBriefingStep() {
   showDialog({
     title: 'Короткий инструктаж',
-    body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
+    body: 'Надень учебную экипировку, затем потуши все окна учебной стены и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
     options: [acceptBriefingOption()],
   });
 }
@@ -111,7 +112,7 @@ function openBriefing() {
   } else if (state.stage === 'briefing') {
     showDialog({
       title: 'Короткий инструктаж',
-      body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
+      body: 'Надень учебную экипировку, затем потуши все окна учебной стены и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
       options: [acceptBriefingOption()],
     });
   } else {
@@ -122,7 +123,7 @@ function openBriefing() {
 function openDebrief() {
   showDialog({
     title: 'Учебная смена позади',
-    body: 'Ты подготовилась, выполнила упражнение на учебной мишени и доставила манекен в отмеченную зону. В этой профессии важны подготовка, внимание и согласованная работа команды.',
+    body: 'Ты подготовилась, потушила все окна учебной стены и доставила манекен в отмеченную зону. В этой профессии важны подготовка, внимание и согласованная работа команды.',
     options: [{
       label: 'Завершить смену',
       primary: true,
@@ -131,10 +132,10 @@ function openDebrief() {
   });
 }
 
-function onWorldAction(action) {
+function onWorldAction(action, index) {
   if (action === 'open_briefing') return openBriefing();
   if (action === 'open_debrief') return openDebrief();
-  dispatch(action);
+  dispatch(action, { index });
 }
 
 world = createFirefighterScene({
@@ -143,6 +144,7 @@ world = createFirefighterScene({
   onAction: onWorldAction,
   onNotice: setNotice,
   onHoseMode: (value) => { hoseActive = value; refresh(); },
+  onTarget: (value) => { if (targetWindow !== value) { targetWindow = value; refresh(); } },
   onPosition: (position) => network?.sendPosition(position),
 });
 world.setTaskState(state);

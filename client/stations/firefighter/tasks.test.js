@@ -30,7 +30,7 @@ function setup({ sendOk = true } = {}) {
 }
 
 const server = (over = {}) => ({
-  stage: 'briefing', equipped: false, fireHits: 0, carryingMannequin: false, mannequinDelivered: false,
+  stage: 'briefing', equipped: false, windows: [0, 0, 0, 0], carryingMannequin: false, mannequinDelivered: false,
   done: false, feedback: '', changed: false, ...over,
 });
 
@@ -84,17 +84,62 @@ test('ошибка сохранения: нет ложного подтверж�
   assert.equal(sync.busy, false);
 });
 
-test('пока ждём ответ, второе обычное действие не уходит; серия fire_hit идёт без ожидания', () => {
+test('пока ждём ответ, второе обычное действие не уходит; серия window_hit идёт без ожидания', () => {
   const { sync, sent, reply } = setup();
   assert.equal(sync.send('start'), true);
   assert.equal(sync.send('accept_briefing'), false);
   assert.equal(sent.length, 1);
   reply(server({ changed: true }));
   reply(server({ stage: 'fire_drill', equipped: true }));
-  assert.equal(sync.send('fire_hit'), true);
-  assert.equal(sync.send('fire_hit'), true);
+  assert.equal(sync.send('window_hit', { index: 0 }), true);
+  assert.equal(sync.send('window_hit', { index: 3 }), true);
   assert.equal(sent.length, 3);
   assert.equal(sync.busy, false);
+  assert.deepEqual(sent[1].payload, { action: 'window_hit', index: 0 });
+  assert.deepEqual(sent[2].payload, { action: 'window_hit', index: 3 });
+  assert.equal(validate(sent[2]).ok, true);
+});
+
+test('window_hit передаёт только action и index; index не попадает в другие действия', () => {
+  const { sync, sent, reply } = setup();
+  sync.send('start', { index: 2 });
+  assert.deepEqual(sent[0].payload, { action: 'start' }, 'лишний index не уходит');
+  reply(server({ changed: true }));
+  sync.send('window_hit', { index: 1, windows: [12, 12, 12, 12], stage: 'rescue' });
+  assert.deepEqual(sent[1].payload, { action: 'window_hit', index: 1 });
+  assert.deepEqual(Object.keys(sent[1]).sort(), ['payload', 't', 'taskId']);
+});
+
+test('состояние окон берётся только из task_state и очищается от мусора', () => {
+  const { sync, reply, log } = setup();
+  reply(server({ stage: 'fire_drill', equipped: true, windows: [12, 5, 0, 1], changed: true }));
+  assert.deepEqual(sync.state.windows, [12, 5, 0, 1]);
+  assert.deepEqual(log.states.at(-1).state.windows, [12, 5, 0, 1]);
+
+  // Некорректные значения не ломают интерфейс: недостающие окна — нули, лишнее обрезается.
+  reply(server({ stage: 'fire_drill', windows: [99, -3, 'x', 1.5, 7] }));
+  assert.deepEqual(sync.state.windows, [12, 0, 0, 0]);
+  reply(server({ stage: 'fire_drill', windows: undefined }));
+  assert.deepEqual(sync.state.windows, [0, 0, 0, 0]);
+  reply(server({ stage: 'fire_drill', windows: 'oops' }));
+  assert.deepEqual(sync.state.windows, [0, 0, 0, 0]);
+
+  // Состояние не делит массив с сообщением сети.
+  const wire = [3, 3, 3, 3];
+  reply(server({ stage: 'fire_drill', windows: wire }));
+  wire[0] = 9;
+  assert.deepEqual(sync.state.windows, [3, 3, 3, 3]);
+});
+
+test('отказ по окну (мимо, далеко, зона) не меняет состояние и не вызывает onConfirmed', () => {
+  const { sync, reply, log } = setup();
+  reply(server({ stage: 'fire_drill', equipped: true, windows: [2, 0, 0, 0] }));
+  let confirmed = 0;
+  sync.send('window_hit', { index: 1, onConfirmed: () => confirmed++ });
+  reply(server({ stage: 'fire_drill', equipped: true, windows: [2, 0, 0, 0], changed: false, feedback: 'Направьте учебный рукав на окно.' }));
+  assert.equal(confirmed, 0);
+  assert.deepEqual(sync.state.windows, [2, 0, 0, 0]);
+  assert.equal(log.notices.length, 0, 'серия попаданий без ожидания не засоряет уведомлениями');
 });
 
 test('нет связи: ничего не уходит, пользователь видит сообщение', () => {
@@ -122,8 +167,8 @@ test('чужие задания и мусор игнорируются; reset и
   reply(undefined);
   reply({ stage: 5 });
   assert.equal(sync.state.stage, 'not_started');
-  reply(server({ stage: 'rescue', fireHits: 18, done: false }));
-  assert.equal(sync.state.fireHits, 18);
+  reply(server({ stage: 'rescue', windows: [12, 12, 12, 12], done: false }));
+  assert.deepEqual(sync.state.windows, [12, 12, 12, 12]);
   sync.reset();
   assert.equal(sync.state.stage, 'not_started');
   const count = log.states.length;

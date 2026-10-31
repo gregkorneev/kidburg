@@ -2,15 +2,19 @@
 // (task_state). Локального автомата в игровом режиме нет: интерфейс показывает то, что сервер
 // записал в SQLite. Протокол и проверки: docs/PROJECT_CONTEXT.md, content/firefighter/FIREFIGHTER_STATION.md.
 
-import { createInitialState } from './state.js';
+import { WINDOW_COUNT, WINDOW_HIT_LIMIT, createInitialState } from './state.js';
 
 export const TASK_ID = 'firefighter_station_v1';
 const REPLY_TIMEOUT_MS = 5000;
+/** Серия попаданий по окнам идёт без ожидания ответа (сервер сам ограничивает частоту). */
+const RAPID_ACTIONS = new Set(['window_hit']);
+
+const hitsOf = (value) => (Number.isInteger(value) ? Math.min(WINDOW_HIT_LIMIT, Math.max(0, value)) : 0);
 
 const pickState = (s) => ({
   stage: s.stage,
   equipped: s.equipped === true,
-  fireHits: Number.isInteger(s.fireHits) ? s.fireHits : 0,
+  windows: Array.from({ length: WINDOW_COUNT }, (_, i) => hitsOf(Array.isArray(s.windows) ? s.windows[i] : 0)),
   carryingMannequin: s.carryingMannequin === true,
   mannequinDelivered: s.mannequinDelivered === true,
 });
@@ -71,17 +75,20 @@ export function createTaskSync({ api, onState, onNotice, onBusy = () => {}, befo
     },
     /**
      * Отправляет намерение. Пока ждём ответ на обычное действие, второе не отправляется;
-     * серия fire_hit идёт без ожидания (сервер сам ограничивает частоту).
+     * серия window_hit идёт без ожидания. Для window_hit обязателен `index` — номер окна, остальные
+     * действия отправляются без него. Состояние и координаты клиент не отправляет.
      */
-    send(action, { onConfirmed, onRejected } = {}) {
-      if (pending && action !== 'fire_hit') return false;
+    send(action, { index, onConfirmed, onRejected } = {}) {
+      const rapid = RAPID_ACTIONS.has(action);
+      if (pending && !rapid) return false;
       beforeSend();
-      if (!api.net.send({ t: 'task_answer', taskId: TASK_ID, payload: { action } })) {
+      const payload = action === 'window_hit' ? { action, index } : { action };
+      if (!api.net.send({ t: 'task_answer', taskId: TASK_ID, payload })) {
         onNotice('Нет связи с сервером. Прогресс не изменён.');
         onRejected?.();
         return false;
       }
-      if (action !== 'fire_hit') {
+      if (!rapid) {
         pending = { action, onConfirmed, onRejected };
         onBusy(true);
         timer = timers.setTimeout(() => {
