@@ -26,7 +26,7 @@ export const DEFAULT_CONFIG = Object.freeze({
 export async function buildApp(overrides = {}) {
   const config = { ...DEFAULT_CONFIG, ...overrides };
   const app = Fastify({ logger: { level: config.logLevel ?? process.env.LOG_LEVEL ?? 'info' } });
-  const db = openDb(config.dbPath);
+  const db = config.db ?? openDb(config.dbPath);
   const world = loadWorld(config.worldDir, app.log);
   const tickets = createTicketStore({ now: config.now });
   const ctx = { db, world, config, log: app.log };
@@ -47,6 +47,7 @@ export async function buildApp(overrides = {}) {
     tickHz: config.tickHz,
     pingMs: config.pingMs,
     helloTimeoutMs: config.helloTimeoutMs,
+    flushMs: config.flushMs,
   });
   // Сначала сокеты и сохранение игроков, потом база.
   app.addHook('preClose', async () => game.close());
@@ -66,7 +67,7 @@ export async function startServer(overrides = {}) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT ?? DEFAULT_CONFIG.port);
-  const app = await startServer({ port });
+  const app = await startServer({ port, dbPath: process.env.DB_PATH ?? DEFAULT_CONFIG.dbPath });
   console.log(`Сервер запущен: http://localhost:${port}`);
 
   const stop = async () => {

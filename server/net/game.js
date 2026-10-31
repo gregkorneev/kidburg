@@ -80,6 +80,7 @@ export function createGame({
   tickHz = TICK_HZ,
   pingMs = 10_000,
   helloTimeoutMs = 5_000,
+  flushMs = 5_000,
 }) {
   const log = app.log;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
@@ -315,6 +316,7 @@ export function createGame({
   app.server.on('upgrade', onUpgrade);
   const tickTimer = setInterval(tick, 1000 / tickHz).unref();
   const pingTimer = setInterval(ping, pingMs).unref();
+  const flushTimer = setInterval(flushAll, flushMs).unref();
 
   return {
     flushAll,
@@ -325,6 +327,7 @@ export function createGame({
     close() {
       clearInterval(tickTimer);
       clearInterval(pingTimer);
+      clearInterval(flushTimer);
       app.server.off('upgrade', onUpgrade);
       flushAll();
       for (const conn of [...conns]) {
