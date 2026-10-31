@@ -1,6 +1,6 @@
 import { createClient } from '../../engine/app.js';
 import { bindCityExit } from '../../engine/room-exit.js';
-import { mountUI } from '../../ui/index.js';
+import { mountNpcChat } from '../../ui/npc-chat.js';
 import { connectFireNetwork } from './network.js';
 import { createMarusyaChat } from './chat-flow.js';
 import { createFirefighterScene } from './scene.js';
@@ -24,7 +24,7 @@ let world;
 let network = null;
 let sync = null;
 let busy = false; // ждём подтверждение действия от сервера
-let online = false; // вошли на сервер и получили welcome: до этого сцена только фон под экраном входа
+let online = false; // вошли на сервер и получили welcome
 let state = createInitialState();
 let dialog = null;
 let chat = null; // панель разговора через npc_talk (client/ui/npc-chat.js)
@@ -120,8 +120,7 @@ refresh();
 
 // Вход и сеть: тот же клиент, что у основной страницы, но без второго рендерера.
 const client = createClient({ container: sceneRoot, networkOnly: true });
-const unmountAuth = mountUI(client.api);
-chat = unmountAuth.chat;
+chat = mountNpcChat(client.api);
 marusya = createMarusyaChat({
   chat,
   getState: () => state,
@@ -139,13 +138,14 @@ chat.onOpenChange((open) => {
 network = connectFireNetwork({
   api: client.api,
   world,
+  onAuthRequired: () => window.location.replace('/'),
   onSession: (value) => {
     online = value;
     if (!online) {
       dialog = null;
       marusya?.reset();
       sync.reset();
-      setNotice('Вы вышли. Введите имя и код комнаты, чтобы вернуться на полигон.');
+      setNotice('Сессия завершена. Возвращаемся на главный экран для входа.');
     }
     syncBlocked();
     refresh();
@@ -180,7 +180,7 @@ window.addEventListener('pagehide', (event) => {
   unbindCityExit();
   sync?.dispose();
   network?.dispose();
-  unmountAuth?.();
+  chat?.dispose();
   client.stop();
   world?.dispose();
 });

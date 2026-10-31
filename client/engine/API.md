@@ -95,7 +95,7 @@ api.ui.lockPointer()   // закрыли панель: вернуть управ
 
 ## Пожарный preview в сети
 
-Страница `/firefighter-preview.html` (`client/stations/firefighter/`) использует тот же вход (`mountUI`) и `createClient({ networkOnly: true })`.
+Страница `/firefighter-preview.html` (`client/stations/firefighter/`) использует активную сессию основного экрана через `sessionStorage` и `createClient({ networkOnly: true })`; собственную форму входа не показывает. При открытии без действующей сессии она возвращает игрока на `/`, где расположен экран входа.
 Локальные координаты preview переводятся в мировые сдвигом `ORIGIN` из `network.js`: точка появления нового игрока `SPAWN` попадает в стартовую точку полигона.
 Угол `ry` в `pos` — yaw основного клиента (0 смотрит вдоль −Z), поэтому игроки видят друг друга одинаково на обеих страницах.
 Задания пожарной станции идут через `task_answer`/`task_state`: клиент отправляет только `payload.action`, прогресс хранит сервер (`tasks.js`, `layout.js`).
