@@ -1,0 +1,26 @@
+/* Только системные шрифты и локальные стили. */
+.city-hud {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(10, 16, 28, 0.6);
+  color: #e8eef7;
+  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Подписи над игроками и NPC (CSS2DRenderer). */
+.city-label {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(10, 16, 28, 0.65);
+  color: #fff;
+  font: 12px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}

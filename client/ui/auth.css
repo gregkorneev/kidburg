@@ -1,0 +1,21 @@
+.auth-root { position: fixed; inset: 0; z-index: 30; pointer-events: none; color: #1e342d; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.auth-root[hidden] { display: none; }
+.auth-panel { position: absolute; top: 50%; left: 50%; width: min(390px, calc(100vw - 32px)); transform: translate(-50%, -50%); padding: 28px; border: 1px solid #ffffffd9; border-radius: 22px; background: #fffdf5f2; box-shadow: 0 20px 65px #17221d42; pointer-events: auto; }
+.auth-panel h1 { margin: 0; color: #20372e; font-size: 25px; letter-spacing: -.035em; }
+.auth-intro { margin: 8px 0 22px; color: #66766c; font-size: 13px; line-height: 1.5; }
+.auth-form { display: grid; gap: 14px; }
+.auth-label { display: grid; gap: 6px; color: #40574a; font-size: 12px; font-weight: 700; }
+.auth-input { width: 100%; min-height: 43px; border: 1px solid #d7dfd3; border-radius: 10px; padding: 9px 12px; outline: none; background: #fff; color: #20372e; font: inherit; font-size: 14px; }
+.auth-input:focus { border-color: #3e8267; box-shadow: 0 0 0 3px #3e826728; }
+.auth-button { min-height: 39px; border: 1px solid #d8e1d4; border-radius: 10px; padding: 0 13px; background: #fff; color: #365547; cursor: pointer; font: inherit; font-size: 12px; font-weight: 750; }
+.auth-button:disabled { cursor: wait; opacity: .65; }
+.auth-button--primary { min-height: 44px; border-color: #2d705a; background: #2d705a; color: white; font-size: 14px; }
+.auth-button--primary:hover:not(:disabled) { background: #245b49; }
+.auth-link { display: block; margin: 16px auto 0; border: 0; padding: 4px; background: transparent; color: #2d705a; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+.auth-message { margin: 0; color: #a23c35; font-size: 12px; line-height: 1.45; }
+.auth-badge { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 14px; padding: 9px 10px 9px 13px; border: 1px solid #ffffffa8; border-radius: 12px; background: #fffdf2e8; box-shadow: 0 6px 22px #233c2e24; pointer-events: auto; }
+.auth-badge__details { display: grid; gap: 2px; }
+.auth-badge__details strong { color: #20372e; font-size: 12px; }
+.auth-badge__details span { color: #65766c; font-size: 10px; }
+.auth-button--small { min-height: 31px; }
+@media (max-width: 520px) { .auth-panel { padding: 22px; } .auth-badge { right: 8px; bottom: 8px; } }
