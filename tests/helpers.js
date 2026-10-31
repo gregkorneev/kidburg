@@ -10,10 +10,18 @@ import { buildApp } from '../server/index.js';
 import { decode, encode } from '../shared/protocol.js';
 import { makeFixtures } from '../tools/fixtures/make-fixtures.mjs';
 
+export const TEST_AUTH_PEPPER = 'test-pepper-that-is-at-least-32-bytes-long';
+export const TEST_AUTH_SESSION_SECRET = 'test-session-secret-at-least-32-bytes';
+
 export async function makeApp(overrides = {}) {
   // Без worldDir чанки не передаются: тесты не зависят от локальной папки generated/.
   const worldDir = path.join(tmpdir(), 'city-no-world');
-  return buildApp({ dbPath: ':memory:', logLevel: 'silent', worldDir, ...overrides });
+  return buildApp({
+    dbPath: ':memory:', logLevel: 'silent', worldDir,
+    authPepper: TEST_AUTH_PEPPER,
+    authSessionSecret: TEST_AUTH_SESSION_SECRET,
+    ...overrides,
+  });
 }
 
 /** Временный файл базы: { dbPath, cleanup }. */

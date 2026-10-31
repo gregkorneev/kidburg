@@ -52,5 +52,8 @@ export function createAttemptLimiter({ max = 10, windowMs = 60_000, now = Date.n
       list.push(now());
       failures.set(key, list);
     },
+    reset(key) {
+      failures.delete(key);
+    },
   };
 }

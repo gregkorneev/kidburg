@@ -4,22 +4,28 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { hashPassword, normalizeName, sha256, verifyPassword, PASSWORD_MAX, SESSION_TTL_MS } from '../server/net/auth.js';
+import { promisify } from 'node:util';
+import { scrypt } from 'node:crypto';
+import { hashPassword, hmacSha256, normalizeName, verifyPassword, PASSWORD_MAX, SESSION_TTL_MS } from '../server/net/auth.js';
+import { openDb } from '../server/db/index.js';
 import { createTicketStore } from '../server/net/tickets.js';
-import { TestClient, getTicket, join, listen, makeApp, register } from './helpers.js';
+import { TestClient, getTicket, join, listen, makeApp, register, TEST_AUTH_PEPPER, TEST_AUTH_SESSION_SECRET } from './helpers.js';
 import { createAttemptLimiter } from '../server/net/room.js';
 
 const post = (app, url, payload, headers) => app.inject({ method: 'POST', url, payload, headers });
 const bearer = (token) => ({ authorization: `Bearer ${token}` });
 
-test('hashPassword: соль отдельная, проверка timingSafeEqual', async () => {
-  const a = await hashPassword('secret');
-  const b = await hashPassword('secret');
-  assert.notEqual(a.salt, b.salt);
+test('hashPassword: Argon2id с pepper и случайной солью', async () => {
+  const a = await hashPassword('secret', TEST_AUTH_PEPPER);
+  const b = await hashPassword('secret', TEST_AUTH_PEPPER);
+  assert.equal(a.salt, '');
+  assert.equal(b.salt, '');
   assert.notEqual(a.passHash, b.passHash);
+  assert.match(a.passHash, /^\$argon2id\$v=19\$m=19456,p=1,t=2\$/);
   assert.notEqual(a.passHash, 'secret');
-  assert.equal(await verifyPassword('secret', a.passHash, a.salt), true);
-  assert.equal(await verifyPassword('Secret', a.passHash, a.salt), false);
+  assert.equal(await verifyPassword('secret', a.passHash, a.salt, TEST_AUTH_PEPPER), true);
+  assert.equal(await verifyPassword('Secret', a.passHash, a.salt, TEST_AUTH_PEPPER), false);
+  assert.equal(await verifyPassword('secret', a.passHash, a.salt, 'another-pepper-which-is-also-32b'), false);
 });
 
 test('normalizeName: длина 3–20, буквы и цифры, без управляющих символов и смешения алфавитов', () => {
@@ -53,11 +59,12 @@ test('вход по паролю (passwordAuth): токен и пользова�
     const raw = new Database(dbPath, { readonly: true });
     const row = raw.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
     assert.notEqual(row.pass_hash, 'secret');
-    assert.ok(row.salt.length > 0);
+    assert.equal(row.salt, '');
+    assert.match(row.pass_hash, /^\$argon2id\$/);
     const sessions = raw.prepare('SELECT * FROM sessions').all();
     raw.close();
     assert.equal(sessions.length, 1);
-    assert.equal(sessions[0].token_hash, sha256(token));
+    assert.equal(sessions[0].token_hash, hmacSha256(token, TEST_AUTH_SESSION_SECRET));
     assert.notEqual(sessions[0].token_hash, token);
   } finally {
     await app.close();
@@ -122,6 +129,42 @@ test('вход (passwordAuth): верный пароль с добавленны
   const long = await post(app, '/api/register', { name: 'Жора', password: password + 'x' });
   assert.equal(long.statusCode, 400);
   await app.close();
+});
+
+test('старые scrypt-пароли переходят на Argon2id после успешного входа', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'city-auth-migrate-'));
+  const dbPath = path.join(dir, 'city.db');
+  const legacySalt = '0123456789abcdef0123456789abcdef';
+  const legacyHash = await promisify(scrypt)('secret', legacySalt, 64);
+  const seedDb = openDb(dbPath);
+  seedDb.createUser({ name: 'OldUser', passHash: legacyHash.toString('hex'), salt: legacySalt });
+  seedDb.close();
+  const app = await makeApp({ dbPath, passwordAuth: true });
+  try {
+    const login = await post(app, '/api/login', { name: 'OldUser', password: 'secret' });
+    assert.equal(login.statusCode, 200);
+    const raw = new Database(dbPath, { readonly: true });
+    const saved = raw.prepare('SELECT pass_hash, salt FROM users WHERE name = ?').get('OldUser');
+    raw.close();
+    assert.match(saved.pass_hash, /^\$argon2id\$/);
+    assert.equal(saved.salt, '');
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('password routes use the shared attempt limiter and require AUTH_PEPPER', async () => {
+  const limiter = createAttemptLimiter({ max: 2 });
+  const app = await makeApp({ passwordAuth: true, joinLimiter: limiter });
+  try {
+    assert.equal((await post(app, '/api/login', { name: 'Nobody', password: 'secret' })).statusCode, 401);
+    assert.equal((await post(app, '/api/login', { name: 'Nobody', password: 'secret' })).statusCode, 401);
+    assert.equal((await post(app, '/api/login', { name: 'Nobody', password: 'secret' })).statusCode, 429);
+  } finally {
+    await app.close();
+  }
+  await assert.rejects(makeApp({ passwordAuth: true, authPepper: '' }), /AUTH_PEPPER/);
 });
 
 test('/api/me: нужен действующий Bearer-токен', async () => {
@@ -207,7 +250,7 @@ test('join: имя и код комнаты дают токен; в базе н�
     const sessions = raw.prepare('SELECT token_hash FROM sessions').all();
     const stored = raw.prepare('SELECT pass_hash FROM users WHERE id = ?').get(user.id).pass_hash;
     raw.close();
-    assert.deepEqual(sessions, [{ token_hash: sha256(token) }]);
+    assert.deepEqual(sessions, [{ token_hash: hmacSha256(token, TEST_AUTH_SESSION_SECRET) }]);
     const guess = await post(app, '/api/login', { name: 'Аня', password: stored });
     assert.equal(guess.statusCode, 404, 'вход по паролю выключен');
   } finally {

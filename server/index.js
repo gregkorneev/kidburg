@@ -6,7 +6,7 @@ import fastifyStatic from '@fastify/static';
 import { registerAgents } from './agents/index.js';
 import { registerTasks } from './tasks/index.js';
 import { DEFAULT_DB_FILE, openDb } from './db/index.js';
-import { registerAuthRoutes } from './net/auth.js';
+import { registerAuthRoutes, resolveAuthSecrets } from './net/auth.js';
 import { createGame } from './net/game.js';
 import { createRoom } from './net/room.js';
 import { createTicketStore } from './net/tickets.js';
@@ -20,12 +20,21 @@ export const DEFAULT_CONFIG = Object.freeze({
   distDir: path.join(ROOT, 'dist'),
   dbPath: DEFAULT_DB_FILE,
   worldDir: path.join(ROOT, 'generated'),
+  passwordAuth: process.env.PASSWORD_AUTH === '1',
+  authPepper: process.env.AUTH_PEPPER,
+  authSessionSecret: process.env.AUTH_SESSION_SECRET,
   now: Date.now,
 });
 
 /** Собирает приложение, но не запускает прослушивание порта. */
 export async function buildApp(overrides = {}) {
   const config = { ...DEFAULT_CONFIG, ...overrides };
+  // Проверяем ключ до открытия БД и очистки сессий: ошибочная конфигурация не должна менять данные.
+  const authSecrets = resolveAuthSecrets({
+    passwordAuth: config.passwordAuth,
+    authPepper: config.authPepper,
+    authSessionSecret: config.authSessionSecret,
+  });
   const app = Fastify({ logger: { level: config.logLevel ?? process.env.LOG_LEVEL ?? 'info' } });
   const db = config.db ?? openDb(config.dbPath);
   const world = loadWorld(config.worldDir, app.log);
@@ -50,6 +59,7 @@ export async function buildApp(overrides = {}) {
     room,
     isOnline: (userId) => game?.isOnline(userId) ?? false,
     passwordAuth: config.passwordAuth,
+    authSecrets,
     limiter: config.joinLimiter,
     localAddresses: config.localAddresses,
     now: config.now,

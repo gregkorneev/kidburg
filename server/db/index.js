@@ -39,6 +39,7 @@ export function openDb(file = DEFAULT_DB_FILE) {
     ),
     userById: handle.prepare('SELECT * FROM users WHERE id = ?'),
     userByName: handle.prepare('SELECT * FROM users WHERE name = ?'),
+    updatePasswordHash: handle.prepare('UPDATE users SET pass_hash = ?, salt = ? WHERE id = ?'),
     allUsers: handle.prepare('SELECT * FROM users'),
     insertSession: handle.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)'),
     sessionByHash: handle.prepare('SELECT user_id, expires_at FROM sessions WHERE token_hash = ? AND expires_at > ?'),
@@ -109,6 +110,10 @@ export function openDb(file = DEFAULT_DB_FILE) {
       const row = q.userByName.get(name);
       return row ? { ...toUser(row), passHash: row.pass_hash, salt: row.salt } : null;
     },
+    /** Обновляет парольный хеш после успешного входа со старой схемой. */
+    updatePasswordHash(userId, passHash, salt = '') {
+      return q.updatePasswordHash.run(passHash, salt, userId).changes === 1;
+    },
     /**
      * Как findUserByName, но регистр не важен для любого алфавита: уникальный индекс SQLite
      * сравнивает без учёта регистра только латиницу, а «аня» не должна быть вторым игроком «Аня».
@@ -123,7 +128,7 @@ export function openDb(file = DEFAULT_DB_FILE) {
       return null;
     },
 
-    // Сессии: хранится только SHA-256 токена.
+    // Сессии: хранится только HMAC-SHA-256 токена с секретом сервера.
     createSession: (tokenHash, userId, expiresAt) => void q.insertSession.run(tokenHash, userId, expiresAt),
     /** Действующая сессия или null, если токена нет или срок вышел. */
     findSession(tokenHash, now = Date.now()) {
