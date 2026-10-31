@@ -48,6 +48,9 @@ export async function buildApp(overrides = {}) {
     pingMs: config.pingMs,
     helloTimeoutMs: config.helloTimeoutMs,
     flushMs: config.flushMs,
+    reply: config.reply,
+    npcTalkMaxChars: config.npcTalkMaxChars,
+    npcTalkPerSec: config.npcTalkPerSec,
   });
   // Сначала сокеты и сохранение игроков, потом база.
   app.addHook('preClose', async () => game.close());
@@ -67,7 +70,14 @@ export async function startServer(overrides = {}) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT ?? DEFAULT_CONFIG.port);
-  const app = await startServer({ port, dbPath: process.env.DB_PATH ?? DEFAULT_CONFIG.dbPath });
+  const positive = (v) => (Number(v) > 0 ? Number(v) : undefined);
+  const app = await startServer({
+    port,
+    dbPath: process.env.DB_PATH ?? DEFAULT_CONFIG.dbPath,
+    npcTalkMaxChars: positive(process.env.NPC_TALK_MAX_CHARS),
+    npcTalkPerSec: positive(process.env.NPC_TALK_PER_SEC),
+    agents: { probeOnStart: true },
+  });
   console.log(`Сервер запущен: http://localhost:${port}`);
 
   const stop = async () => {
