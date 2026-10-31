@@ -394,7 +394,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     if (distanceTo(npc) < LOCAL_POINTS.npc.radius) {
       if (state.stage === 'not_started' || state.stage === 'briefing') text = 'Поговорить с Марусей';
       else if (state.stage === 'debrief') text = 'Обсудить итог тренировки';
-      else if (state.stage === 'completed') text = 'Маруся Громова';
+      else text = 'Поговорить с Марусей';
     }
     if (state.stage === 'equipping' && distanceTo(locker) < LOCAL_POINTS.locker.radius) text = 'Надеть экипировку';
     if (state.stage === 'fire_drill' && distanceTo(hoseStand) < HOSE_USE_DISTANCE) text = hoseActive ? 'Завершить упражнение с рукавом' : 'Взять учебный рукав';
@@ -411,8 +411,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       if (state.stage === 'not_started' || state.stage === 'briefing' || state.stage === 'debrief') {
         onAction(state.stage === 'debrief' ? 'open_debrief' : 'open_briefing');
       }
-      else if (state.stage !== 'completed') onNotice('Маруся: сначала завершите текущую цель на полигоне.');
-      else onNotice('Маруся улыбается: отличная учебная смена!');
+      else onAction('open_chat');
       return;
     }
     if (distanceTo(locker) < LOCAL_POINTS.locker.radius) {

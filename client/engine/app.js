@@ -108,8 +108,8 @@ export function createClient({ container, networkOnly = false }) {
       },
     },
     ui: {
-      lockPointer: () => runtime?.input.lockPointer(),
-      unlockPointer: () => runtime?.input.unlockPointer(),
+      lockPointer: () => runtime?.input?.lockPointer(),
+      unlockPointer: () => runtime?.input?.unlockPointer(),
     },
   };
 
