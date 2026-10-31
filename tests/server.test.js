@@ -4,7 +4,7 @@ import { buildApp } from '../server/index.js';
 import { reply } from '../server/agents/index.js';
 
 test('GET /health возвращает {"ok":true}', async () => {
-  const app = await buildApp();
+  const app = await buildApp({ dbPath: ':memory:', logLevel: 'silent' });
   const res = await app.inject({ method: 'GET', url: '/health' });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.json(), { ok: true });

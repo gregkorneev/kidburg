@@ -1,0 +1,123 @@
+// Общие помощники тестов: приложение с базой в памяти и WebSocket-клиент.
+
+import { once } from 'node:events';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { WebSocket } from 'ws';
+import { openDb } from '../server/db/index.js';
+import { buildApp } from '../server/index.js';
+import { decode, encode } from '../shared/protocol.js';
+
+export async function makeApp(overrides = {}) {
+  return buildApp({ dbPath: ':memory:', logLevel: 'silent', ...overrides });
+}
+
+/** Временный файл базы: { dbPath, cleanup }. */
+export function tempDb() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'city-test-'));
+  return { dbPath: path.join(dir, 'city.db'), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+/** Кладёт позицию игрока в файл базы через отдельное соединение (до его hello). */
+export function seedPlayerState(dbPath, name, state) {
+  const db = openDb(dbPath);
+  db.savePlayerState({ userId: db.findUserByName(name).id, ...state });
+  db.close();
+}
+
+/** Читает позицию игрока из файла базы. */
+export function readPlayerState(dbPath, name) {
+  const db = openDb(dbPath);
+  const state = db.getPlayerState(db.findUserByName(name).id);
+  db.close();
+  return state;
+}
+
+/** Запускает приложение на свободном порту loopback. */
+export async function listen(overrides = {}) {
+  const app = await makeApp(overrides);
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  return { app, port: app.server.address().port };
+}
+
+export async function register(app, name, password = 'secret') {
+  const res = await app.inject({ method: 'POST', url: '/api/register', payload: { name, password } });
+  if (res.statusCode !== 201) throw new Error(`register ${name}: ${res.statusCode} ${res.body}`);
+  return res.json();
+}
+
+export async function getTicket(app, token) {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/ws-ticket',
+    headers: { authorization: `Bearer ${token}` },
+  });
+  return res.json().ticket;
+}
+
+/** Клиент с очередью входящих сообщений и ожиданием нужного. */
+export class TestClient {
+  constructor(ws) {
+    this.ws = ws;
+    this.inbox = [];
+    this.waiters = [];
+    this.closed = new Promise((resolve) => ws.once('close', (code) => resolve(code)));
+    ws.on('message', (data) => {
+      this.inbox.push(decode(data));
+      this.#flush();
+    });
+  }
+
+  static async connect(port, ticket, wsOptions) {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?ticket=${ticket}`, wsOptions);
+    await once(ws, 'open');
+    return new TestClient(ws);
+  }
+
+  send(msg) {
+    this.ws.send(encode(msg));
+  }
+
+  #flush() {
+    for (const w of [...this.waiters]) {
+      const i = this.inbox.findIndex(w.match);
+      if (i === -1) continue;
+      const [msg] = this.inbox.splice(i, 1);
+      this.waiters.splice(this.waiters.indexOf(w), 1);
+      clearTimeout(w.timer);
+      w.resolve(msg);
+    }
+  }
+
+  /** Ждёт первое сообщение, подходящее под условие (уже пришедшие тоже считаются). */
+  next(match = () => true, ms = 2000) {
+    return new Promise((resolve, reject) => {
+      const w = { match, resolve };
+      w.timer = setTimeout(() => {
+        this.waiters.splice(this.waiters.indexOf(w), 1);
+        reject(new Error(`сообщение не пришло за ${ms} мс`));
+      }, ms);
+      this.waiters.push(w);
+      this.#flush();
+    });
+  }
+
+  nextOfType(t, ms) {
+    return this.next((m) => m.t === t, ms);
+  }
+
+  close() {
+    this.ws.close();
+    return this.closed;
+  }
+}
+
+/** Регистрирует игрока, получает тикет, подключается и проходит hello. */
+export async function joinGame(app, port, name) {
+  const { token, user } = await register(app, name);
+  const client = await TestClient.connect(port, await getTicket(app, token));
+  client.send({ t: 'hello', ticket: 'x', proto: 1 });
+  const welcome = await client.nextOfType('welcome');
+  return { client, welcome, user, token };
+}
