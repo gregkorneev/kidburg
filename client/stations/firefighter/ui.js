@@ -48,6 +48,7 @@ export function StationUI({ state, prompt, notice, dialog, hoseActive, targetWin
       h('div', { class: 'control-row' }, h('kbd', null, 'W A S D'), h('span', null, 'движение')),
       h('div', { class: 'control-row' }, h('kbd', null, 'SHIFT'), h('span', null, 'быстрее')),
       h('div', { class: 'control-row' }, h('kbd', null, 'E'), h('span', null, 'действие')),
+      h('div', { class: 'control-row' }, h('kbd', null, 'L'), h('span', null, 'в город')),
       h('div', { class: 'control-row' }, h('kbd', null, 'ESC'), h('span', null, 'курсор')),
       hoseActive && h('p', { class: 'hose-tip' }, 'Наведите прицел на окно с огнём и удерживайте левую кнопку мыши.'),
       h('p', { class: 'demo-note' }, 'Прогресс хранится на сервере.'),

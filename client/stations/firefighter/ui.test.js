@@ -57,6 +57,10 @@ test('подсказка про рукав появляется вместе с 
   assert.match(texts(tip).join(''), /окно/);
 });
 
+test('управление показывает клавишу выхода в город', () => {
+  assert.match(texts(view(createInitialState())).join('|'), /L\|в город/);
+});
+
 test('кнопки диалога блокируются, пока сервер не ответил', () => {
   const dialog = { title: 'Т', body: 'Б', options: [{ label: 'Дальше', primary: true }] };
   // Button — функциональный компонент: раскрываем его вызовом и получаем <button>.
