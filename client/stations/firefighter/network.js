@@ -57,7 +57,8 @@ export function connectFireNetwork({ api, world, onSession = () => {}, now = () 
         onSession(true);
       }
     }),
-    api.on('player_join', (msg) => world.addRemotePlayer(msg.id, msg.name)),
+    api.on('player_join', (msg) => world.addRemotePlayer(msg.id, msg.name, msg.appearance?.firefighterEquipped === true, msg.appearance?.color)),
+    api.on('player_appearance', (msg) => world.setRemotePlayerEquipment(msg.id, msg.appearance?.firefighterEquipped)),
     api.on('player_leave', (msg) => world.removeRemotePlayer(msg.id)),
     api.on('players', (msg) => {
       world.updateRemotePlayers(

@@ -5,11 +5,20 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CHUNK_SIZE, WORLD_CHUNKS_X, WORLD_CHUNKS_Z } from '../../shared/constants.js';
 import { decode } from '../../shared/protocol.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter } from './art/character.js';
 import { getPrefab } from './prefabs.js';
 
 const GRID = 17; // узлов на сторону чанка
 const CELL = CHUNK_SIZE / (GRID - 1); // 4 м
 const ZONE_COLORS = { hospital: 0xcfd8dc, park: 0x5fa35a, plain: 0x7a9a58 };
+
+const NPC_LOOK_DISTANCE = 10; // м: ближе этого NPC провожает игрока взглядом
+
+function hashString(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
 
 const chunkKey = (cx, cz) => cx + cz * WORLD_CHUNKS_X;
 
@@ -156,18 +165,21 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
       instanced.push(mesh);
     }
 
-    const npcGeo = acquire('npc:body', () => new THREE.CylinderGeometry(0.35, 0.35, 1.7, 8).translate(0, 0.85, 0));
-    const npcMat = acquire('npc:mat', () => new THREE.MeshLambertMaterial({ color: 0x3f8fd6 }));
     const npcs = chunk.npcs.map((n) => {
-      const mesh = new THREE.Mesh(npcGeo, npcMat);
+      const name = n.name ?? n.agentId;
+      // Внешность выводится из agentId: один и тот же NPC выглядит одинаково у всех.
+      const avatar = createCharacter({ appearance: appearanceFromSeed(hashString(String(n.agentId ?? name))), holding: 'clipboard' });
+      avatar.scale.setScalar(CITY_CHARACTER_SCALE);
+      avatar.rotation.y = Math.PI; // персонаж смотрит в +Z, направление NPC считается как у игрока (−Z)
+      const mesh = new THREE.Group();
       mesh.position.set(n.x - group.position.x, n.y, n.z - group.position.z);
       mesh.rotation.y = n.ry;
-      const name = n.name ?? n.agentId;
+      mesh.add(avatar);
       const label = createLabel(name);
-      label.position.set(0, 2.1, 0);
+      label.position.set(0, 2.15, 0);
       mesh.add(label);
       group.add(mesh);
-      return { id: n.id, agentId: n.agentId, name, x: n.x, y: n.y, z: n.z, mesh, label };
+      return { id: n.id, agentId: n.agentId, name, x: n.x, y: n.y, z: n.z, ry: n.ry, mesh, avatar, label };
     });
 
     scene.add(group);
@@ -181,6 +193,7 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
     for (const npc of entry.npcs) {
       npc.label.removeFromParent();
       npc.label.element.remove();
+      disposeCharacter(npc.avatar);
     }
     for (const key of entry.keys) pool.release(key);
   }
@@ -244,6 +257,23 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
         }
       }
       return best;
+    },
+    /** Каждый кадр: NPC дышат, моргают и поворачивают голову к игроку, пока он рядом. */
+    update(dt, elapsed, player) {
+      for (const entry of chunks.values()) {
+        for (const npc of entry.npcs) {
+          let lookYaw = 0;
+          if (player) {
+            const dx = player.x - npc.x;
+            const dz = player.z - npc.z;
+            if (Math.abs(npc.y - player.y) < 3 && dx * dx + dz * dz < NPC_LOOK_DISTANCE ** 2) {
+              lookYaw = Math.atan2(dx, dz) - (npc.ry + Math.PI);
+              lookYaw = Math.atan2(Math.sin(lookYaw), Math.cos(lookYaw));
+            }
+          }
+          animateCharacter(npc.avatar, dt, elapsed, { speed: 0, lookYaw });
+        }
+      }
     },
     dispose() {
       this.clear();

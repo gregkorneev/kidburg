@@ -1,7 +1,11 @@
-// Другие игроки: простые аватары, подписи и интерполяция по буферу снимков `players`.
+// Другие игроки: персонажи общей системы art/character.js, подписи и интерполяция по буферу снимков `players`.
 // Отображаем с задержкой INTERP_DELAY_MS, чтобы почти всегда было два снимка вокруг момента показа.
 
 import * as THREE from 'three';
+import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter } from './art/character.js';
+
+const LABEL_HEIGHT = 2.15;
+const RUN_SPEED = 6; // м/с: быстрее считаем бегом, как в пожарной части
 
 export const INTERP_DELAY_MS = 100;
 const MAX_SNAPSHOTS = 24;
@@ -36,47 +40,39 @@ export function sampleSnapshots(snaps, time) {
   };
 }
 
-function colorOf(id, appearance) {
-  if (typeof appearance?.color === 'number') return appearance.color;
-  return new THREE.Color().setHSL(((id * 47) % 360) / 360, 0.55, 0.5).getHex();
+function colorOf(appearance) {
+  return typeof appearance?.color === 'number' ? appearance.color : null;
 }
 
 /**
  * @param {object} deps
  * @param {THREE.Scene} deps.scene
- * @param {ReturnType<import('./pool.js').createPool>} deps.pool
  * @param {(text: string) => THREE.Object3D & {element: HTMLElement}} deps.createLabel
  */
-export function createRemotePlayers({ scene, pool, createLabel }) {
-  /** @type {Map<number, {group: THREE.Group, label: any, keys: string[], snaps: object[], name: string}>} */
+export function createRemotePlayers({ scene, createLabel }) {
+  /** @type {Map<number, {group: THREE.Group, avatar: THREE.Group, label: any, snaps: object[], name: string, last: object | null, lastNow: number | null}>} */
   const players = new Map();
 
   function create(id, name, appearance) {
-    const keys = [];
-    const acquire = (key, factory) => {
-      keys.push(key);
-      return pool.acquire(key, factory);
-    };
-    const color = colorOf(id, appearance);
-    const bodyGeo = acquire('avatar:body', () => new THREE.CylinderGeometry(0.32, 0.32, 1.1, 8).translate(0, 0.65, 0));
-    const headGeo = acquire('avatar:head', () => new THREE.SphereGeometry(0.22, 8, 6).translate(0, 1.45, 0));
-    const noseGeo = acquire('avatar:nose', () => new THREE.BoxGeometry(0.1, 0.1, 0.2).translate(0, 1.45, -0.22));
-    const mat = acquire(`avatar:mat:${color}`, () => new THREE.MeshLambertMaterial({ color }));
     const group = new THREE.Group();
-    group.add(new THREE.Mesh(bodyGeo, mat), new THREE.Mesh(headGeo, mat), new THREE.Mesh(noseGeo, mat));
+    // Персонаж смотрит в +Z, а игрок в городе — в −Z: разворачиваем внутри группы.
+    const avatar = createCharacter({ appearance: appearanceFromSeed(id, colorOf(appearance)) });
+    avatar.scale.setScalar(CITY_CHARACTER_SCALE);
+    avatar.rotation.y = Math.PI;
+    group.add(avatar);
     const label = createLabel(name);
-    label.position.set(0, 2.0, 0);
+    label.position.set(0, LABEL_HEIGHT, 0);
     group.add(label);
     group.visible = false; // до первого снимка позиция неизвестна
     scene.add(group);
-    return { group, label, keys, snaps: [], name };
+    return { group, avatar, label, snaps: [], name, last: null, lastNow: null };
   }
 
   function destroy(p) {
     scene.remove(p.group);
     p.label.removeFromParent();
     p.label.element.remove();
-    for (const key of p.keys) pool.release(key);
+    disposeCharacter(p.avatar);
   }
 
   return {
@@ -116,6 +112,16 @@ export function createRemotePlayers({ scene, pool, createLabel }) {
         p.group.visible = true;
         p.group.position.set(s.x, s.y, s.z);
         p.group.rotation.y = s.ry;
+        // Походка по реальному смещению: после последнего снимка игрок стоит, и руки не машут.
+        const dt = p.lastNow === null ? 0 : Math.min(0.1, (now - p.lastNow) / 1000);
+        let speed = 0;
+        if (p.last && dt > 0) {
+          const velocity = Math.hypot(s.x - p.last.x, s.z - p.last.z) / dt;
+          speed = velocity > RUN_SPEED ? 2 : velocity > 0.3 ? 1 : 0;
+        }
+        p.last = s;
+        p.lastNow = now;
+        animateCharacter(p.avatar, dt, now / 1000, { speed });
       }
     },
     clear() {

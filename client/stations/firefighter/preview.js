@@ -7,7 +7,16 @@ import { createFirefighterScene } from './scene.js';
 import { createInitialState } from './state.js';
 import { createTaskSync } from './tasks.js';
 import { mountStationUI } from './ui.js';
+import { readQuality } from '../../engine/art/quality.js';
 import './style.css';
+
+const CONTROLS_KEY = 'kidburg.firefighter.controls';
+function readControlsOpen() {
+  try { return globalThis.localStorage?.getItem(CONTROLS_KEY) !== 'closed'; } catch { return true; }
+}
+function saveControlsOpen(open) {
+  try { globalThis.localStorage?.setItem(CONTROLS_KEY, open ? 'open' : 'closed'); } catch { /* не критично */ }
+}
 
 const sceneRoot = document.querySelector('#scene');
 const uiRoot = document.querySelector('#ui');
@@ -22,7 +31,9 @@ let chat = null; // панель разговора через npc_talk (client/
 let marusya = null; // сценарий разговора с Марусей поверх панели (chat-flow.js)
 let chatOpen = false;
 let prompt = '';
-let notice = 'Сетевой режим: прогресс станции хранится на сервере.';
+let notice = '';
+let controlsOpen = readControlsOpen();
+let quality = 'medium';
 let hoseActive = false;
 let targetWindow = null;
 let noticeTimer;
@@ -37,8 +48,12 @@ const refresh = () => {
     hoseActive,
     targetWindow,
     busy,
+    controlsOpen,
+    quality,
     onChoose: (option) => option.onSelect?.(),
     onCloseDialog: closeDialog,
+    onToggleControls: toggleControls,
+    onQuality: (level) => { quality = world?.setQuality(level) ?? level; refresh(); },
   });
 };
 
@@ -47,6 +62,12 @@ function setNotice(message, duration = 2600) {
   refresh();
   clearTimeout(noticeTimer);
   noticeTimer = setTimeout(() => { notice = ''; refresh(); }, duration);
+}
+
+function toggleControls() {
+  controlsOpen = !controlsOpen;
+  saveControlsOpen(controlsOpen);
+  refresh();
 }
 
 const syncBlocked = () => world?.setUiBlocked(!online || dialog !== null || chatOpen);
@@ -92,6 +113,7 @@ world = createFirefighterScene({
   onTarget: (value) => { if (targetWindow !== value) { targetWindow = value; refresh(); } },
   onPosition: (position) => network?.sendPosition(position),
 });
+quality = world.getQuality?.() ?? readQuality();
 world.setTaskState(state);
 syncBlocked();
 refresh();
@@ -110,6 +132,7 @@ marusya = createMarusyaChat({
 });
 chat.onOpenChange((open) => {
   chatOpen = open;
+  world?.setNpcTalking(open);
   syncBlocked();
   refresh();
 });
@@ -140,7 +163,11 @@ client.start();
 
 window.addEventListener('keydown', (event) => {
   if (event.code === 'Escape' && dialog) closeDialog();
+  if (event.code === 'KeyH' && !event.repeat && !event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) toggleControls();
 });
+
+// ?debug=1 открывает сцену в консоли (window.__fire) для ручной проверки графики и производительности.
+if (new URLSearchParams(location.search).has('debug')) window.__fire = world.debug;
 
 const unbindCityExit = bindCityExit({
   onExit: () => window.location.assign('/'),

@@ -4,223 +4,62 @@ import { LOCAL_POINTS, LOCAL_WINDOWS, START, WALL, WINDOW_DEPTH } from './layout
 import { SAFETY_ZONE, blockedBySafetyZone } from './safety-zone.js';
 import { canMoveWithHose } from './hose-length.js';
 import { advanceReel, REEL_RADIUS, woundTurns } from './reel-motion.js';
+import { PALETTE } from '../../engine/art/palette.js';
+import { applyStylizedLook } from '../../engine/art/lighting.js';
+import { isSharedResource, stdMat } from '../../engine/art/materials.js';
+import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
+import {
+  animateCharacter, appearanceFromSeed, createCharacter, resetArms, setArmReach, setPersonEquipment, triggerGesture, yawToward,
+} from '../../engine/art/character.js';
+import { buildFireTruck, buildHoseStand, buildLocker, buildMannequin, buildSafeZone, buildSafetyBarriers, buildStation, buildTrainingWall, createObjectiveMarker } from './station-art.js';
+import { createScenery } from './scenery.js';
+
+export { setPersonEquipment };
 
 // Дальность клавиши E у стойки рукава. С рукавом в руках игрок удаляется от стойки не дальше HOSE_REACH (hose-length.js).
 const HOSE_USE_DISTANCE = 2.8;
+// Маруся здоровается, когда игрок подходит ближе этого расстояния, и поворачивается к нему.
+const NPC_GREET_DISTANCE = 6.5;
+const NPC_NOTICE_DISTANCE = 11;
 
-const mat = (color, roughness = 0.86) => new THREE.MeshStandardMaterial({ color, roughness, flatShading: true });
-const shared = {
-  grass: mat('#9bbb78'), paleGrass: mat('#b4cf8c'), path: mat('#e8d4a3'), cream: mat('#f5e9cd'),
-  red: mat('#d65a42'), darkRed: mat('#a94436'), green: mat('#438266'), darkGreen: mat('#285f4c'),
-  wood: mat('#b57d4f'), blue: mat('#6ca4ac'), navy: mat('#345568'), charcoal: mat('#374344'),
-  white: mat('#fff4d9'), black: mat('#273232'), yellow: mat('#f0c85f'), orange: mat('#f3913e'),
-};
-
-function box(parent, x, y, z, sx, sy, sz, material, castShadow = true) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), material);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = castShadow;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
-
-function cylinder(parent, x, y, z, radiusTop, radiusBottom, height, material, sides = 8, rotation = null) {
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, height, sides), material);
-  mesh.position.set(x, y, z);
-  if (rotation) mesh.rotation.set(rotation.x ?? 0, rotation.y ?? 0, rotation.z ?? 0);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
-
-function sphere(parent, x, y, z, sx, sy, sz, material, segments = 8) {
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, segments, Math.max(5, segments - 2)), material);
-  mesh.position.set(x, y, z);
-  mesh.scale.set(sx, sy, sz);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
-
-function addLabel(parent, text, color = '#315548') {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff9e8';
-  ctx.beginPath();
-  ctx.roundRect(12, 10, 488, 108, 28);
-  ctx.fill();
-  ctx.strokeStyle = '#d9e2cc';
-  ctx.lineWidth = 6;
-  ctx.stroke();
-  ctx.fillStyle = color;
-  ctx.font = '700 44px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 256, 66, 450);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
-  sprite.scale.set(3.4, 0.85, 1);
-  parent.add(sprite);
-  return sprite;
-}
-
-function addTree(parent, x, z, scale = 1) {
-  const tree = new THREE.Group();
-  tree.position.set(x, 0, z);
-  tree.scale.setScalar(scale);
-  cylinder(tree, 0, 0.7, 0, 0.18, 0.24, 1.4, shared.wood, 6);
-  const greens = [mat('#6f9b68'), mat('#83aa70'), mat('#9fba76')];
-  sphere(tree, 0, 1.8, 0, 0.82, 0.75, 0.78, greens[(Math.abs(Math.round(x * 7 + z)) % greens.length)], 7);
-  sphere(tree, -0.35, 1.55, 0.12, 0.52, 0.48, 0.5, greens[1], 6);
-  parent.add(tree);
-}
-
-function addStation(parent) {
-  const building = new THREE.Group();
-  building.position.set(-9, 0, -4);
-  box(building, 0, 3, 0, 13, 6, 9, shared.cream);
-  box(building, 0, 0.16, 4.56, 13.4, 0.32, 0.22, shared.darkRed);
-  cylinder(building, 0, 6.45, 0, 0, 8.8, 4, shared.red, 4);
-  // Gable trim and broad garage opening make the silhouette readable at a distance.
-  box(building, -3.3, 2.4, 4.62, 5.1, 4.65, 0.2, shared.darkRed);
-  box(building, -3.3, 2.4, 4.76, 4.55, 4.1, 0.18, shared.navy);
-  box(building, -3.3, 2.4, 4.88, 4.15, 3.7, 0.08, mat('#526d70'));
-  for (let i = 0; i < 4; i++) box(building, -5.05 + i * 1.16, 2.4, 4.96, 0.07, 3.45, 0.05, mat('#a9b8a2'));
-  box(building, 2.25, 2.65, 4.63, 3.15, 4.15, 0.22, shared.green);
-  box(building, 2.25, 2.65, 4.78, 2.62, 3.7, 0.12, shared.blue);
-  box(building, 2.25, 2.65, 4.87, 0.12, 3.65, 0.06, shared.white);
-  box(building, 2.25, 2.65, 4.87, 2.58, 0.12, 0.06, shared.white);
-  box(building, 0, 6.18, 4.72, 4.4, 0.75, 0.28, shared.white);
-  const sign = addLabel(building, 'ПОЖАРНАЯ ЧАСТЬ', '#a94436');
-  sign.position.set(0, 6.2, 4.92);
-  // Flat roof details and small warm windows.
-  for (const x of [-5.1, 5.1]) {
-    box(building, x, 4.05, 4.63, 1.2, 1.15, 0.22, shared.yellow);
-    box(building, x, 4.05, 4.76, 0.12, 1.1, 0.05, shared.cream);
-    box(building, x, 4.05, 4.76, 1.1, 0.12, 0.05, shared.cream);
-  }
-  parent.add(building);
-}
-
-function addFireTruck(parent) {
-  const truck = new THREE.Group();
-  truck.position.set(5.7, 0, -4.4);
-  box(truck, 0, 1.0, 0, 5.1, 1.25, 2.25, shared.red);
-  box(truck, -1.25, 2.05, 0, 2.45, 1.55, 2.18, shared.darkRed);
-  box(truck, -1.22, 2.12, 1.13, 1.72, 0.86, 0.08, shared.blue);
-  box(truck, -1.22, 2.12, -1.13, 1.72, 0.86, 0.08, shared.blue);
-  box(truck, 1.12, 1.1, 0, 1.25, 0.9, 2.18, mat('#e77550'));
-  box(truck, 0.1, 1.75, 0, 2.25, 0.2, 0.62, shared.cream);
-  box(truck, 0.1, 1.94, 0, 2.1, 0.12, 0.36, shared.yellow);
-  for (const x of [-1.55, 1.4]) for (const z of [-1.16, 1.16]) {
-    const wheel = cylinder(truck, x, 0.62, z, 0.55, 0.55, 0.32, shared.black, 10, { z: Math.PI / 2 });
-    wheel.castShadow = true;
-    cylinder(truck, x, 0.62, z + (z > 0 ? 0.18 : -0.18), 0.23, 0.23, 0.035, shared.yellow, 8, { z: Math.PI / 2 });
-  }
-  for (const x of [-2.1, -0.35]) sphere(truck, x, 1.05, 1.18, 0.2, 0.16, 0.08, shared.yellow, 7);
-  // A simple roof ladder, built from local geometry.
-  box(truck, 0.9, 2.05, 0, 2.6, 0.13, 0.16, shared.white);
-  box(truck, 0.9, 2.22, -0.47, 2.6, 0.07, 0.09, shared.white);
-  box(truck, 0.9, 2.22, 0.47, 2.6, 0.07, 0.09, shared.white);
-  for (let i = 0; i < 7; i++) box(truck, -0.25 + i * 0.38, 2.22, 0, 0.07, 0.07, 0.92, shared.white);
-  parent.add(truck);
-}
-
-export function createPerson({ name, outfit = shared.green, helmet = false, player = false }) {
-  const root = new THREE.Group();
-  const body = new THREE.Group();
-  root.add(body);
-  const torso = sphere(body, 0, 1.05, 0, 0.43, 0.59, 0.3, outfit, 8);
-  // Руки вынесены в отдельные группы: с рукавом в руках они тянутся к хвату (см. updateHoseAim).
-  const arms = [-1, 1].map((side) => {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.52, 1.4, 0);
-    body.add(shoulder);
-    const sleeve = cylinder(shoulder, 0, -0.45, 0, 0.15, 0.14, 0.9, outfit, 7);
-    const stripe = cylinder(shoulder, 0, -0.62, 0, 0.155, 0.155, 0.13, shared.yellow, 7);
-    const hand = sphere(shoulder, 0, -0.92, 0, 0.16, 0.17, 0.16, shared.charcoal, 7);
-    stripe.visible = hand.visible = false;
-    return { shoulder, sleeve, stripe, hand };
-  });
-  root.userData.arms = arms;
-  cylinder(body, -0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: 0.04 });
-  cylinder(body, 0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: -0.04 });
-  sphere(body, 0, 1.95, 0.03, 0.48, 0.48, 0.43, mat('#efc89e'), 9);
-  sphere(body, -0.16, 2.02, 0.405, 0.045, 0.05, 0.035, shared.black, 6);
-  sphere(body, 0.16, 2.02, 0.405, 0.045, 0.05, 0.035, shared.black, 6);
-  sphere(body, 0, 1.88, 0.445, 0.07, 0.04, 0.025, mat('#ba705c'), 6);
-  if (helmet) {
-    sphere(body, 0, 2.35, 0, 0.56, 0.18, 0.5, shared.red, 8);
-    box(body, 0, 2.25, 0.17, 0.73, 0.08, 0.46, shared.red);
-    box(body, 0, 2.22, 0.4, 0.24, 0.11, 0.07, shared.yellow);
-  }
-  if (player) {
-    // Экипировка: пояс и защитные брюки появляются вместе с каской.
-    const uniform = new THREE.Group();
-    box(uniform, 0, 0.94, 0.02, 0.77, 0.12, 0.58, shared.yellow);
-    for (const x of [-0.2, 0.2]) {
-      cylinder(uniform, x, 0.18, 0.05, 0.19, 0.2, 0.36, shared.black, 7);
-      box(uniform, x, 0.1, 0.13, 0.38, 0.2, 0.48, shared.black);
-    }
-    body.add(uniform);
-    root.userData.uniform = uniform;
-    root.userData.torso = torso;
-    uniform.visible = false;
-    const helmetGroup = new THREE.Group();
-    sphere(helmetGroup, 0, 2.35, 0, 0.56, 0.18, 0.5, shared.red, 8);
-    box(helmetGroup, 0, 2.25, 0.17, 0.73, 0.08, 0.46, shared.darkRed);
-    box(helmetGroup, 0, 2.25, 0.42, 0.22, 0.12, 0.07, shared.yellow);
-    body.add(helmetGroup);
-    root.userData.helmet = helmetGroup;
-    helmetGroup.visible = false;
-  }
-  if (name) {
-    const nameTag = addLabel(root, name, '#315548');
-    nameTag.position.set(0, 3.18, 0);
-    nameTag.scale.set(2.5, 0.62, 1);
-  }
-  root.userData.body = body;
-  return root;
-}
-
-export function setPersonEquipment(person, equipped) {
-  const active = Boolean(equipped);
-  person.userData.helmet.visible = active;
-  person.userData.uniform.visible = active;
-  person.userData.torso.material = active ? shared.red : shared.green;
-  person.userData.arms.forEach(({ sleeve, stripe, hand }) => {
-    sleeve.material = active ? shared.red : shared.green;
-    stripe.visible = hand.visible = active;
+/**
+ * Персонаж Kidburg. `player` оставлен для совместимости: любой человек может сменить экипировку.
+ * @param {{name?: string, outfit?: THREE.Material|string, helmet?: boolean, player?: boolean, appearance?: object}} options
+ */
+export function createPerson({ name, outfit, helmet = false, appearance, id = 0, color = null } = {}) {
+  return createCharacter({
+    name,
+    outfit,
+    helmet,
+    appearance: appearance ?? appearanceFromSeed(id, color),
   });
 }
 
-function createMannequin() {
-  const root = new THREE.Group();
-  sphere(root, 0, 0.32, 0, 0.45, 0.22, 0.9, mat('#d2aa78'), 7);
-  sphere(root, 0, 0.48, 0.78, 0.28, 0.26, 0.28, mat('#e0bd91'), 7);
-  cylinder(root, -0.27, 0.23, -0.68, 0.12, 0.14, 0.9, shared.navy, 6, { x: Math.PI / 2, z: -0.2 });
-  cylinder(root, 0.27, 0.23, -0.68, 0.12, 0.14, 0.9, shared.navy, 6, { x: Math.PI / 2, z: 0.2 });
-  cylinder(root, -0.57, 0.2, 0.3, 0.1, 0.12, 0.9, mat('#d2aa78'), 6, { x: Math.PI / 2, z: 0.3 });
-  cylinder(root, 0.57, 0.2, 0.3, 0.1, 0.12, 0.9, mat('#d2aa78'), 6, { x: Math.PI / 2, z: -0.3 });
-  return root;
+/** Маруся Громова: наставница пожарной части. Узнаётся по белой каске, бордовой куртке, хвосту и планшету. */
+export function createMarusya() {
+  return createCharacter({
+    name: 'Маруся Громова',
+    subtitle: 'Наставник',
+    gear: 'mentor',
+    equipped: true,
+    helmet: true,
+    holding: 'clipboard',
+    nameScale: 1.12,
+    appearance: { skin: '#f4c8a2', hair: '#5b3a2b', hairStyle: 'ponytail', outfit: '#9c3a31', pants: '#2f3e4a' },
+  });
 }
 
 // Игровая площадка (земля 90×90) ограничена этим расстоянием от начала локальных координат.
 export const WALK_LIMIT = 43;
 
+/** Освобождает ресурсы модели, кроме общих (геометрии, материалы и текстуры art/ живут всю сессию). */
 function disposeModel(root) {
   root.traverse((node) => {
-    node.geometry?.dispose();
+    if (node.geometry && !isSharedResource(node.geometry)) node.geometry.dispose();
     const materials = Array.isArray(node.material) ? node.material : node.material ? [node.material] : [];
     for (const material of materials) {
-      if (Object.values(shared).includes(material)) continue;
-      material.map?.dispose();
+      if (isSharedResource(material)) continue;
+      if (material.map && !isSharedResource(material.map)) material.map.dispose();
       material.dispose();
     }
   });
@@ -228,160 +67,82 @@ function disposeModel(root) {
 
 export function createFirefighterScene({ container, onPrompt, onAction, onNotice, onHoseMode, onTarget = () => {}, onPosition = () => {} }) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#cfe5df');
-  scene.fog = new THREE.Fog('#cfe5df', 38, 95);
-
-  const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 120);
+  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 260);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
   renderer.domElement.tabIndex = 0;
   renderer.domElement.setAttribute('aria-label', 'Игровая сцена пожарной части. Кликните, чтобы управлять камерой.');
   container.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight('#f4fff0', '#789276', 2.15));
-  const sun = new THREE.DirectionalLight('#fff4d7', 2.8);
-  sun.position.set(-12, 24, 13);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -30;
-  sun.shadow.camera.right = 30;
-  sun.shadow.camera.top = 30;
-  sun.shadow.camera.bottom = -30;
-  sun.shadow.bias = -0.0004;
-  scene.add(sun);
+  const look = applyStylizedLook({ renderer, scene, camera, fog: [46, 135], shadowExtent: 26, exposure: 1.02 });
+  let quality = readQuality();
+  let detail = look.setQuality(quality).detail;
+  const scenery = createScenery({ detail });
+  scene.add(scenery.group);
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), shared.grass);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.12;
-  ground.receiveShadow = true;
-  scene.add(ground);
-  // Decorative field patches soften the open training yard.
-  for (const [x, z, w, d] of [[-16, 6, 4, 7], [14, -1, 5, 8], [-13, 14, 5, 4], [13, 14, 6, 5]]) {
-    const patch = new THREE.Mesh(new THREE.CircleGeometry(1, 10), shared.paleGrass);
-    patch.rotation.x = -Math.PI / 2;
-    patch.position.set(x, -0.08, z);
-    patch.scale.set(w, d, 1);
-    patch.receiveShadow = true;
-    scene.add(patch);
-  }
+  const station = buildStation();
+  station.position.set(-9, 0, -4);
+  scene.add(station);
+  const truck = buildFireTruck();
+  truck.position.set(5.7, 0, -4.4);
+  scene.add(truck);
 
-  // Paths are local to this preview and do not define world/chunk coordinates.
-  box(scene, -4.3, -0.015, 2.2, 3.5, 0.08, 8.6, shared.path, false);
-  box(scene, 0.25, -0.012, 7.0, 6.4, 0.08, 3.0, shared.path, false);
-  box(scene, 8.0, -0.01, 7.6, 3.4, 0.08, 7.0, shared.path, false);
-  addStation(scene);
-  addFireTruck(scene);
-
-  // A few compact bushes frame the yard without narrowing the route.
-  for (const [x, z] of [[-15, -12], [12, -12], [-15, 19], [15, 19], [-13, 10], [14, 2]]) {
-    sphere(scene, x, 0.45, z, 1.15, 0.62, 0.85, shared.green, 7);
-    sphere(scene, x + 0.45, 0.65, z + 0.18, 0.62, 0.55, 0.58, shared.paleGrass, 7);
-  }
-  for (const [x, z, scale] of [[-19, -15, 1.3], [19, -13, 1.15], [-19, 19, 1], [18, 22, 1.2], [0, -21, 1.3]]) addTree(scene, x, z, scale);
-
-  const player = createPerson({ outfit: shared.green, player: true });
+  const player = createPerson({ id: 1, outfit: PALETTE.green });
+  player.userData.appearanceSeed = 1;
   player.position.set(START.x, 0, START.z);
   scene.add(player);
   const remotePlayers = new Map();
-  const npc = createPerson({ name: 'Маруся Громова', outfit: shared.darkRed, helmet: true });
+  const npc = createMarusya();
   npc.position.set(LOCAL_POINTS.npc.x, 0, LOCAL_POINTS.npc.z);
+  const npcRestYaw = 0;
+  npc.rotation.y = npcRestYaw;
   scene.add(npc);
-  const locker = new THREE.Group();
+
+  const locker = buildLocker();
   locker.position.set(LOCAL_POINTS.locker.x, 0, LOCAL_POINTS.locker.z);
-  box(locker, 0, 1.25, 0, 1.45, 2.5, 0.95, shared.blue);
-  box(locker, 0, 1.25, 0.52, 1.32, 2.36, 0.09, mat('#77aab0'));
-  box(locker, 0, 1.85, 0.59, 0.26, 0.38, 0.08, shared.yellow);
-  box(locker, -0.38, 0.9, 0.59, 0.45, 0.08, 0.08, shared.white);
-  box(locker, 0.15, 0.9, 0.59, 0.45, 0.08, 0.08, shared.white);
-  addLabel(locker, 'ЭКИПИРОВКА', '#315548').position.set(0, 2.95, 0.2);
   scene.add(locker);
 
   // Учебная стена: четыре окна с безобидным условным огнём, каждое тушится независимо.
   // Центры окон берутся из layout.js — их же проверяет сервер.
-  const targetBase = new THREE.Group();
-  targetBase.position.set(WALL.x, 0, WALL.z);
-  box(targetBase, 0, 3.5, 0, 6.8, 7, 0.55, shared.cream);
-  box(targetBase, 0, 7.05, 0, 7.2, 0.3, 0.8, shared.red);
-  const flameOrange = new THREE.MeshStandardMaterial({ color: '#f48638', emissive: '#bd4b1e', emissiveIntensity: 0.32, roughness: 0.7, flatShading: true });
-  const flameYellow = new THREE.MeshStandardMaterial({ color: '#ffd16a', emissive: '#bf671c', emissiveIntensity: 0.22, roughness: 0.7, flatShading: true });
-  const flameParts = [];
-  const windows = LOCAL_WINDOWS.map((center, index) => {
-    const x = center.x - WALL.x;
-    const y = center.y;
-    box(targetBase, x, y, WINDOW_DEPTH - 0.08, 2.2, 2.1, 0.12, shared.wood);
-    const pane = box(targetBase, x, y, WINDOW_DEPTH, 1.9, 1.8, 0.08, shared.charcoal);
-    pane.userData.windowIndex = index;
-    const flames = new THREE.Group();
-    flames.position.set(x, y - 0.78, WINDOW_DEPTH + 0.12);
-    for (let i = 0; i < 4; i++) {
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1 + (i % 2) * 0.35, 5), i % 2 ? flameOrange : flameYellow);
-      flame.position.set(-0.65 + i * 0.43, 0.56, 0);
-      flames.add(flame);
-      flameParts.push(flame);
-    }
-    targetBase.add(flames);
-    return { pane, flames };
-  });
-  addLabel(targetBase, 'УЧЕБНАЯ СТЕНА', '#a04d36').position.set(0, 7.8, 0.35);
-  scene.add(targetBase);
+  const wall = buildTrainingWall({ center: WALL, windows: LOCAL_WINDOWS, windowDepth: WINDOW_DEPTH });
+  scene.add(wall.group);
+  const { windows, flameParts } = wall;
+  scene.add(buildSafetyBarriers(WALL.x));
 
-  // Ограничительная линия перед стеной. Приподнятая геометрия не мерцает на дорожках и земле.
-  for (let i = 0; i < 16; i++) {
-    box(scene, SAFETY_ZONE.minX + (i + 0.5) * 0.5, 0.045, SAFETY_ZONE.maxZ, 0.5, 0.05, 0.46, i % 2 ? shared.black : shared.yellow, false);
-  }
-  for (let i = 0; i < 10; i++) {
-    for (const x of [SAFETY_ZONE.minX, SAFETY_ZONE.maxX]) {
-      box(scene, x, 0.045, SAFETY_ZONE.maxZ - (i + 0.5) * 0.51, 0.32, 0.05, 0.51, i % 2 ? shared.black : shared.yellow, false);
-    }
-  }
-  for (let i = 0; i < 16; i++) box(scene, SAFETY_ZONE.minX + (i + 0.5) * 0.5, 0.045, SAFETY_ZONE.minZ, 0.5, 0.05, 0.32, i % 2 ? shared.black : shared.yellow, false);
-  const warning = addLabel(scene, 'НЕ ПЕРЕСЕКАТЬ', '#a94436');
-  warning.position.set(WALL.x, 0.65, SAFETY_ZONE.maxZ + 0.05);
-
-  const hoseStand = new THREE.Group();
+  const hoseModel = buildHoseStand();
+  const hoseStand = hoseModel.group;
+  const { reel, nozzle } = hoseModel;
   hoseStand.position.set(LOCAL_POINTS.hose.x, 0, LOCAL_POINTS.hose.z);
-  box(hoseStand, 0, 0.55, 0, 0.85, 1.1, 0.78, shared.darkGreen);
-  // Катушка: рукав в руках разматывает витки, возвращение к стойке наматывает обратно (reel-motion.js).
-  const reel = new THREE.Group();
-  reel.position.set(0, 1.2, 0.28);
-  hoseStand.add(reel);
-  cylinder(reel, 0, 0, 0, 0.3, 0.3, 1.04, shared.darkGreen, 10, { x: Math.PI / 2 });
-  for (const z of [-0.55, 0.55]) {
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.055, 7, 20), shared.charcoal);
-    rim.position.z = z;
-    reel.add(rim);
-    for (const angle of [0, Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
-      const spoke = box(reel, 0, 0, z, 1.2, 0.07, 0.07, shared.cream);
-      spoke.rotation.z = angle;
-    }
-  }
-  cylinder(reel, 0, 0, 0, 0.17, 0.17, 1.2, shared.cream, 8, { x: Math.PI / 2 });
-  const nozzle = box(hoseStand, 0.48, 0.86, 0.42, 0.7, 0.18, 0.2, shared.charcoal);
-  nozzle.rotation.y = -0.35;
-  addLabel(hoseStand, 'УЧЕБНЫЙ РУКАВ', '#315548').position.set(0, 2.0, 0);
   scene.add(hoseStand);
+
+  const hoseMaterial = stdMat(PALETTE.orange, { roughness: 0.6 });
   const heldHose = new THREE.Group();
   heldHose.position.set(0.25, 1.18, 0.48);
-  cylinder(heldHose, 0, 0, 0.35, 0.19, 0.19, 1.2, shared.charcoal, 8, { x: Math.PI / 2 });
-  cylinder(heldHose, 0, 0, 1.03, 0.24, 0.16, 0.3, shared.blue, 8, { x: Math.PI / 2 });
-  cylinder(heldHose, 0, 0, -0.45, 0.16, 0.19, 0.5, shared.orange, 8, { x: Math.PI / 2 });
+  const addHoseCylinder = (z, radiusTop, radiusBottom, length, material) => {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, length, 10), material);
+    mesh.position.z = z;
+    mesh.rotation.x = Math.PI / 2;
+    mesh.castShadow = true;
+    heldHose.add(mesh);
+  };
+  addHoseCylinder(0.35, 0.19, 0.19, 1.2, stdMat(PALETTE.charcoal, { roughness: 0.5 }));
+  addHoseCylinder(1.03, 0.24, 0.16, 0.3, stdMat(PALETTE.yellow, { roughness: 0.4, metalness: 0.2 }));
+  addHoseCylinder(-0.45, 0.16, 0.19, 0.5, hoseMaterial);
   player.userData.body.add(heldHose);
   heldHose.visible = false;
 
   // Фиксированный набор экземпляров: геометрия при движении не пересоздаётся.
-  const hoseSegments = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.13, 1, 7), shared.orange, 24);
+  const hoseSegments = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.13, 1, 8), hoseMaterial, 24);
   hoseSegments.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   hoseSegments.frustumCulled = false;
+  hoseSegments.castShadow = true;
   hoseSegments.visible = false;
   scene.add(hoseSegments);
-  const coilSegments = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.13, 1, 7), shared.orange, 96);
+  const coilSegments = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.13, 1, 8), hoseMaterial, 96);
   coilSegments.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   coilSegments.frustumCulled = false;
+  coilSegments.castShadow = true;
   reel.add(coilSegments);
   const hoseCurve = new THREE.CatmullRomCurve3(Array.from({ length: 7 }, () => new THREE.Vector3()));
   const hoseStart = new THREE.Vector3();
@@ -452,31 +213,26 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     hoseSegments.instanceMatrix.needsUpdate = true;
   }
 
-  const mannequin = createMannequin();
+  const mannequin = buildMannequin();
   mannequin.position.set(LOCAL_POINTS.mannequin.x, 0, LOCAL_POINTS.mannequin.z);
   mannequin.rotation.y = -0.45;
   scene.add(mannequin);
-  const carried = createMannequin();
+  const carried = buildMannequin({ withSign: false });
   carried.scale.setScalar(0.55);
   carried.position.set(0, 1.2, 0.66);
   carried.rotation.set(0, 0, -Math.PI / 2.2);
   player.add(carried);
   carried.visible = false;
-  addLabel(mannequin, 'УЧЕБНЫЙ МАНЕКЕН', '#315548').position.set(0, 1.7, 0);
 
-  const safeZone = new THREE.Group();
+  const safeZone = buildSafeZone();
   safeZone.position.set(LOCAL_POINTS.safe_zone.x, 0.01, LOCAL_POINTS.safe_zone.z);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.45, 0.12, 7, 24), shared.darkGreen);
-  ring.rotation.x = -Math.PI / 2;
-  safeZone.add(ring);
-  const marker = new THREE.Mesh(new THREE.CircleGeometry(1.3, 16), new THREE.MeshBasicMaterial({ color: '#a6cf83', transparent: true, opacity: 0.48, side: THREE.DoubleSide }));
-  marker.rotation.x = -Math.PI / 2;
-  marker.position.y = -0.01;
-  safeZone.add(marker);
-  addLabel(safeZone, 'БЕЗОПАСНАЯ ЗОНА', '#315548').position.set(0, 2.1, 0);
   scene.add(safeZone);
 
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 1, 8), new THREE.MeshBasicMaterial({ color: '#a2f6ff', transparent: true, opacity: 0.9 }));
+  const marker = createObjectiveMarker();
+  scene.add(marker.group);
+
+  const beamMaterial = new THREE.MeshBasicMaterial({ color: '#b9f4ff', transparent: true, opacity: 0.82 });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 1, 8), beamMaterial);
   beam.visible = false;
   scene.add(beam);
 
@@ -504,8 +260,10 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   let lastSafetyNotice = -Infinity;
   let prompt = '';
   let previousStage = '';
-  let bobTime = 0;
   let frameId = 0;
+  let npcTalking = false;
+  let npcGreeted = false;
+  let debugCamera = null; // отладка: фиксированная поза камеры (?debug=1)
 
   const pointOf = (object) => object.getWorldPosition(new THREE.Vector3());
   const distanceTo = (object) => {
@@ -528,21 +286,11 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     previousHoseLength = null;
     nozzle.visible = true;
     aim = null;
-    resetArms();
+    resetArms(player);
     setTarget(null);
     onHoseMode(false);
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
   };
-
-  function resetArms() {
-    player.userData.arms.forEach(({ shoulder, sleeve, stripe, hand }) => {
-      shoulder.rotation.set(0, 0, 0);
-      sleeve.scale.y = 1;
-      sleeve.position.y = -0.45;
-      stripe.position.y = -0.62;
-      hand.position.y = -0.92;
-    });
-  }
 
   function setTarget(index) {
     if (targetWindow === index) return;
@@ -550,21 +298,29 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     onTarget(index);
   }
 
+  /** Куда смотрит маркер цели для текущего этапа; null — маркер скрыт. */
+  function updateMarker() {
+    const stage = state?.stage ?? 'not_started';
+    let at = null;
+    let height = 3.4;
+    let radius = 1.5;
+    if (uiBlocked) at = null;
+    else if (stage === 'not_started' || stage === 'briefing' || stage === 'debrief') { at = npc.position; height = 3.7; radius = 1.2; }
+    else if (stage === 'equipping' && !state?.equipped) { at = locker.position; height = 3.55; radius = 1.5; }
+    else if (stage === 'fire_drill' && !hoseActive) { at = hoseStand.position; height = 3.2; radius = 1.55; }
+    else if (stage === 'rescue') {
+      if (state?.carryingMannequin) { at = safeZone.position; height = 3.2; radius = 1.9; }
+      else if (mannequin.visible) { at = mannequin.position; height = 2.2; radius = 1.3; }
+    }
+    marker.setTarget(at, height, radius);
+  }
+
   function setTaskState(next) {
     state = next;
     const stage = state?.stage ?? 'not_started';
     if (stage !== previousStage && stage !== 'fire_drill') stopHose();
     previousStage = stage;
-    npc.userData.body.rotation.z = 0;
-    const helmet = player.userData.helmet;
-    if (helmet) helmet.visible = Boolean(state?.equipped);
-    const equipped = Boolean(state?.equipped);
-    player.userData.uniform.visible = equipped;
-    player.userData.torso.material = equipped ? shared.red : shared.green;
-    player.userData.arms.forEach(({ sleeve, stripe, hand }) => {
-      sleeve.material = equipped ? shared.red : shared.green;
-      stripe.visible = hand.visible = equipped;
-    });
+    setPersonEquipment(player, state?.equipped);
     // Состояние окон приходит с сервера (task_state): огонь гаснет и уменьшается по числу подтверждённых попаданий.
     windows.forEach(({ flames }, index) => {
       const hits = state?.windows?.[index] ?? 0;
@@ -574,6 +330,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     mannequin.visible = stage === 'rescue' && !state?.carryingMannequin && !state?.mannequinDelivered;
     carried.visible = Boolean(state?.carryingMannequin);
     if (stage === 'completed') stopHose();
+    updateMarker();
   }
 
   function updatePrompt() {
@@ -612,10 +369,11 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       nozzle.visible = !hoseActive;
       if (!hoseActive) {
         aim = null;
-        resetArms();
+        resetArms(player);
         setTarget(null);
       }
       onHoseMode(hoseActive);
+      updateMarker();
       if (hoseActive) {
         onNotice('Учебный рукав готов. Наведите прицел на окно и удерживайте левую кнопку мыши.');
         renderer.domElement.requestPointerLock?.();
@@ -695,10 +453,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     const forwardInput = Number(keys.has('KeyW')) - Number(keys.has('KeyS'));
     const sideInput = Number(keys.has('KeyD')) - Number(keys.has('KeyA'));
     const input = new THREE.Vector2(sideInput, forwardInput);
-    if (input.lengthSq() < 0.01) {
-      player.userData.body.position.y = 0;
-      return;
-    }
+    if (input.lengthSq() < 0.01) return;
     input.normalize();
     const forwardX = -Math.sin(cameraYaw);
     const forwardZ = -Math.cos(cameraYaw);
@@ -723,33 +478,41 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     if (!isBlocked(nextX, player.position.z) && !blockedSafety(nextX, player.position.z) && canMove(nextX, player.position.z)) player.position.x = nextX;
     if (!isBlocked(player.position.x, nextZ) && !blockedSafety(player.position.x, nextZ) && canMove(player.position.x, nextZ)) player.position.z = nextZ;
     if (!hoseActive) player.rotation.y = Math.atan2(dx, dz);
-    bobTime += delta * (speed > 5 ? 15 : 10);
-    player.userData.body.position.y = Math.abs(Math.sin(bobTime)) * 0.055;
   }
 
+  // Камера: ближе и ниже прежней, чуть уже угол обзора — здания заполняют кадр, персонаж остаётся слева от центра.
+  const CAMERA_DISTANCE = 7.4;
+  const CAMERA_HEIGHT = 3.05;
   function updateCamera() {
+    if (debugCamera) {
+      camera.position.copy(debugCamera.position);
+      camera.lookAt(debugCamera.target);
+      return;
+    }
     const target = new THREE.Vector3(
-      player.position.x - Math.sin(cameraYaw) * 2.4,
-      1.45 - cameraPitch * 8,
-      player.position.z - Math.cos(cameraYaw) * 2.4,
+      player.position.x - Math.sin(cameraYaw) * 3.2,
+      2.3 - cameraPitch * 7.5,
+      player.position.z - Math.cos(cameraYaw) * 3.2,
     );
-    const distance = 8.6;
-    const height = 3.8;
     camera.position.set(
-      player.position.x + Math.sin(cameraYaw) * distance + Math.cos(cameraYaw) * 1.8,
-      height,
-      player.position.z + Math.cos(cameraYaw) * distance - Math.sin(cameraYaw) * 1.8,
+      player.position.x + Math.sin(cameraYaw) * CAMERA_DISTANCE + Math.cos(cameraYaw) * 1.7,
+      CAMERA_HEIGHT,
+      player.position.z + Math.cos(cameraYaw) * CAMERA_DISTANCE - Math.sin(cameraYaw) * 1.7,
     );
     camera.lookAt(target);
   }
 
-  function addRemotePlayer(id, name) {
+  function addRemotePlayer(id, name, equipped = false, color = null) {
     const known = remotePlayers.get(id);
-    if (known) return known;
-    const model = createPerson({ name: name || `Игрок ${id}`, outfit: shared.blue });
+    if (known) {
+      setPersonEquipment(known.model, equipped);
+      return known;
+    }
+    const model = createPerson({ name: name || `Игрок ${id}`, id, color });
+    setPersonEquipment(model, equipped);
     model.visible = false;
     scene.add(model);
-    const remote = { model, x: 0, z: 0, heading: 0, moving: false, ready: false };
+    const remote = { model, x: 0, z: 0, heading: 0, moving: false, ready: false, speed: 0 };
     remotePlayers.set(id, remote);
     return remote;
   }
@@ -760,6 +523,11 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     scene.remove(remote.model);
     disposeModel(remote.model);
     remotePlayers.delete(id);
+  }
+
+  function setRemotePlayerEquipment(id, equipped) {
+    const remote = remotePlayers.get(id);
+    if (remote) setPersonEquipment(remote.model, equipped);
   }
 
   function clearRemotePlayers() {
@@ -823,15 +591,14 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     player.updateMatrixWorld(true);
     heldHose.lookAt(end);
     player.updateMatrixWorld(true);
-    player.userData.arms.forEach(({ shoulder, sleeve, stripe, hand }, i) => {
+    player.userData.armsLocked = true;
+    player.userData.arms.forEach((arm, i) => {
+      const { shoulder } = arm;
       const grip = heldHose.localToWorld(new THREE.Vector3(i ? 0.14 : -0.14, 0, i ? 0.05 : 0.55));
       const localGrip = shoulder.parent.worldToLocal(grip).sub(shoulder.position);
       const length = localGrip.length();
       shoulder.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), localGrip.normalize());
-      sleeve.scale.y = length / 0.9;
-      sleeve.position.y = -length / 2;
-      stripe.position.y = -length * 0.7;
-      hand.position.y = -length;
+      setArmReach(arm, length);
     });
     player.updateMatrixWorld(true);
     updateHose();
@@ -866,50 +633,120 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     }
   }
 
+  /** Маруся: поворачивается к игроку, здоровается на подходе, жестикулирует во время разговора. */
+  function updateNpc(delta, elapsed) {
+    const near = Math.hypot(player.position.x - npc.position.x, player.position.z - npc.position.z);
+    const noticing = near < NPC_NOTICE_DISTANCE;
+    if (near < NPC_GREET_DISTANCE && !npcGreeted) {
+      npcGreeted = true;
+      triggerGesture(npc, 'wave');
+    } else if (near > NPC_NOTICE_DISTANCE) npcGreeted = false;
+    const want = noticing ? Math.atan2(player.position.x - npc.position.x, player.position.z - npc.position.z) : npcRestYaw;
+    const turn = ((((want - npc.rotation.y) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    npc.rotation.y += turn * Math.min(1, delta * 3.2);
+    const lookYaw = noticing ? yawToward(npc, player.position.x, player.position.z) : 0;
+    animateCharacter(npc, delta, elapsed, { speed: 0, talking: npcTalking, lookYaw });
+  }
+
   function animate() {
     frameId = requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(), 0.05);
+    const elapsed = clock.elapsedTime;
     movePlayer(delta);
     updateHoseAim();
     const position = localPosition();
     onPosition(position);
+    animateCharacter(player, delta, elapsed, { speed: uiBlocked ? 0 : position.anim });
     for (const remote of remotePlayers.values()) {
       if (!remote.ready) continue;
       const amount = Math.min(1, delta * 12);
-      remote.model.position.x += (remote.x - remote.model.position.x) * amount;
-      remote.model.position.z += (remote.z - remote.model.position.z) * amount;
+      const px = remote.model.position.x;
+      const pz = remote.model.position.z;
+      remote.model.position.x += (remote.x - px) * amount;
+      remote.model.position.z += (remote.z - pz) * amount;
       const angle = ((((remote.heading - remote.model.rotation.y) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       remote.model.rotation.y += angle * amount;
-      remote.model.userData.body.position.y = remote.moving ? Math.abs(Math.sin(clock.elapsedTime * 11)) * 0.055 : 0;
+      // Скорость берём из реального перемещения, чтобы походка совпадала с движением без новых полей протокола.
+      const velocity = delta > 0 ? Math.hypot(remote.model.position.x - px, remote.model.position.z - pz) / delta : 0;
+      remote.speed = remote.moving ? (velocity > 6 ? 2 : 1) : 0;
+      animateCharacter(remote.model, delta, elapsed, { speed: remote.speed });
     }
-    const idle = Math.sin(clock.elapsedTime * 1.5) * 0.035;
-    npc.userData.body.position.y = idle;
+    updateNpc(delta, elapsed);
     flameParts.forEach((flame, index) => {
-      const pulse = 1 + Math.sin(clock.elapsedTime * 5 + index * 1.3) * 0.08;
-      flame.scale.set(1, pulse, 1);
+      const pulse = 1 + Math.sin(elapsed * 6 + index * 1.3) * 0.09;
+      flame.scale.y = flame.userData.baseY ??= flame.scale.y;
+      flame.scale.y *= pulse;
+      flame.rotation.z = Math.sin(elapsed * 3.1 + index) * 0.05;
     });
+    safeZone.userData.flag.rotation.y = Math.sin(elapsed * 2.2) * 0.25;
+    marker.update(elapsed);
+    scenery.update(elapsed);
     if (!aim) updateCamera();
+    look.update(player.position, elapsed);
     updatePrompt();
     updateWater(delta);
     renderer.render(scene, camera);
   }
   animate();
 
+  const resizeNow = () => {
+    const width = Math.max(1, container.clientWidth);
+    const height = Math.max(1, container.clientHeight);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    renderer.setSize(width, height, false);
+  };
+
   return {
     setTaskState,
     addRemotePlayer,
+    setRemotePlayerEquipment,
     removeRemotePlayer,
     clearRemotePlayers,
     updateRemotePlayers,
     isWalkable,
     setLocalPosition,
     localPosition,
+    /** Маруся «говорит»: открыт разговор с ней. Кивок и жест приветствия — при открытии. */
+    setNpcTalking(value) {
+      const next = Boolean(value);
+      if (next && !npcTalking) triggerGesture(npc, 'nod');
+      npcTalking = next;
+    },
+    getQuality: () => quality,
+    /** Графика: low / medium / high; выбор запоминается в браузере игрока. */
+    setQuality(level) {
+      if (!QUALITY_PRESETS[level]) return quality;
+      quality = level;
+      detail = look.setQuality(level).detail;
+      scenery.setDetail(detail);
+      saveQuality(level);
+      resizeNow();
+      return quality;
+    },
     setUiBlocked(value) {
       uiBlocked = Boolean(value);
       if (!uiBlocked) return;
       keys.clear();
       waterHeld = false;
       if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+    },
+    /** Инструменты проверки (?debug=1 в main.js): положение камеры, статистика отрисовки, прямой доступ к сцене. */
+    debug: {
+      scene, camera, renderer, player, npc,
+      setCamera(position, target) { debugCamera = position ? { position: new THREE.Vector3(...position), target: new THREE.Vector3(...target) } : null; },
+      stats() {
+        const { render, memory } = renderer.info;
+        return { calls: render.calls, triangles: render.triangles, geometries: memory.geometries, textures: memory.textures, quality };
+      },
+      gesture: (kind) => triggerGesture(npc, kind),
+      // Только визуальная проверка: ничего не отправляет на сервер, следующее task_state перезапишет вид.
+      showState: setTaskState,
+      equipPlayer: (value) => setPersonEquipment(player, value),
+      spawnRemote(id, x, z, { equipped = false, color = null, heading = Math.PI, moving = false } = {}) {
+        addRemotePlayer(id, `Игрок ${id}`, equipped, color);
+        updateRemotePlayers([{ id, x, z, heading, moving }]);
+      },
     },
     dispose() {
       cancelAnimationFrame(frameId);
@@ -922,8 +759,15 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('pointerlockchange', onPointerLockChange);
       clearRemotePlayers();
+      for (const root of [player, npc, station, truck, locker, wall.group, hoseStand, mannequin, safeZone]) disposeModel(root);
       hoseSegments.geometry.dispose();
       coilSegments.geometry.dispose();
+      beam.geometry.dispose();
+      beamMaterial.dispose();
+      marker.dispose();
+      scenery.dispose();
+      look.dispose();
+      wall.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();

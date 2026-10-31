@@ -18,6 +18,7 @@ test('validate: корректные сообщения проходят', () =>
   assert.equal(validate({ t: 'pos', x: 0, y: 0, z: 0, ry: 0, anim: 2, seq: 1 }).ok, true);
   assert.equal(validate({ t: 'chat', text: 'привет' }).ok, true);
   assert.equal(validate({ t: 'chat', from: 'bot1', text: 'привет', ts: 1 }, 's2c').ok, true);
+  assert.equal(validate({ t: 'player_appearance', id: 7, appearance: { firefighterEquipped: true } }, 's2c').ok, true);
   assert.equal(validate({ t: 'error', code: 'rate_limit', message: 'м' }).ok, true);
 });
 
