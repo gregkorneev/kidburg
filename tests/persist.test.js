@@ -71,8 +71,8 @@ test('грязные позиции нескольких игроков пишу
   const a = await joinGame(app, port, 'Аня');
   const b = await joinGame(app, port, 'Борис');
   const idle = await joinGame(app, port, 'Тихий');
-  a.client.send(pos(SPAWN.x + 0.1, SPAWN.z, 1));
-  b.client.send(pos(SPAWN.x, SPAWN.z + 0.1, 1));
+  a.client.send(pos(a.welcome.state.x + 0.1, a.welcome.state.z, 1));
+  b.client.send(pos(b.welcome.state.x, b.welcome.state.z + 0.1, 1));
   await sleep(150);
   assert.equal(spy.batches.length, 0);
   await app.close();

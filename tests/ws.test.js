@@ -4,6 +4,8 @@ import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { SPAWN, MAX_SPEED, SPEED_TOLERANCE } from '../shared/constants.js';
 import { CLOSE } from '../server/net/game.js';
+import { chooseSpawn, SPAWN_CANDIDATES } from '../server/net/spawn.js';
+import { FOUNTAIN, distanceToBuildings, distanceToRoutes } from '../client/engine/plaza-plan.js';
 import { TestClient, getTicket, joinGame, listen, readPlayerState, register, seedPlayerState, tempDb, tempWorld } from './helpers.js';
 
 const pos = (x, z, seq = 1) => ({ t: 'pos', x, y: 0, z, ry: 0, anim: 1, seq });
@@ -58,6 +60,40 @@ test('hello: welcome с позицией, константами и прогре
   await app.close();
 });
 
+test('стартовые точки лежат на свободных маршрутах и не перекрывают друг друга', () => {
+  assert.equal(chooseSpawn([]), SPAWN);
+  assert.ok(SPAWN_CANDIDATES.length >= 4);
+  for (let i = 0; i < SPAWN_CANDIDATES.length; i++) {
+    const point = SPAWN_CANDIDATES[i];
+    const x = point.x - SPAWN.x;
+    const z = point.z - SPAWN.z;
+    assert.ok(Math.hypot(x, z) > FOUNTAIN.wall[1] + 1);
+    assert.ok(distanceToRoutes(x, z) < 0.01);
+    assert.ok(distanceToBuildings(x, z) > 2);
+    for (const other of SPAWN_CANDIDATES.slice(i + 1)) {
+      assert.ok(Math.hypot(point.x - other.x, point.z - other.z) >= 3.5);
+    }
+  }
+});
+
+test('четыре почти одновременно подключившихся игрока получают разные стартовые точки', async () => {
+  const { app, port } = await listen();
+  try {
+    const players = await Promise.all(['Аня', 'Борис', 'Вера', 'Глеб'].map((name) => joinGame(app, port, name)));
+    assert.deepEqual(players[0].welcome.state, {
+      x: SPAWN.x, y: SPAWN.y, z: SPAWN.z, ry: SPAWN.ry, progress: {},
+    });
+    const positions = players.map(({ welcome }) => [welcome.state.x, welcome.state.z]);
+    for (let i = 0; i < positions.length; i++) {
+      for (const [x, z] of positions.slice(i + 1)) {
+        assert.ok(Math.hypot(positions[i][0] - x, positions[i][1] - z) >= 3.5);
+      }
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test('до hello принимается только hello; неверный proto закрывает соединение', async () => {
   const { app, port } = await listen();
   const a = await register(app, 'Аня');
@@ -106,9 +142,11 @@ test('два клиента видят друг друга: player_join и по�
   assert.equal(join.name, 'Борис');
   assert.deepEqual(join.appearance, { firefighterEquipped: false });
 
-  b.client.send({ ...pos(SPAWN.x + 0.2, SPAWN.z + 0.1, 5), ry: 1.5, anim: 2 });
-  const seen = await a.client.next((m) => isPlayers(m) && m.list[0][1] === SPAWN.x + 0.2);
-  assert.deepEqual(seen.list, [[b.user.id, SPAWN.x + 0.2, 0, SPAWN.z + 0.1, 1.5, 2]]);
+  const movedX = b.welcome.state.x + 0.2;
+  const movedZ = b.welcome.state.z + 0.1;
+  b.client.send({ ...pos(movedX, movedZ, 5), ry: 1.5, anim: 2 });
+  const seen = await a.client.next((m) => isPlayers(m) && m.list[0][1] === movedX);
+  assert.deepEqual(seen.list, [[b.user.id, movedX, 0, movedZ, 1.5, 2]]);
   assert.ok(Number.isInteger(seen.tick));
   assert.ok(seen.list.every((row) => row[0] !== a.user.id), 'себя в списке нет');
   await app.close();
@@ -209,16 +247,18 @@ test('переподключение: позиция сохраняется, с�
   const b = await joinGame(app, port, 'Борис');
   await a.client.nextOfType('player_join');
 
-  b.client.send(pos(SPAWN.x + 0.3, SPAWN.z + 0.3, 1));
-  await a.client.next((m) => isPlayers(m) && m.list[0][1] === SPAWN.x + 0.3);
+  const savedX = b.welcome.state.x + 0.3;
+  const savedZ = b.welcome.state.z + 0.3;
+  b.client.send(pos(savedX, savedZ, 1));
+  await a.client.next((m) => isPlayers(m) && m.list[0][1] === savedX);
   await b.client.close();
   assert.equal((await a.client.nextOfType('player_leave')).id, b.user.id);
 
   const again = await TestClient.connect(port, await getTicket(app, b.token));
   again.send({ t: 'hello', ticket: 'x', proto: 1 });
   const welcome = await again.nextOfType('welcome');
-  assert.equal(welcome.state.x, SPAWN.x + 0.3);
-  assert.equal(welcome.state.z, SPAWN.z + 0.3);
+  assert.equal(welcome.state.x, savedX);
+  assert.equal(welcome.state.z, savedZ);
   assert.equal((await a.client.nextOfType('player_join')).id, b.user.id);
   await app.close();
 });

@@ -70,7 +70,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 260);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.domElement.tabIndex = 0;
   renderer.domElement.setAttribute('aria-label', 'Игровая сцена пожарной части. Кликните, чтобы управлять камерой.');
   container.appendChild(renderer.domElement);
@@ -244,7 +244,6 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     { minX: -1.0, maxX: 1.0, minZ: 6.4, maxZ: 8.4 },
   ];
   const keys = new Set();
-  const clock = new THREE.Clock();
   const raycaster = new THREE.Raycaster();
   const centerScreen = new THREE.Vector2(0, 0);
   let state = null;
@@ -648,10 +647,12 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     animateCharacter(npc, delta, elapsed, { speed: 0, talking: npcTalking, lookYaw });
   }
 
-  function animate() {
+  let previousFrameTime = null;
+  function animate(timestamp) {
     frameId = requestAnimationFrame(animate);
-    const delta = Math.min(clock.getDelta(), 0.05);
-    const elapsed = clock.elapsedTime;
+    const delta = previousFrameTime === null ? 0 : Math.min((timestamp - previousFrameTime) / 1000, 0.05);
+    const elapsed = timestamp / 1000;
+    previousFrameTime = timestamp;
     movePlayer(delta);
     updateHoseAim();
     const position = localPosition();

@@ -20,6 +20,7 @@ import {
 import { C2S, ERROR_CODES, LIMITS, S2C, decode, encode, validate } from '../../shared/protocol.js';
 import { reply as defaultReply } from '../agents/index.js';
 import { createChunkMirror } from './chunks.js';
+import { chooseSpawn } from './spawn.js';
 import { FIREFIGHTER_TASK_ID } from '../tasks/index.js';
 
 // Коды закрытия WebSocket (диапазон 4000–4999 отдан приложению).
@@ -175,7 +176,7 @@ export function createGame({
     }
     clearTimeout(conn.helloTimer);
     const { user } = conn;
-    const saved = db.getPlayerState(user.id) ?? SPAWN;
+    const saved = db.getPlayerState(user.id) ?? chooseSpawn([...players.values()]);
     const x = clampX(saved.x);
     const z = clampZ(saved.z);
     const player = {
