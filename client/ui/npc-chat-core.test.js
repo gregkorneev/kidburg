@@ -228,3 +228,54 @@ test('длина переписки ограничена, dispose снимает
   emitter.emit('npc_near', THERAPIST);
   assert.equal(notified, 0);
 });
+
+test('assist: подсказка и кнопки хранятся отдельно от реплик, перерисовка только при изменении', () => {
+  const { chat, sent } = setup();
+  chat.open({ agentId: 'marusya', name: 'marusya' });
+  let renders = 0;
+  chat.subscribe(() => (renders += 1));
+  const run = () => 'ran';
+  chat.setAssist({ hint: 'Цель', actions: [{ label: 'Вопрос', text: 'Что дальше?' }, { label: 'Действие', run }] });
+  assert.equal(renders, 1);
+  chat.setAssist({ hint: 'Цель', actions: [{ label: 'Вопрос', text: 'Что дальше?' }, { label: 'Действие', run: () => 'другая функция' }] });
+  assert.equal(renders, 1, 'те же подписи и доступность: ничего не перерисовывается');
+  chat.setAssist({ hint: 'Цель', note: 'Подойдите ближе', actions: [] });
+  assert.equal(renders, 2);
+  assert.equal(chat.state.assist.note, 'Подойдите ближе');
+  assert.deepEqual(chat.state.messages, [], 'подсказки не попадают в переписку');
+  assert.equal(sent.length, 0);
+});
+
+test('choose: вопрос уходит как реплика игрока, действие вызывает станцию, занятая или отключённая кнопка ничего не делает', () => {
+  const { chat, sent, server } = setup();
+  chat.open({ agentId: 'marusya', name: 'marusya' });
+  let ran = 0;
+  chat.setAssist({
+    actions: [
+      { label: 'Вопрос', text: 'Что дальше?' },
+      { label: 'Действие', run: () => (ran += 1) },
+      { label: 'Недоступно', disabled: true, run: () => (ran += 100) },
+    ],
+  });
+  const [ask, act, off] = chat.state.assist.actions;
+  assert.equal(chat.choose(act), true);
+  assert.equal(ran, 1);
+  assert.equal(chat.choose(off), false);
+  assert.equal(ran, 1);
+  assert.equal(chat.choose(ask), true);
+  assert.deepEqual(sent.map((m) => [m.t, m.agentId, m.text]), [['npc_talk', 'marusya', 'Что дальше?']]);
+  assert.equal(chat.choose(act), false, 'пока Маруся отвечает, действие не запускается');
+  assert.equal(ran, 1);
+  server.token(sent[0].reqId, 'Отвечаю', 'marusya');
+  server.done(sent[0].reqId, 'marusya');
+  assert.equal(chat.choose(act), true);
+  assert.equal(ran, 2);
+});
+
+test('assist сбрасывается при выходе из игры', () => {
+  const { chat, emitter } = setup();
+  chat.open({ agentId: 'marusya', name: 'marusya' });
+  chat.setAssist({ hint: 'Цель', note: 'x', actions: [{ label: 'A', text: 'b' }] });
+  emitter.emit('auth', null);
+  assert.deepEqual(chat.state.assist, { hint: '', note: '', actions: [], sig: '' });
+});

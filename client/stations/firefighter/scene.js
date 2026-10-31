@@ -569,9 +569,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     if (!state || uiBlocked) return setPrompt('');
     let text = '';
     if (distanceTo(npc) < LOCAL_POINTS.npc.radius) {
-      if (state.stage === 'not_started' || state.stage === 'briefing') text = 'Поговорить с Марусей';
-      else if (state.stage === 'debrief') text = 'Обсудить итог тренировки';
-      else text = 'Поговорить с Марусей';
+      text = state.stage === 'debrief' ? 'Обсудить итог тренировки' : 'Поговорить с Марусей';
     }
     if (state.stage === 'equipping' && distanceTo(locker) < LOCAL_POINTS.locker.radius) text = 'Надеть экипировку';
     if (state.stage === 'fire_drill' && distanceTo(hoseStand) < HOSE_USE_DISTANCE) text = hoseActive ? 'Завершить упражнение с рукавом' : 'Взять учебный рукав';
@@ -585,10 +583,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   function interact() {
     if (!state || uiBlocked) return;
     if (distanceTo(npc) < LOCAL_POINTS.npc.radius) {
-      if (state.stage === 'not_started' || state.stage === 'briefing' || state.stage === 'debrief') {
-        onAction(state.stage === 'debrief' ? 'open_debrief' : 'open_briefing');
-      }
-      else onAction('open_chat');
+      onAction('open_chat'); // разговор с Марусей: действия этапа — кнопки в панели, подтверждает их сервер
       return;
     }
     if (distanceTo(locker) < LOCAL_POINTS.locker.radius) {

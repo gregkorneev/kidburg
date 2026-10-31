@@ -1,6 +1,7 @@
 import { createClient } from '../../engine/app.js';
 import { mountUI } from '../../ui/index.js';
 import { connectFireNetwork } from './network.js';
+import { createMarusyaChat } from './chat-flow.js';
 import { createFirefighterScene } from './scene.js';
 import { createInitialState } from './state.js';
 import { createTaskSync } from './tasks.js';
@@ -16,7 +17,8 @@ let busy = false; // ждём подтверждение действия от �
 let online = false; // вошли на сервер и получили welcome: до этого сцена только фон под экраном входа
 let state = createInitialState();
 let dialog = null;
-let chat = null; // разговор с Марусей через npc_talk (client/ui/npc-chat.js)
+let chat = null; // панель разговора через npc_talk (client/ui/npc-chat.js)
+let marusya = null; // сценарий разговора с Марусей поверх панели (chat-flow.js)
 let chatOpen = false;
 let prompt = '';
 let notice = 'Сетевой режим: прогресс станции хранится на сервере.';
@@ -25,6 +27,7 @@ let targetWindow = null;
 let noticeTimer;
 
 const refresh = () => {
+  marusya?.sync();
   mountStationUI(uiRoot, {
     state,
     prompt,
@@ -53,12 +56,6 @@ function closeDialog() {
   refresh();
 }
 
-function showDialog(nextDialog) {
-  dialog = nextDialog;
-  syncBlocked();
-  refresh();
-}
-
 /** Просит сервер выполнить действие; результат придёт в onServerState, диалоги продолжаются после подтверждения. */
 function dispatch(actionType, handlers) {
   return sync ? sync.send(actionType, handlers) : false;
@@ -72,87 +69,15 @@ function onServerState(next, meta) {
   if (meta.changed && meta.feedback) setNotice(meta.feedback);
 }
 
-const MARUSYA = Object.freeze({ agentId: 'marusya', name: 'Маруся Громова' });
-
-/** Свободный разговор: реплики уходят на сервер (npc_talk), ответ приходит потоком от локальной модели. */
+/** Разговор с Марусей: реплики генерирует ИИ на сервере, действия подтверждает сервер (chat-flow.js). */
 function openChat() {
-  if (!online || !chat) return;
   dialog = null;
-  chat.open(MARUSYA);
+  if (!marusya?.open()) return;
   syncBlocked();
   refresh();
 }
 
-function openProfessionCard() {
-  showDialog({
-    title: 'Работа в команде',
-    body: 'Пожарные регулярно тренируются, распределяют роли и учатся пользоваться оборудованием. В этой игре упражнения условные: они знакомят с профессией, но не обучают действиям при реальном пожаре.',
-    options: [
-      { label: 'Понятно', primary: true, onSelect: () => openBriefing() },
-      { label: 'Поговорить свободно', onSelect: openChat },
-    ],
-  });
-}
-
-function acceptBriefingOption() {
-  return {
-    label: 'Поняла, к экипировке',
-    primary: true,
-    onSelect: () => dispatch('accept_briefing', { onConfirmed: closeDialog, onRejected: closeDialog }),
-  };
-}
-
-function showBriefingStep() {
-  showDialog({
-    title: 'Короткий инструктаж',
-    body: 'Надень учебную экипировку, затем потуши все окна учебной стены и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
-    options: [acceptBriefingOption(), { label: 'Поговорить свободно', onSelect: openChat }],
-  });
-}
-
-function openBriefing() {
-  if (state.stage === 'not_started') {
-    showDialog({
-      title: 'Добро пожаловать!',
-      body: 'Привет! Я Маруся. Добро пожаловать на учебную смену пожарного! Сегодня ты познакомишься с нашей работой и выполнишь небольшую тренировку.',
-      options: [
-        { label: 'Начать тренировку', primary: true, onSelect: () => {
-          dispatch('start', { onConfirmed: showBriefingStep, onRejected: closeDialog });
-        } },
-        { label: 'Узнать о профессии', onSelect: openProfessionCard },
-        { label: 'Поговорить свободно', onSelect: openChat },
-        { label: 'Позже', onSelect: closeDialog },
-      ],
-    });
-  } else if (state.stage === 'briefing') {
-    showDialog({
-      title: 'Короткий инструктаж',
-      body: 'Надень учебную экипировку, затем потуши все окна учебной стены и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
-      options: [acceptBriefingOption(), { label: 'Поговорить свободно', onSelect: openChat }],
-    });
-  } else {
-    openProfessionCard();
-  }
-}
-
-function openDebrief() {
-  showDialog({
-    title: 'Учебная смена позади',
-    body: 'Ты подготовилась, потушила все окна учебной стены и доставила манекен в отмеченную зону. В этой профессии важны подготовка, внимание и согласованная работа команды.',
-    options: [
-      {
-        label: 'Завершить смену',
-        primary: true,
-        onSelect: () => dispatch('report', { onConfirmed: closeDialog, onRejected: closeDialog }),
-      },
-      { label: 'Поговорить свободно', onSelect: openChat },
-    ],
-  });
-}
-
 function onWorldAction(action, index) {
-  if (action === 'open_briefing') return openBriefing();
-  if (action === 'open_debrief') return openDebrief();
   if (action === 'open_chat') return openChat();
   dispatch(action, { index });
 }
@@ -174,6 +99,14 @@ refresh();
 const client = createClient({ container: sceneRoot, networkOnly: true });
 const unmountAuth = mountUI(client.api);
 chat = unmountAuth.chat;
+marusya = createMarusyaChat({
+  chat,
+  getState: () => state,
+  dispatch,
+  isOnline: () => online,
+  isBusy: () => busy,
+  getNotice: () => notice,
+});
 chat.onOpenChange((open) => {
   chatOpen = open;
   syncBlocked();
@@ -186,6 +119,7 @@ network = connectFireNetwork({
     online = value;
     if (!online) {
       dialog = null;
+      marusya?.reset();
       sync.reset();
       setNotice('Вы вышли. Введите имя и код комнаты, чтобы вернуться на полигон.');
     }

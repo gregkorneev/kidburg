@@ -23,5 +23,14 @@
 .npc-input:disabled { background: #f1f3ee; }
 .npc-send { min-height: 43px; border: 1px solid #2d705a; border-radius: 10px; padding: 0 18px; background: #2d705a; color: #fff; cursor: pointer; font: inherit; font-size: 14px; font-weight: 750; }
 .npc-send:disabled { cursor: wait; opacity: .6; }
+
+.npc-assist-hint { margin: 0; padding: 8px 11px; border-radius: 10px; background: #f3efdc; color: #5a5030; font-size: 12px; line-height: 1.45; }
+.npc-assist-hint::before { content: 'Подсказка игры: '; font-weight: 750; }
+.npc-assist-note { margin: 0; color: #6b4a1a; font-size: 12px; line-height: 1.45; }
+.npc-assist-hint[hidden], .npc-assist-note[hidden], .npc-actions[hidden] { display: none; }
+.npc-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.npc-action { min-height: 34px; border: 1px solid #c9d7c8; border-radius: 17px; padding: 0 13px; background: #fff; color: #2d4a3d; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+.npc-action--primary { border-color: #2d705a; background: #2d705a; color: #fff; }
+.npc-action:disabled { cursor: not-allowed; opacity: .5; }
 @keyframes npc-blink { to { visibility: hidden; } }
 @media (max-width: 520px) { .npc-panel { bottom: 8px; padding: 12px; } .npc-hint { bottom: 70px; } }

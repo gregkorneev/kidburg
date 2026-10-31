@@ -42,6 +42,13 @@ export function mountNpcChat(api) {
   const error = element('p', 'npc-error');
   error.setAttribute('role', 'alert');
   error.hidden = true;
+  const hintLine = element('p', 'npc-assist-hint'); // фиксированная памятка игры, не реплика NPC
+  hintLine.hidden = true;
+  const noteLine = element('p', 'npc-assist-note');
+  noteLine.setAttribute('role', 'status');
+  noteLine.hidden = true;
+  const actions = element('div', 'npc-actions');
+  actions.hidden = true;
 
   const form = element('form', 'npc-form');
   const input = element('input', 'npc-input');
@@ -54,18 +61,43 @@ export function mountNpcChat(api) {
   send.type = 'submit';
   form.append(input, send);
 
-  panel.append(head, log, error, form);
+  panel.append(head, hintLine, log, error, noteLine, actions, form);
   root.append(hint, panel);
   document.body.append(root);
 
   const nodes = new Map(); // id сообщения -> узел
   let shownAgent = null;
+  let shownActions = '';
 
   function statusText() {
     if (state.status === 'queued') return `В очереди: ${state.queue}`;
     if (state.status === 'waiting') return 'Собеседник думает…';
     if (state.status === 'streaming') return 'Отвечает…';
     return 'Готов к разговору';
+  }
+
+  function renderAssist() {
+    const { assist } = state;
+    hintLine.hidden = !assist.hint;
+    if (hintLine.textContent !== assist.hint) hintLine.textContent = assist.hint;
+    noteLine.hidden = !assist.note;
+    if (noteLine.textContent !== assist.note) noteLine.textContent = assist.note;
+    actions.hidden = assist.actions.length === 0;
+    if (shownActions !== assist.sig) {
+      shownActions = assist.sig;
+      actions.replaceChildren(
+        ...assist.actions.map((action, index) => {
+          const button = element('button', `npc-action${action.primary ? ' npc-action--primary' : ''}`, action.label);
+          button.type = 'button';
+          button.dataset.action = String(index);
+          return button;
+        }),
+      );
+    }
+    // Кнопки не работают, пока идёт ответ: реплика и действие не должны перемешаться.
+    actions.childNodes.forEach((button, index) => {
+      button.disabled = state.status !== 'idle' || Boolean(assist.actions[index]?.disabled);
+    });
   }
 
   function render() {
@@ -81,6 +113,7 @@ export function mountNpcChat(api) {
     error.hidden = !state.error;
     input.disabled = !chat.canSend;
     send.disabled = !chat.canSend;
+    renderAssist();
 
     if (shownAgent !== state.npc.agentId) {
       shownAgent = state.npc.agentId;
@@ -119,6 +152,10 @@ export function mountNpcChat(api) {
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     if (chat.send(input.value)) input.value = '';
+  });
+  actions.addEventListener('click', (event) => {
+    const button = event.target.closest?.('button[data-action]');
+    if (button) chat.choose(state.assist.actions[Number(button.dataset.action)]);
   });
   close.addEventListener('click', () => chat.close());
   panel.addEventListener('keydown', (event) => {

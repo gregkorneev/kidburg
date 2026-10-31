@@ -34,6 +34,9 @@ export function createNpcChat({ api, timers = globalThis, replyTimeoutMs = REPLY
     status: 'idle', // idle | waiting | queued | streaming
     queue: null, // позиция в очереди генераций
     error: '',
+    // Фиксированные элементы игры рядом с разговором (их задаёт станция, это не реплики NPC):
+    // hint — памятка о цели, note — короткое сообщение игре, actions — кнопки {label, primary, disabled, text|run}.
+    assist: { hint: '', note: '', actions: [], sig: '' },
   };
   const histories = new Map(); // agentId -> сообщения, только в памяти страницы
   const listeners = new Set();
@@ -123,6 +126,7 @@ export function createNpcChat({ api, timers = globalThis, replyTimeoutMs = REPLY
       current = null;
       histories.clear();
       Object.assign(state, { npc: null, near: null, online: false, messages: [], status: 'idle', queue: null, error: '' });
+      state.assist = { hint: '', note: '', actions: [], sig: '' };
       setOpen(false);
       emit();
     }),
@@ -179,6 +183,28 @@ export function createNpcChat({ api, timers = globalThis, replyTimeoutMs = REPLY
       if (!state.open) return;
       setOpen(false);
       emit();
+    },
+    /**
+     * Фиксированные подсказки и кнопки станции. Кнопка с `text` отправляет эту реплику от имени игрока,
+     * кнопка с `run` вызывает игровое действие станции (его подтверждает сервер). Перерисовка нужна,
+     * только если изменились подписи, доступность, подсказка или сообщение.
+     */
+    setAssist({ hint = '', note = '', actions = [] } = {}) {
+      const list = actions.map(({ label, primary = false, disabled = false, text, run }) => ({ label, primary, disabled, text, run }));
+      const sig = JSON.stringify([hint, note, list.map((a) => [a.label, a.primary, a.disabled, a.text ?? null])]);
+      const changed = sig !== state.assist.sig;
+      state.assist = { hint, note, actions: list, sig };
+      if (changed) emit();
+    },
+    /** Нажатие кнопки из assist.actions. @returns {boolean} выполнено ли */
+    choose(action) {
+      if (!state.open || !action || action.disabled || current) return false;
+      if (typeof action.text === 'string') return controller.send(action.text);
+      if (typeof action.run === 'function') {
+        action.run();
+        return true;
+      }
+      return false;
     },
     /** Может ли игрок сейчас отправить реплику этому собеседнику. */
     get canSend() {
