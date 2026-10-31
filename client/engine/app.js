@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { TALK_DISTANCE } from '../../shared/constants.js';
 import { createHud } from '../hud/index.js';
+import { applyStylizedLook } from './art/lighting.js';
 import { createChunkManager, makeLabel } from './chunks.js';
 import { FIRE_STATION_ENTRANCE, isNearFireStationEntrance } from './city-entrance.js';
 import { createEmitter } from './emitter.js';
@@ -16,6 +17,7 @@ import { PLAYER, createPlayer, setPlayerPosition, stepPlayer } from './player.js
 import { createPool } from './pool.js';
 import { createRemotePlayers } from './remote.js';
 import { createSession } from './session.js';
+import { createCitySkyline } from './skyline.js';
 
 const POS_INTERVAL_S = 1 / 15;
 const POS_HEARTBEAT_S = 1;
@@ -177,15 +179,12 @@ export function createClient({ container, networkOnly = false }) {
     container.appendChild(labels.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xa9c4e0);
-    scene.fog = new THREE.Fog(0xa9c4e0, 90, 260);
-    scene.add(new THREE.HemisphereLight(0xdfeaff, 0x556644, 1.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(60, 100, 30);
-    scene.add(sun);
-
     const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 400);
     camera.rotation.order = 'YXZ';
+    // Свет, небо и туман общие с пожарной частью (art/lighting.js); тени в городе выключены ради FPS.
+    const stylized = applyStylizedLook({ renderer, scene, camera, fog: [90, 260], shadowExtent: 0, exposure: 1.0 });
+    const skyline = createCitySkyline();
+    scene.add(skyline.group);
 
     const pool = createPool();
     const world = createChunkManager({ scene, pool });
@@ -208,6 +207,8 @@ export function createClient({ container, networkOnly = false }) {
     });
 
     runtime = { input };
+    // Отладочный доступ для проверки графики: только при ?debug=1.
+    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, remote, player, stylized };
     hud.setStatus(net.status);
     hud.setCache(state.cache);
 
@@ -346,8 +347,10 @@ export function createClient({ container, networkOnly = false }) {
       }
 
       remote.update(now);
+      world.update(dt, now / 1000, player);
       camera.position.set(player.x, player.y + PLAYER.eyeHeight, player.z);
       camera.rotation.set(player.pitch, player.yaw, 0);
+      stylized.update(player, now / 1000);
       renderer.render(scene, camera);
       labels.render(scene, camera);
 
@@ -368,6 +371,9 @@ export function createClient({ container, networkOnly = false }) {
       input.dispose();
       remote.dispose();
       world.dispose();
+      scene.remove(skyline.group);
+      skyline.dispose();
+      stylized.dispose();
       pool.disposeAll();
       renderer.dispose();
       renderer.forceContextLoss();
