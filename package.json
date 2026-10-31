@@ -1,0 +1,34 @@
+{
+  "name": "city-of-professions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Город профессий: многопользовательская 3D-игра для профориентации (офлайн)",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "git config core.hooksPath .githooks",
+    "start": "node scripts/start.mjs",
+    "dev": "node --watch server/index.js & vite --config vite.config.js",
+    "build": "vite build --config vite.config.js",
+    "test": "node --test",
+    "verify": "node scripts/verify.mjs",
+    "check:offline": "node scripts/check-offline.mjs",
+    "world:fixtures": "node tools/fixtures/make-fixtures.mjs",
+    "world:build": "node tools/build-world/index.js",
+    "bots": "node tools/bots/index.js",
+    "agent-chat": "node server/agents/cli.js"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.8",
+    "@msgpack/msgpack": "^3.1.3",
+    "better-sqlite3": "^13.0.3",
+    "fastify": "^5.12.7",
+    "preact": "^11.1.1",
+    "qrcode-terminal": "^0.12.0",
+    "three": "^0.187.0",
+    "vite": "^8.3.5",
+    "ws": "^8.22.0"
+  }
+}
