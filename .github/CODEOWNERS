@@ -1,0 +1,25 @@
+# Роли: 1 клиент и 3D, 2 сервер и интеграция (тимлид), 3 ИИ-агенты, 4 контент и интерфейс.
+# Замените @role1..@role4 на GitHub-логины участников.
+/assets/                 @role1
+/client/                 @role1
+/client/ui/              @role4
+/tools/build-world/      @role1
+/server/agents/          @role3
+/server/rec/             @role3
+/tools/agent-eval/       @role3
+/content/                @role4
+/server/tasks/           @role4
+/README.md               @role4
+/server/index.js         @role2
+/server/net/             @role2
+/server/db/              @role2
+/shared/                 @role2
+/tools/bots/             @role2
+/tools/fixtures/         @role2
+/scripts/                @role2
+/tests/                  @role2
+/docs/                   @role2
+/.github/                @role2
+/.githooks/              @role2
+/package.json            @role2
+/package-lock.json       @role2

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Перед отправкой прогоняем проверки (npm run setup включает этот хук).
+echo "pre-push: npm run verify"
+npm run verify || { echo "pre-push: verify не прошёл, отправка отменена"; exit 1; }
