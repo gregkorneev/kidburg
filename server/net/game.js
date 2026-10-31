@@ -298,6 +298,14 @@ export function createGame({
     }
     if (conn.talk) return agentError(conn, agentId, reqId, 'Дождитесь ответа на предыдущую реплику');
 
+    // Ход задания NPC берётся из сохранённого состояния игрока на сервере, не из сообщения клиента.
+    let situation = null;
+    try {
+      situation = tasks?.describeForAgent?.(player.id, agentId) ?? null;
+    } catch (err) {
+      log.warn({ err, agentId, userId: player.id }, 'не удалось описать ход задания для NPC');
+    }
+
     const controller = new AbortController();
     const { signal } = controller;
     conn.talk = { controller, agentId, reqId };
@@ -309,7 +317,7 @@ export function createGame({
         userId: player.id,
         agentId,
         text,
-        context: { playerName: player.name, nearbyPlayers: player.known.size },
+        context: { playerName: player.name, nearbyPlayers: player.known.size, ...(situation ? { situation } : {}) },
         signal,
         onQueue: (position) => {
           if (!signal.aborted) send(conn, { t: S2C.AGENT_QUEUE, agentId, reqId, position });

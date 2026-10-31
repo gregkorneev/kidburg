@@ -20,6 +20,9 @@ export const AGENT_DEFAULTS = Object.freeze({
   contextMessages: 8, // сколько последних реплик уходит в модель
   contextChars: 3000, // и не больше стольких символов
   storedMessageChars: 600,
+  notesKept: 8, // сколько кратких заметок «о чём уже рассказано» хранится на пару игрок-агент
+  noteChars: 110,
+  situationChars: 900,
   maxReplyChars: 1200,
   numPredict: 200,
   numCtx: 4096,
@@ -69,6 +72,18 @@ const normalizeText = (value, max) =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
+
+/** Начало ответа (первые предложения, пока не наберётся ~30 символов; не больше `max`): заметка о сказанном. */
+function firstSentence(text, max) {
+  const flat = String(text).replace(/\s+/g, ' ').trim();
+  let note = '';
+  for (const part of flat.match(/[^.!?…]+[.!?…]*\s*/g) ?? [flat]) {
+    note = `${note}${part}`;
+    if (note.trim().length >= 30) break;
+  }
+  note = note.trim();
+  return note.length > max ? `${note.slice(0, max - 1).trimEnd()}…` : note;
+}
 
 const abortError = () => new DOMException('Запрос отменён', 'AbortError');
 
@@ -203,29 +218,56 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     return persona;
   }
 
-  function loadTurns(userId, agentId) {
+  /**
+   * Память пары игрок-агент: {turns, notes, exchanges, lastSituation}. Наши поля лежат в `topics.dialogue`,
+   * остальное содержимое topics, а также summary и toldCards принадлежит будущему подбору карточек и не трогается.
+   * При сбое чтения возвращается пустая память.
+   */
+  function loadMemory(userId, agentId) {
     try {
-      const turns = db.getAgentMemory(userId, agentId)?.turns;
-      return Array.isArray(turns) ? turns : [];
+      const memory = db.getAgentMemory(userId, agentId);
+      const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+      const topics = isObject(memory?.topics) ? memory.topics : {};
+      const dialogue = isObject(topics.dialogue) ? topics.dialogue : {};
+      const last = dialogue.lastSituation;
+      return {
+        raw: memory,
+        topics,
+        turns: Array.isArray(memory?.turns) ? memory.turns : [],
+        notes: Array.isArray(dialogue.notes) ? dialogue.notes.filter((n) => typeof n === 'string') : [],
+        exchanges: Number.isInteger(dialogue.exchanges) && dialogue.exchanges > 0 ? dialogue.exchanges : 0,
+        lastSituation:
+          isObject(last) && typeof last.key === 'string' && typeof last.label === 'string' ? { key: last.key, label: last.label } : null,
+      };
     } catch (err) {
       log?.warn({ err, agentId }, 'не удалось прочитать память агента');
-      return [];
+      return { raw: null, topics: {}, turns: [], notes: [], exchanges: 0, lastSituation: null };
     }
   }
 
-  function saveTurns(userId, agentId, text, answer) {
+  /**
+   * Сохраняет обмен репликами: последние реплики (turns), краткие заметки о сказанном (чтобы не повторяться
+   * дольше окна turns), счётчик обменов и ход задания на момент разговора.
+   */
+  function saveTurns(userId, agentId, text, answer, situation) {
     try {
-      const memory = db.getAgentMemory(userId, agentId);
+      const memory = loadMemory(userId, agentId);
       const cut = (s) => s.slice(0, cfg.storedMessageChars);
       const turns = [
-        ...(Array.isArray(memory?.turns) ? memory.turns : []),
+        ...memory.turns,
         { role: 'user', text: cut(text) },
         { role: 'assistant', text: cut(answer) },
       ].slice(-cfg.historyMessages);
+      const note = firstSentence(answer, cfg.noteChars);
+      const notes = (note ? [...memory.notes, note] : memory.notes).slice(-cfg.notesKept);
+      const lastSituation = situation ? { key: situation.key, label: situation.label } : memory.lastSituation;
       db.saveAgentMemory(userId, agentId, {
-        toldCards: memory?.toldCards,
-        summary: memory?.summary,
-        topics: memory?.topics,
+        toldCards: memory.raw?.toldCards,
+        summary: memory.raw?.summary,
+        topics: {
+          ...memory.topics,
+          dialogue: { notes, exchanges: memory.exchanges + 1, ...(lastSituation ? { lastSituation } : {}) },
+        },
         turns,
       });
     } catch (err) {
@@ -233,19 +275,48 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     }
   }
 
-  function buildMessages(persona, req, text) {
+  /** Ход задания из context.situation ({key, label, text}), собранный сервером; иначе null. */
+  function readSituation(context) {
+    const s = context?.situation;
+    if (!s || typeof s.key !== 'string' || typeof s.text !== 'string') return null;
+    const text = normalizeText(s.text, cfg.situationChars);
+    const key = clean(s.key, 40);
+    if (!text || !key) return null;
+    return { key, label: clean(s.label, 40) || key, text };
+  }
+
+  function buildMessages(persona, req, text, situation) {
     const context = req.context ?? {};
+    const memory = loadMemory(req.userId, req.agentId);
     const facts = [];
     const player = clean(context.playerName, 32);
     if (player) facts.push(`Собеседника зовут ${player}.`);
     const district = clean(context.district, 40);
     if (district) facts.push(`Разговор идёт в районе «${district}».`);
+    if (situation) {
+      facts.push(`Ход задания игрока (подтверждён сервером, других сведений об успехах игрока нет): ${situation.text}`);
+    }
+    if (memory.exchanges === 0 && memory.turns.length === 0) {
+      facts.push('Это ваша первая встреча с этим игроком: коротко представься.');
+    } else {
+      facts.push('Вы с этим игроком уже разговаривали: не здоровайся и не представляйся заново, продолжай разговор.');
+      if (memory.notes.length) {
+        facts.push(
+          `Ты уже рассказывала: ${memory.notes.join(' ')} Не выдавай это за новое: если игрок не просит повторить, скажи что-то новое или напомни одной фразой.`,
+        );
+      }
+      if (situation && memory.lastSituation && memory.lastSituation.key !== situation.key) {
+        facts.push(
+          `С прошлого разговора ход задания изменился: тогда был этап «${memory.lastSituation.label}», теперь «${situation.label}».`,
+        );
+      }
+    }
     const system = [getSystemRules(), 'Твой персонаж:', personaPrompt(persona), facts.join(' ')]
       .filter(Boolean)
       .join('\n\n');
     return [
       { role: 'system', content: system },
-      ...pickContext(loadTurns(req.userId, req.agentId), cfg),
+      ...pickContext(memory.turns, cfg),
       { role: 'user', content: text },
     ];
   }
@@ -262,7 +333,8 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     const persona = getPersona(req.agentId);
     const release = await slots.acquire({ signal: req.signal, onQueue: req.onQueue });
     try {
-      const messages = buildMessages(persona, req, text);
+      const situation = readSituation(req.context);
+      const messages = buildMessages(persona, req, text, situation);
       let answer = '';
       let truncated = false;
       for await (let token of chatStream({
@@ -288,7 +360,7 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
       }
       if (req.signal?.aborted) return;
       if (!answer.trim()) throw new OllamaError('empty', 'Модель вернула пустой ответ');
-      saveTurns(req.userId, req.agentId, text, answer.trim());
+      saveTurns(req.userId, req.agentId, text, answer.trim(), situation);
     } finally {
       release();
     }

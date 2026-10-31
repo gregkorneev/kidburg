@@ -205,7 +205,9 @@ test('reply: чужие поля памяти (toldCards, summary, topics) со�
     db.saveAgentMemory(user.id, 'therapist', { toldCards: ['c1'], summary: 'итог', topics: { анализы: 2 }, turns: [] });
     await collect(agents(srv.url).reply({ userId: user.id, agentId: 'therapist', text: 'привет' }));
     const m = db.getAgentMemory(user.id, 'therapist');
-    assert.deepEqual([m.toldCards, m.summary, m.topics], [['c1'], 'итог', { анализы: 2 }]);
+    assert.deepEqual([m.toldCards, m.summary, m.topics.анализы], [['c1'], 'итог', 2]);
+    assert.equal(m.topics.dialogue.exchanges, 1, 'заметки разговора лежат в topics.dialogue и не затирают чужие ключи');
+    assert.deepEqual(Object.keys(m.topics).sort(), ['dialogue', 'анализы']);
     assert.equal(m.turns.length, 2);
   } finally {
     await srv.close();
