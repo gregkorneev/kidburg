@@ -141,7 +141,7 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel }) {
     for (const [prefabId, list] of byPrefab) {
       const prefab = getPrefab(prefabId);
       const geometry = acquire(`prefab-geo:${prefabId}`, prefab.build);
-      const material = acquire(`prefab-mat:${prefabId}`, () => new THREE.MeshLambertMaterial({ color: prefab.color }));
+      const material = acquire(`prefab-mat:${prefabId}`, () => new THREE.MeshLambertMaterial({ color: prefab.color, vertexColors: prefab.vertexColors === true }));
       const mesh = new THREE.InstancedMesh(geometry, material, list.length);
       list.forEach(([, x, y, z, ry, scale], i) => {
         // Координаты инстансов мировые, а группа смещена на чанк.
