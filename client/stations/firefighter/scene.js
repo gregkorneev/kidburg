@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WINDOW_HIT_LIMIT } from './preview-state.js';
 import { SAFETY_ZONE, blockedBySafetyZone } from './safety-zone.js';
 import { canMoveWithHose } from './hose-length.js';
+import { advanceReel, REEL_RADIUS, woundTurns } from './reel-motion.js';
 
 const mat = (color, roughness = 0.86) => new THREE.MeshStandardMaterial({ color, roughness, flatShading: true });
 const shared = {
@@ -312,10 +313,20 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   const hoseStand = new THREE.Group();
   hoseStand.position.set(-0.9, 0, 7.4);
   box(hoseStand, 0, 0.55, 0, 0.85, 1.1, 0.78, shared.darkGreen);
-  const reel = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.12, 7, 12), shared.orange);
+  const reel = new THREE.Group();
   reel.position.set(0, 1.2, 0.28);
   hoseStand.add(reel);
-  cylinder(hoseStand, 0, 1.2, 0.28, 0.17, 0.17, 0.28, shared.cream, 8, { x: Math.PI / 2 });
+  cylinder(reel, 0, 0, 0, 0.3, 0.3, 1.04, shared.darkGreen, 10, { x: Math.PI / 2 });
+  for (const z of [-0.55, 0.55]) {
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.055, 7, 20), shared.charcoal);
+    rim.position.z = z;
+    reel.add(rim);
+    for (const angle of [0, Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
+      const spoke = box(reel, 0, 0, z, 1.2, 0.07, 0.07, shared.cream);
+      spoke.rotation.z = angle;
+    }
+  }
+  cylinder(reel, 0, 0, 0, 0.17, 0.17, 1.2, shared.cream, 8, { x: Math.PI / 2 });
   const nozzle = box(hoseStand, 0.48, 0.86, 0.42, 0.7, 0.18, 0.2, shared.charcoal);
   nozzle.rotation.y = -0.35;
   addLabel(hoseStand, 'УЧЕБНЫЙ РУКАВ', '#315548').position.set(0, 2.0, 0);
@@ -334,7 +345,11 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   hoseSegments.frustumCulled = false;
   hoseSegments.visible = false;
   scene.add(hoseSegments);
-  const hoseCurve = new THREE.CatmullRomCurve3(Array.from({ length: 5 }, () => new THREE.Vector3()));
+  const coilSegments = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.13, 1, 7), shared.orange, 96);
+  coilSegments.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  coilSegments.frustumCulled = false;
+  reel.add(coilSegments);
+  const hoseCurve = new THREE.CatmullRomCurve3(Array.from({ length: 7 }, () => new THREE.Vector3()));
   const hoseStart = new THREE.Vector3();
   const hoseEnd = new THREE.Vector3();
   const hosePrevious = new THREE.Vector3();
@@ -342,29 +357,62 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   const hoseDirection = new THREE.Vector3();
   const hoseDummy = new THREE.Object3D();
   const hoseAxis = new THREE.Vector3(0, 1, 0);
+  const reelCenter = new THREE.Vector3();
+  let reelAngle = 0;
+  let previousHoseLength = null;
+
+  function setSegment(instances, index, start, end) {
+    hoseDirection.subVectors(end, start);
+    const length = hoseDirection.length();
+    hoseDummy.position.copy(start).add(end).multiplyScalar(0.5);
+    if (length > 0) hoseDummy.quaternion.setFromUnitVectors(hoseAxis, hoseDirection.multiplyScalar(1 / length));
+    hoseDummy.scale.set(1, length + 0.03, 1);
+    hoseDummy.updateMatrix();
+    instances.setMatrixAt(index, hoseDummy.matrix);
+  }
+
+  function updateCoil() {
+    reel.rotation.z = reelAngle;
+    const turns = woundTurns(reelAngle);
+    const exitAngle = Math.PI / 2 - reelAngle;
+    const point = (t, result) => {
+      const angle = exitAngle + (1 - t) * turns * Math.PI * 2;
+      return result.set(REEL_RADIUS * Math.cos(angle), REEL_RADIUS * Math.sin(angle), -0.45 + t * 0.9);
+    };
+    point(0, hosePrevious);
+    for (let i = 0; i < coilSegments.count; i++) {
+      point((i + 1) / coilSegments.count, hoseNext);
+      setSegment(coilSegments, i, hosePrevious, hoseNext);
+      hosePrevious.copy(hoseNext);
+    }
+    coilSegments.instanceMatrix.needsUpdate = true;
+  }
+  updateCoil();
 
   function updateHose() {
-    hoseStand.localToWorld(hoseStart.set(0, 1.2, 0.43));
     heldHose.localToWorld(hoseEnd.set(0, 0, -0.7));
+    hoseStand.localToWorld(reelCenter.set(0, 1.2, 0.28));
+    const hoseLength = reelCenter.distanceTo(hoseEnd);
+    // Limit the visible coil to a plausible number of turns even after repeated pickups.
+    reelAngle = THREE.MathUtils.clamp(advanceReel(reelAngle, previousHoseLength, hoseLength), -Math.PI * 7, Math.PI * 5);
+    previousHoseLength = hoseLength;
+    updateCoil();
+    // The spiral ends at the upper edge; its first outgoing tangent points right.
+    hoseStart.copy(reelCenter).add(new THREE.Vector3(0, REEL_RADIUS, 0.45));
     hoseCurve.points[0].copy(hoseStart);
-    hoseCurve.points[4].copy(hoseEnd);
-    for (let i = 1; i < 4; i++) {
-      const point = hoseCurve.points[i].lerpVectors(hoseStart, hoseEnd, i / 4);
+    const pitch = 0.9 / (Math.PI * 2 * woundTurns(reelAngle) * REEL_RADIUS);
+    hoseCurve.points[1].copy(hoseStart).add(new THREE.Vector3(0.45, 0, 0.45 * pitch));
+    hoseCurve.points[2].copy(hoseStart).add(new THREE.Vector3(0.8, -0.15, 0.45));
+    hoseCurve.points[6].copy(hoseEnd);
+    for (let i = 3; i < 6; i++) {
+      const point = hoseCurve.points[i].lerpVectors(hoseCurve.points[2], hoseEnd, (i - 2) / 4);
       point.y = 0.16;
-      // A small sideways bow keeps the line soft when the player stands nearby.
-      point.x += Math.sin(i * Math.PI / 4) * 0.3;
     }
     hoseCurve.getPoint(0, hosePrevious);
     for (let i = 0; i < hoseSegments.count; i++) {
       hoseCurve.getPoint((i + 1) / hoseSegments.count, hoseNext);
       hoseNext.y = Math.max(0.14, hoseNext.y);
-      hoseDirection.subVectors(hoseNext, hosePrevious);
-      const length = hoseDirection.length();
-      hoseDummy.position.copy(hosePrevious).add(hoseNext).multiplyScalar(0.5);
-      if (length > 0) hoseDummy.quaternion.setFromUnitVectors(hoseAxis, hoseDirection.multiplyScalar(1 / length));
-      hoseDummy.scale.set(1, length + 0.03, 1);
-      hoseDummy.updateMatrix();
-      hoseSegments.setMatrixAt(i, hoseDummy.matrix);
+      setSegment(hoseSegments, i, hosePrevious, hoseNext);
       hosePrevious.copy(hoseNext);
     }
     hoseSegments.instanceMatrix.needsUpdate = true;
@@ -442,6 +490,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     beam.visible = false;
     heldHose.visible = false;
     hoseSegments.visible = false;
+    previousHoseLength = null;
     nozzle.visible = true;
     resetArms();
     onTarget(null);
@@ -521,6 +570,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       waterHeld = false;
       heldHose.visible = hoseActive;
       hoseSegments.visible = hoseActive;
+      previousHoseLength = null;
       nozzle.visible = !hoseActive;
       if (!hoseActive) resetArms();
       onHoseMode(hoseActive);
@@ -722,6 +772,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('pointerlockchange', onPointerLockChange);
       hoseSegments.geometry.dispose();
+      coilSegments.geometry.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },
