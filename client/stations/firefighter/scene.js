@@ -132,7 +132,7 @@ function addFireTruck(parent) {
   parent.add(truck);
 }
 
-function createPerson({ name, outfit, helmet = false, player = false }) {
+export function createPerson({ name, outfit = shared.green, helmet = false, player = false }) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
@@ -187,6 +187,17 @@ function createPerson({ name, outfit, helmet = false, player = false }) {
   }
   root.userData.body = body;
   return root;
+}
+
+export function setPersonEquipment(person, equipped) {
+  const active = Boolean(equipped);
+  person.userData.helmet.visible = active;
+  person.userData.uniform.visible = active;
+  person.userData.torso.material = active ? shared.red : shared.green;
+  person.userData.arms.forEach(({ sleeve, stripe, hand }) => {
+    sleeve.material = active ? shared.red : shared.green;
+    stripe.visible = hand.visible = active;
+  });
 }
 
 function createMannequin() {
