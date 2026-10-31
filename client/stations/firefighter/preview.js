@@ -2,7 +2,8 @@ import { createClient } from '../../engine/app.js';
 import { mountUI } from '../../ui/index.js';
 import { connectFireNetwork } from './network.js';
 import { createFirefighterScene } from './scene.js';
-import { createInitialState, transitionTask } from './state.js';
+import { createInitialState } from './state.js';
+import { createTaskSync } from './tasks.js';
 import { mountStationUI } from './ui.js';
 import './style.css';
 
@@ -10,11 +11,13 @@ const sceneRoot = document.querySelector('#scene');
 const uiRoot = document.querySelector('#ui');
 let world;
 let network = null;
+let sync = null;
+let busy = false; // ждём подтверждение действия от сервера
 let online = false; // вошли на сервер и получили welcome: до этого сцена только фон под экраном входа
 let state = createInitialState();
 let dialog = null;
 let prompt = '';
-let notice = 'Демонстрационный режим: прогресс не сохраняется на сервере.';
+let notice = 'Сетевой режим: прогресс станции хранится на сервере.';
 let hoseActive = false;
 let noticeTimer;
 
@@ -25,6 +28,7 @@ const refresh = () => {
     notice,
     dialog,
     hoseActive,
+    busy,
     onChoose: (option) => option.onSelect?.(),
     onCloseDialog: closeDialog,
   });
@@ -51,15 +55,18 @@ function showDialog(nextDialog) {
   refresh();
 }
 
-function dispatch(actionType) {
+/** Просит сервер выполнить действие; результат придёт в onServerState, диалоги продолжаются после подтверждения. */
+function dispatch(actionType, handlers) {
+  return sync ? sync.send(actionType, handlers) : false;
+}
+
+function onServerState(next, meta) {
   const previous = state;
-  const result = transitionTask(state, { type: actionType });
-  state = result.state;
+  state = next;
   world?.setTaskState(state);
   refresh();
-  const stageChanged = state?.stage !== previous?.stage;
-  if (actionType !== 'fire_hit' || stageChanged) setNotice(result.feedback);
-  return result;
+  // Каждое попадание по мишени не комментируем, остальные подтверждённые действия — да.
+  if (meta.changed && meta.feedback && (state.stage !== previous.stage || state.fireHits === previous.fireHits)) setNotice(meta.feedback);
 }
 
 function openProfessionCard() {
@@ -72,6 +79,22 @@ function openProfessionCard() {
   });
 }
 
+function acceptBriefingOption() {
+  return {
+    label: 'Поняла, к экипировке',
+    primary: true,
+    onSelect: () => dispatch('accept_briefing', { onConfirmed: closeDialog, onRejected: closeDialog }),
+  };
+}
+
+function showBriefingStep() {
+  showDialog({
+    title: 'Короткий инструктаж',
+    body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
+    options: [acceptBriefingOption()],
+  });
+}
+
 function openBriefing() {
   if (state.stage === 'not_started') {
     showDialog({
@@ -79,14 +102,7 @@ function openBriefing() {
       body: 'Привет! Я Маруся. Добро пожаловать на учебную смену пожарного! Сегодня ты познакомишься с нашей работой и выполнишь небольшую тренировку.',
       options: [
         { label: 'Начать тренировку', primary: true, onSelect: () => {
-          dispatch('start');
-          showDialog({
-            title: 'Короткий инструктаж',
-            body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
-            options: [
-              { label: 'Поняла, к экипировке', primary: true, onSelect: () => { dispatch('accept_briefing'); closeDialog(); } },
-            ],
-          });
+          dispatch('start', { onConfirmed: showBriefingStep, onRejected: closeDialog });
         } },
         { label: 'Узнать о профессии', onSelect: openProfessionCard },
         { label: 'Позже', onSelect: closeDialog },
@@ -96,7 +112,7 @@ function openBriefing() {
     showDialog({
       title: 'Короткий инструктаж',
       body: 'Надень учебную экипировку, затем выполни упражнение на мишени и доставь манекен к зелёной отметке. Здесь всё условно — следуй только игровым подсказкам.',
-      options: [{ label: 'Поняла, к экипировке', primary: true, onSelect: () => { dispatch('accept_briefing'); closeDialog(); } }],
+      options: [acceptBriefingOption()],
     });
   } else {
     openProfessionCard();
@@ -107,7 +123,11 @@ function openDebrief() {
   showDialog({
     title: 'Учебная смена позади',
     body: 'Ты подготовилась, выполнила упражнение на учебной мишени и доставила манекен в отмеченную зону. В этой профессии важны подготовка, внимание и согласованная работа команды.',
-    options: [{ label: 'Завершить смену', primary: true, onSelect: () => { dispatch('report'); closeDialog(); } }],
+    options: [{
+      label: 'Завершить смену',
+      primary: true,
+      onSelect: () => dispatch('report', { onConfirmed: closeDialog, onRejected: closeDialog }),
+    }],
   });
 }
 
@@ -139,11 +159,20 @@ network = connectFireNetwork({
     online = value;
     if (!online) {
       dialog = null;
+      sync.reset();
       setNotice('Вы вышли. Введите имя и код комнаты, чтобы вернуться на полигон.');
     }
     syncBlocked();
     refresh();
   },
+});
+sync = createTaskSync({
+  api: client.api,
+  onState: onServerState,
+  onNotice: setNotice,
+  onBusy: (value) => { busy = value; refresh(); },
+  // Сервер проверяет позицию и взгляд по последнему принятому pos: досылаем его перед действием.
+  beforeSend: () => network?.sendPosition(world.localPosition(), { force: true }),
 });
 client.start();
 
@@ -154,6 +183,7 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('pagehide', (event) => {
   if (event.persisted) return; // страница уходит в bfcache и может вернуться
   clearTimeout(noticeTimer);
+  sync?.dispose();
   network?.dispose();
   unmountAuth?.();
   client.stop();

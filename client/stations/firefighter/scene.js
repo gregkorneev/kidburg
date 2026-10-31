@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { FIRE_HIT_LIMIT } from './state.js';
+import { HOSE_REACH, LOCAL_POINTS, START } from './layout.js';
+
+// Дальность клавиши E у стойки рукава (дальше достаёт только струя, см. HOSE_REACH).
+const HOSE_USE_DISTANCE = 2.8;
 
 const mat = (color, roughness = 0.86) => new THREE.MeshStandardMaterial({ color, roughness, flatShading: true });
 const shared = {
@@ -245,14 +249,14 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   for (const [x, z, scale] of [[-19, -15, 1.3], [19, -13, 1.15], [-19, 19, 1], [18, 22, 1.2], [0, -21, 1.3]]) addTree(scene, x, z, scale);
 
   const player = createPerson({ outfit: shared.green, player: true });
-  player.position.set(0, 0, 13.2);
+  player.position.set(START.x, 0, START.z);
   scene.add(player);
   const remotePlayers = new Map();
   const npc = createPerson({ name: 'Маруся Громова', outfit: shared.darkRed, helmet: true });
-  npc.position.set(-3, 0, 2.1);
+  npc.position.set(LOCAL_POINTS.npc.x, 0, LOCAL_POINTS.npc.z);
   scene.add(npc);
   const locker = new THREE.Group();
-  locker.position.set(-7.6, 0, 2.3);
+  locker.position.set(LOCAL_POINTS.locker.x, 0, LOCAL_POINTS.locker.z);
   box(locker, 0, 1.25, 0, 1.45, 2.5, 0.95, shared.blue);
   box(locker, 0, 1.25, 0.52, 1.32, 2.36, 0.09, mat('#77aab0'));
   box(locker, 0, 1.85, 0.59, 0.26, 0.38, 0.08, shared.yellow);
@@ -263,7 +267,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
 
   // Training target: stylized, harmless flames on a bright practice board.
   const targetBase = new THREE.Group();
-  targetBase.position.set(2.2, 0, 10.2);
+  targetBase.position.set(LOCAL_POINTS.target.x, 0, LOCAL_POINTS.target.z);
   box(targetBase, 0, 1.25, 0, 2.6, 2.5, 0.32, shared.cream);
   box(targetBase, 0, 1.25, 0.2, 2.34, 2.2, 0.08, mat('#e8aa68'));
   box(targetBase, 0, 0.2, -0.18, 0.2, 2.3, 0.18, shared.wood);
@@ -288,7 +292,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   scene.add(targetBase);
 
   const hoseStand = new THREE.Group();
-  hoseStand.position.set(-0.9, 0, 7.4);
+  hoseStand.position.set(LOCAL_POINTS.hose.x, 0, LOCAL_POINTS.hose.z);
   box(hoseStand, 0, 0.55, 0, 0.85, 1.1, 0.78, shared.darkGreen);
   const reel = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.12, 7, 12), shared.orange);
   reel.position.set(0, 1.2, 0.28);
@@ -300,7 +304,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   scene.add(hoseStand);
 
   const mannequin = createMannequin();
-  mannequin.position.set(8.2, 0, 10.1);
+  mannequin.position.set(LOCAL_POINTS.mannequin.x, 0, LOCAL_POINTS.mannequin.z);
   mannequin.rotation.y = -0.45;
   scene.add(mannequin);
   const carried = createMannequin();
@@ -312,7 +316,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   addLabel(mannequin, 'УЧЕБНЫЙ МАНЕКЕН', '#315548').position.set(0, 1.7, 0);
 
   const safeZone = new THREE.Group();
-  safeZone.position.set(9.2, 0.01, 5.1);
+  safeZone.position.set(LOCAL_POINTS.safe_zone.x, 0.01, LOCAL_POINTS.safe_zone.z);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(1.45, 0.12, 7, 24), shared.darkGreen);
   ring.rotation.x = -Math.PI / 2;
   safeZone.add(ring);
@@ -387,23 +391,23 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   function updatePrompt() {
     if (!state || uiBlocked) return setPrompt('');
     let text = '';
-    if (distanceTo(npc) < 2.8) {
+    if (distanceTo(npc) < LOCAL_POINTS.npc.radius) {
       if (state.stage === 'not_started' || state.stage === 'briefing') text = 'Поговорить с Марусей';
       else if (state.stage === 'debrief') text = 'Обсудить итог тренировки';
       else if (state.stage === 'completed') text = 'Маруся Громова';
     }
-    if (state.stage === 'equipping' && distanceTo(locker) < 2.5) text = 'Надеть экипировку';
-    if (state.stage === 'fire_drill' && distanceTo(hoseStand) < 2.8) text = hoseActive ? 'Завершить упражнение с рукавом' : 'Взять учебный рукав';
+    if (state.stage === 'equipping' && distanceTo(locker) < LOCAL_POINTS.locker.radius) text = 'Надеть экипировку';
+    if (state.stage === 'fire_drill' && distanceTo(hoseStand) < HOSE_USE_DISTANCE) text = hoseActive ? 'Завершить упражнение с рукавом' : 'Взять учебный рукав';
     if (state.stage === 'rescue') {
-      if (!state.carryingMannequin && distanceTo(mannequin) < 2.4) text = 'Поднять манекен';
-      else if (state.carryingMannequin && distanceTo(safeZone) < 2.6) text = 'Доставить манекен';
+      if (!state.carryingMannequin && distanceTo(mannequin) < LOCAL_POINTS.mannequin.radius) text = 'Поднять манекен';
+      else if (state.carryingMannequin && distanceTo(safeZone) < LOCAL_POINTS.safe_zone.radius) text = 'Доставить манекен';
     }
     setPrompt(text ? `E · ${text}` : '');
   }
 
   function interact() {
     if (!state || uiBlocked) return;
-    if (distanceTo(npc) < 2.8) {
+    if (distanceTo(npc) < LOCAL_POINTS.npc.radius) {
       if (state.stage === 'not_started' || state.stage === 'briefing' || state.stage === 'debrief') {
         onAction(state.stage === 'debrief' ? 'open_debrief' : 'open_briefing');
       }
@@ -411,12 +415,12 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       else onNotice('Маруся улыбается: отличная учебная смена!');
       return;
     }
-    if (distanceTo(locker) < 2.5) {
+    if (distanceTo(locker) < LOCAL_POINTS.locker.radius) {
       if (state.stage === 'equipping') onAction('equip');
       else onNotice(state.equipped ? 'Экипировка уже надета.' : 'Сначала поговорите с Марусей.');
       return;
     }
-    if (distanceTo(hoseStand) < 2.8) {
+    if (distanceTo(hoseStand) < HOSE_USE_DISTANCE) {
       if (state.stage !== 'fire_drill') return onNotice('Сначала выполните предыдущий этап.');
       hoseActive = !hoseActive;
       waterHeld = false;
@@ -432,8 +436,8 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       return;
     }
     if (state.stage === 'rescue') {
-      if (!state.carryingMannequin && distanceTo(mannequin) < 2.4) return onAction('pickup_mannequin');
-      if (state.carryingMannequin && distanceTo(safeZone) < 2.6) return onAction('deliver_mannequin');
+      if (!state.carryingMannequin && distanceTo(mannequin) < LOCAL_POINTS.mannequin.radius) return onAction('pickup_mannequin');
+      if (state.carryingMannequin && distanceTo(safeZone) < LOCAL_POINTS.safe_zone.radius) return onAction('deliver_mannequin');
     }
   }
 
@@ -595,10 +599,32 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     };
   }
 
+  const firing = () => hoseActive && waterHeld && !uiBlocked && state?.stage === 'fire_drill';
+
+  /** Пока идёт струя, персонаж смотрит туда же, куда прицел: сервер проверяет направление по ry из pos. */
+  function aimWithHose() {
+    if (firing()) player.rotation.y = cameraYaw + Math.PI;
+  }
+
+  function hoseInReach() {
+    return distanceTo(hoseStand) <= HOSE_REACH;
+  }
+
+  let reachNoticeAt = -Infinity;
+
   function updateWater(delta) {
     if (!hoseActive || !waterHeld || state?.stage !== 'fire_drill') {
       beam.visible = false;
       hitAccumulator = 0;
+      return;
+    }
+    if (!hoseInReach()) {
+      beam.visible = false;
+      hitAccumulator = 0;
+      if (clock.elapsedTime - reachNoticeAt > 3) {
+        reachNoticeAt = clock.elapsedTime;
+        onNotice('Рукав не достаёт: вернитесь ближе к стойке.');
+      }
       return;
     }
     updateCamera();
@@ -627,6 +653,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     frameId = requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(), 0.05);
     movePlayer(delta);
+    aimWithHose();
     const position = localPosition();
     onPosition(position);
     for (const remote of remotePlayers.values()) {
