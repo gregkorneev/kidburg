@@ -18,7 +18,10 @@
     "world:fixtures": "node tools/fixtures/make-fixtures.mjs",
     "world:build": "node tools/build-world/index.js",
     "bots": "node tools/bots/index.js",
-    "agent-chat": "node server/agents/cli.js"
+    "agent-chat": "node server/agents/cli.js",
+    "wiki:status": "node scripts/wiki.mjs status",
+    "wiki:pull": "node scripts/wiki.mjs pull",
+    "wiki:push": "node scripts/wiki.mjs push"
   },
   "dependencies": {
     "@fastify/static": "^10.1.8",
