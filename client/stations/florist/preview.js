@@ -9,8 +9,11 @@ const uiRoot = document.querySelector('#florist-ui');
 let state = createInitialState();
 let prompt = '';
 let notice = '';
+let noticeType = 'success';
 let controlsOpen = true;
+let quality = 'medium';
 let noticeTimer = null;
+let statsTimer = null;
 let scene;
 
 function renderUI() {
@@ -18,7 +21,14 @@ function renderUI() {
     state,
     prompt,
     notice,
+    noticeType,
     controlsOpen,
+    quality,
+    onQuality: (level) => {
+      const result = scene.setQuality(level);
+      quality = result.level;
+      showNotice(`Качество графики: ${result.label.toLowerCase()}.`);
+    },
     onAcceptOrder: () => commit({ type: 'accept_order' }),
     onRibbon: (ribbon) => commit({ type: 'choose_ribbon', ribbon }),
     onRepeat: () => commit({ type: 'repeat' }),
@@ -26,8 +36,9 @@ function renderUI() {
   });
 }
 
-function showNotice(message) {
+function showNotice(message, type = 'info') {
   notice = message ?? '';
+  noticeType = type;
   renderUI();
   clearTimeout(noticeTimer);
   if (notice) noticeTimer = setTimeout(() => { notice = ''; renderUI(); }, 3000);
@@ -36,7 +47,7 @@ function showNotice(message) {
 function commit(action) {
   const result = transitionTask(state, action);
   if (!result.changed) {
-    if (result.feedback) showNotice(result.feedback);
+    if (result.feedback) showNotice(result.feedback, 'error');
     return false;
   }
   state = result.state;
@@ -45,6 +56,7 @@ function commit(action) {
   scene.setUiBlocked(modal);
   scene.setTalking(modal);
   notice = result.feedback;
+  noticeType = 'success';
   renderUI();
   clearTimeout(noticeTimer);
   if (notice) noticeTimer = setTimeout(() => { notice = ''; renderUI(); }, 3000);
@@ -71,6 +83,20 @@ scene = createFloristScene({
   },
 });
 
+quality = scene.getQuality();
+if (new URLSearchParams(window.location.search).has('debug')) {
+  window.__floristDebug = {
+    setQuality: (level) => { quality = scene.setQuality(level).level; renderUI(); },
+    getRenderStats: () => scene.getRenderStats(),
+    getState: () => state,
+    getPosition: () => scene.getPosition(),
+  };
+  statsTimer = window.setInterval(() => {
+    const canvas = root.querySelector('canvas');
+    if (canvas) canvas.dataset.renderStats = JSON.stringify(scene.getRenderStats());
+  }, 500);
+}
+
 scene.setTaskState(state);
 renderUI();
 
@@ -87,6 +113,7 @@ function onKeyDown(event) {
 window.addEventListener('keydown', onKeyDown);
 window.addEventListener('pagehide', () => {
   clearTimeout(noticeTimer);
+  clearInterval(statsTimer);
   window.removeEventListener('keydown', onKeyDown);
   scene.dispose();
 }, { once: true });

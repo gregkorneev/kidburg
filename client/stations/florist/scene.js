@@ -4,10 +4,13 @@ import { createPlayer, setPlayerPosition, stepPlayer } from '../../engine/player
 import { applyStylizedLook } from '../../engine/art/lighting.js';
 import { createCharacter, animateCharacter, triggerGesture, disposeCharacter } from '../../engine/art/character.js';
 import { stdMat } from '../../engine/art/materials.js';
-import { readQuality } from '../../engine/art/quality.js';
+import { QUALITY_LABELS, readQuality, saveQuality } from '../../engine/art/quality.js';
+import { updateWind } from '../../engine/art/wind.js';
 import { buildFloristLayout } from './layout.js';
 import { createFlower, disposeFlower, createWrapping, disposeWrapping } from './flowers.js';
 import { FLOWERS, ORDER } from './state.js';
+import { characterYawForPlayer } from './orientation.js';
+import { targetsForState } from './targets.js';
 
 const INTERACTION_RADIUS = 1.72;
 const MOUSE_SENSITIVITY = 0.0024;
@@ -59,7 +62,7 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
   scene.add(layout.root);
 
   const player = createPlayer();
-  setPlayerPosition(player, 3.2, 0, 3.3);
+  setPlayerPosition(player, 4.3, 0, 3.3);
   const avatar = createCharacter({ appearance: { outfit: '#6d9fa0', hairStyle: 'curly', hair: '#523b30' } });
   avatar.scale.setScalar(0.68);
   avatar.position.set(player.x, 0, player.z);
@@ -87,8 +90,11 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
   scene.add(bouquet);
   let state = null;
   let heldModel = null;
+  let heldFlowerId = null;
   let bouquetModels = [];
+  let renderedStemsKey = '';
   let wrappingModel = null;
+  let renderedWrapKey = '';
   let talking = false;
   let uiBlocked = false;
   let currentTarget = null;
@@ -101,44 +107,65 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
     carried.remove(heldModel);
     disposeFlower(heldModel);
     heldModel = null;
+    heldFlowerId = null;
     carried.visible = false;
   }
 
-  function clearBouquet() {
+  function clearBouquetFlowers() {
     for (const flower of bouquetModels) {
       bouquet.remove(flower);
       disposeFlower(flower);
     }
     bouquetModels = [];
+    renderedStemsKey = '';
+  }
+
+  function clearWrapping() {
     if (wrappingModel) {
       disposeWrapping(wrappingModel);
       wrappingModel = null;
     }
+    renderedWrapKey = '';
   }
 
   function syncBouquet(next) {
-    clearHeldFlower();
-    clearBouquet();
-    if (next.heldFlower) {
+    const nextHeldId = next.heldFlower?.id ?? null;
+    if (nextHeldId !== heldFlowerId) {
+      clearHeldFlower();
+    }
+    if (next.heldFlower && !heldModel) {
       heldModel = createFlower(next.heldFlower.type, { id: next.heldFlower.id });
+      heldFlowerId = nextHeldId;
       heldModel.scale.setScalar(0.62);
       carried.add(heldModel);
       carried.visible = true;
     }
-    next.stems.forEach((stem, index) => {
-      const flower = createFlower(stem.type, { id: stem.id });
-      const angle = index * (Math.PI * 2 / Math.max(1, next.stems.length)) + 0.3;
-      const radius = next.stems.length === 1 ? 0 : 0.19 + (index % 2) * 0.06;
-      flower.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius * 0.65);
-      flower.rotation.set(0.08 * ((index % 3) - 1), angle * 0.25, 0.10 * ((index % 2) ? 1 : -1));
-      bouquet.add(flower);
-      bouquetModels.push(flower);
-    });
+
+    const stemsKey = JSON.stringify(next.stems.map(({ id, type }) => [id, type]));
+    if (stemsKey !== renderedStemsKey) {
+      clearBouquetFlowers();
+      next.stems.forEach((stem, index) => {
+        const flower = createFlower(stem.type, { id: stem.id });
+        const angle = index * (Math.PI * 2 / Math.max(1, next.stems.length)) + 0.3;
+        const radius = next.stems.length === 1 ? 0 : 0.19 + (index % 2) * 0.06;
+        flower.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius * 0.65);
+        flower.rotation.set(0.08 * ((index % 3) - 1), angle * 0.25, 0.10 * ((index % 2) ? 1 : -1));
+        bouquet.add(flower);
+        bouquetModels.push(flower);
+      });
+      renderedStemsKey = stemsKey;
+    }
+
     const packed = next.wrapped;
+    const wrapKey = packed ? `${next.ribbon ?? 'pink'}` : '';
+    if (wrapKey !== renderedWrapKey) {
+      clearWrapping();
+      if (packed) wrappingModel = createWrapping(bouquet, next.ribbon);
+      renderedWrapKey = wrapKey;
+    }
     bouquet.position.copy(packed
       ? layout.wrappedBouquetPositions.handoff
       : next.stage === 'wrapping' ? layout.wrappedBouquetPositions.wrapping : layout.bouquetPosition);
-    if (packed) wrappingModel = createWrapping(bouquet, next.ribbon);
   }
 
   function updatePrompt(target) {
@@ -159,20 +186,8 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
   }
 
   function getTargets() {
-    if (!state || uiBlocked) return [];
-    if (['not_started', 'briefing', 'completed'].includes(state.stage)) return [{ kind: 'lilia', position: layout.stations.lilia }];
-    if (state.stage === 'collecting') {
-      const targets = [];
-      if (!state.heldFlower && state.stems.length < ORDER.total) {
-        for (const [flower, bucket] of Object.entries(layout.buckets)) targets.push({ kind: 'take', flower, position: bucket.position });
-      }
-      if (state.heldFlower) targets.push({ kind: 'add', position: layout.stations.workbench });
-      else if (state.stems.length) targets.push({ kind: 'remove', position: layout.stations.workbench });
-      return targets;
-    }
-    if (state.stage === 'wrapping') return [{ kind: 'wrap', position: layout.stations.wrapping }];
-    if (state.stage === 'handoff') return [{ kind: 'handoff', position: layout.stations.handoff }];
-    return [];
+    if (uiBlocked) return [];
+    return targetsForState(state, layout);
   }
 
   function findTarget() {
@@ -247,7 +262,7 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
     }
 
     avatar.position.set(player.x, player.y, player.z);
-    avatar.rotation.y = player.yaw;
+    avatar.rotation.y = characterYawForPlayer(player.yaw);
     const forwardX = -Math.sin(player.yaw);
     const forwardZ = -Math.cos(player.yaw);
     const cameraDistance = 4.8;
@@ -261,6 +276,7 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
     const elapsed = (now - started) / 1000;
     animateCharacter(avatar, dt, elapsed, { speed: player.moving ? (player.running ? 2 : 1) : 0 });
     animateCharacter(lilia, dt, elapsed, { talking, lookYaw: Math.sin(elapsed * 0.6) * 0.08 });
+    updateWind(elapsed);
     const target = findTarget();
     if (!uiBlocked) updatePrompt(target);
     look.update(focus.set(player.x, 0, player.z), elapsed);
@@ -273,7 +289,8 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
     window.removeEventListener('resize', resize);
     input.dispose();
     clearHeldFlower();
-    clearBouquet();
+    clearBouquetFlowers();
+    clearWrapping();
     disposeCharacter(avatar);
     disposeCharacter(lilia);
     disposeSubtree(lilia.userData.floristApron);
@@ -287,8 +304,20 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
     setTaskState,
     setTalking,
     setUiBlocked,
+    setQuality(level) {
+      look.setQuality(level);
+      const decorativeFlowers = layout.setQuality(level);
+      saveQuality(level);
+      return { level, label: QUALITY_LABELS[level], decorativeFlowers };
+    },
     getPosition: () => ({ x: player.x, y: player.y, z: player.z }),
     getQuality: () => look.quality,
+    getRenderStats: () => ({
+      calls: renderer.info.render.calls,
+      triangles: renderer.info.render.triangles,
+      geometries: renderer.info.memory.geometries,
+      textures: renderer.info.memory.textures,
+    }),
     dispose,
   };
 }

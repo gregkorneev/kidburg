@@ -3,6 +3,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PALETTE } from '../../engine/art/palette.js';
 import { stdMat } from '../../engine/art/materials.js';
 import { createLabelSprite, disposeLabel } from '../../engine/art/labels.js';
+import { createPrefabKit } from '../../engine/art/prefab-kit.js';
+import { FLORA_COLORS, flower as addFlower } from '../../engine/art/flora.js';
+import { swayMaterial } from '../../engine/art/wind.js';
+import { QUALITY_PRESETS } from '../../engine/art/quality.js';
 import { FLOWERS } from './state.js';
 import { createFlower, disposeFlower } from './flowers.js';
 
@@ -42,10 +46,12 @@ function addLabel(parent, labels, text, position, scale = 1, accent = PALETTE.gr
 
 function mergeStaticMeshes(root, geometrySet) {
   const buckets = new Map();
-  for (const mesh of [...root.children]) {
-    if (!mesh.isMesh) continue;
-    mesh.updateMatrix();
-    const geometry = (mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()).applyMatrix4(mesh.matrix);
+  root.updateMatrixWorld(true);
+  const meshes = [];
+  root.traverse((node) => { if (node.isMesh && !node.isInstancedMesh) meshes.push(node); });
+  for (const mesh of meshes) {
+    mesh.updateWorldMatrix(true, false);
+    const geometry = (mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()).applyMatrix4(mesh.matrixWorld);
     const entries = buckets.get(mesh.material) ?? [];
     entries.push({ mesh, geometry });
     buckets.set(mesh.material, entries);
@@ -63,7 +69,7 @@ function mergeStaticMeshes(root, geometrySet) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       root.add(mesh);
-      entries.forEach(({ mesh: source }) => root.remove(source));
+      entries.forEach(({ mesh: source }) => source.parent?.remove(source));
     }
     entries.forEach(({ geometry }) => geometry.dispose());
   }
@@ -110,11 +116,8 @@ export function buildFloristLayout() {
   const woodDark = stdMat(PALETTE.woodDark, { roughness: 0.86 });
   const trim = stdMat(PALETTE.trim, { roughness: 0.74 });
   const glass = stdMat('#8fc4ce', { roughness: 0.32, metalness: 0.02 });
-  const planter = stdMat('#b56a4d', { roughness: 0.82 });
   const concrete = stdMat(PALETTE.concrete, { roughness: 0.9 });
-  const green = stdMat(PALETTE.green, { roughness: 0.82 });
-  const yellow = stdMat(PALETTE.yellow, { roughness: 0.72 });
-  const sign = stdMat('#fff7e8', { roughness: 0.75 });
+  const furniture = createPrefabKit({ seed: 71, tint: 0.028 });
 
   // Плиточный пол и три стены оставляют переднюю сторону открытой для камеры.
   addBox(root, geometrySet, concrete, [ROOM.width, 0.28, ROOM.depth], [7, -0.14, 5]);
@@ -146,9 +149,14 @@ export function buildFloristLayout() {
 
   // Стойка наставницы и стойка приёма/выдачи.
   for (const [x, z, width] of [[7, 2.0, 4.3], [3.2, 2.2, 2.6]]) {
-    addBox(root, geometrySet, woodDark, [width, 0.9, 0.78], [x, 0.56, z]);
-    addBox(root, geometrySet, wood, [width + 0.18, 0.18, 0.98], [x, 1.08, z + 0.04]);
-    addBox(root, geometrySet, trim, [width - 0.28, 0.1, 0.06], [x, 0.62, z + 0.42]);
+    furniture.box(width, 0.9, 0.78, x, 0.56, z, PALETTE.woodDark, { r: 0.075 });
+    furniture.box(width + 0.18, 0.18, 0.98, x, 1.08, z + 0.04, PALETTE.wood, { r: 0.07 });
+    furniture.box(width - 0.28, 0.1, 0.06, x, 0.62, z + 0.42, PALETTE.trim, { r: 0.025 });
+    furniture.box(width - 0.38, 0.08, 0.06, x, 0.29, z + 0.42, PALETTE.wood, { r: 0.025 });
+    for (const dx of [-width * 0.32, 0, width * 0.32]) {
+      furniture.box(0.42, 0.46, 0.035, x + dx, 0.58, z + 0.405, PALETTE.wood, { r: 0.035 });
+      furniture.sphere(0.035, x + dx, 0.58, z + 0.445, FLORA_COLORS.warm, { w: 6, h: 5, tinted: false });
+    }
     colliders.push({ minX: x - width / 2, maxX: x + width / 2, minY: 0, maxY: 1.25, minZ: z - 0.39, maxZ: z + 0.39 });
   }
   addBox(root, geometrySet, sage, [2.2, 0.5, 0.12], [7, 2.4, 1.55]);
@@ -156,27 +164,32 @@ export function buildFloristLayout() {
   addLabel(root, labels, 'ВЫДАЧА ЗАКАЗОВ', [3.2, 1.72, 2.62], 0.75, PALETTE.orange);
 
   // Центральный стол: цветы выкладываются на видимую столешницу по мере сборки.
-  addBox(root, geometrySet, woodDark, [4.4, 0.82, 1.3], [7, 0.52, 5.35]);
-  addBox(root, geometrySet, wood, [4.7, 0.16, 1.52], [7, 1.0, 5.35]);
+  furniture.box(4.4, 0.82, 1.3, 7, 0.52, 5.35, PALETTE.woodDark, { r: 0.075 });
+  furniture.box(4.7, 0.16, 1.52, 7, 1.0, 5.35, PALETTE.wood, { r: 0.07 });
+  furniture.box(4.12, 0.055, 0.045, 7, 0.64, 6.015, PALETTE.trim, { r: 0.02 });
+  furniture.box(1.5, 0.045, 0.62, 7, 1.105, 5.5, '#f3d9d5', { r: 0.018 });
   for (const x of [5.15, 8.85]) for (const z of [4.9, 5.8]) {
-    addBox(root, geometrySet, woodDark, [0.16, 0.95, 0.16], [x, 0.46, z]);
+    furniture.box(0.16, 0.95, 0.16, x, 0.46, z, PALETTE.woodDark, { r: 0.035 });
   }
   addLabel(root, labels, 'РАБОЧИЙ СТОЛ', [7, 2.04, 4.35], 0.75, '#dca46a');
   colliders.push({ minX: 4.8, maxX: 9.2, minY: 0, maxY: 1.12, minZ: 4.7, maxZ: 6.0 });
 
   // Три полки с упаковочной бумагой и тремя цветами лент.
   for (const y of [1.2, 2.0, 2.8]) {
-    addBox(root, geometrySet, wood, [1.75, 0.13, 0.55], [11.8, y, 1.1]);
+    furniture.box(1.75, 0.13, 0.55, 11.8, y, 1.1, PALETTE.wood, { r: 0.045 });
+    furniture.box(1.75, 0.045, 0.055, 11.8, y + 0.11, 1.37, PALETTE.trim, { r: 0.018 });
     for (const [i, color] of ['#f4e3d5', '#e7bfd0', '#b8d2df'].entries()) {
-      addBox(root, geometrySet, stdMat(color), [0.39, 0.48, 0.28], [11.2 + i * 0.58, y + 0.29, 1.12], [0.04, 0, (i - 1) * 0.10]);
+      furniture.cyl(0.17, 0.17, 0.34, 8, 11.2 + i * 0.58, y + 0.31, 1.12, color, { rot: [0, 0, Math.PI / 2], tinted: false });
+      furniture.box(0.38, 0.035, 0.04, 11.2 + i * 0.58, y + 0.49, 1.12, FLORA_COLORS.cream, { r: 0.015, tinted: false });
     }
   }
   addLabel(root, labels, 'БУМАГА И ЛЕНТЫ', [11.8, 3.45, 1.12], 0.72, '#75a8bd');
 
   // Упаковочный стол с хорошо видимым местом для готового букета.
-  addBox(root, geometrySet, woodDark, [2.9, 0.76, 1.05], [10.65, 0.49, 8.1]);
-  addBox(root, geometrySet, wood, [3.08, 0.16, 1.2], [10.65, 0.95, 8.1]);
-  for (const x of [9.45, 11.85]) for (const z of [7.72, 8.48]) addBox(root, geometrySet, woodDark, [0.14, 0.86, 0.14], [x, 0.43, z]);
+  furniture.box(2.9, 0.76, 1.05, 10.65, 0.49, 8.1, PALETTE.woodDark, { r: 0.07 });
+  furniture.box(3.08, 0.16, 1.2, 10.65, 0.95, 8.1, PALETTE.wood, { r: 0.07 });
+  furniture.box(2.72, 0.045, 0.05, 10.65, 0.63, 8.63, '#e88eab', { r: 0.018 });
+  for (const x of [9.45, 11.85]) for (const z of [7.72, 8.48]) furniture.box(0.14, 0.86, 0.14, x, 0.43, z, PALETTE.woodDark, { r: 0.025 });
   addLabel(root, labels, 'УПАКОВКА', [10.65, 1.95, 8.1], 0.76, '#e88eab');
   colliders.push({ minX: 9.2, maxX: 12.1, minY: 0, maxY: 1.08, minZ: 7.55, maxZ: 8.65 });
 
@@ -188,20 +201,48 @@ export function buildFloristLayout() {
   for (const [type, x, z] of bucketDefs) buckets[type] = createBucket(root, geometrySet, labels, displayFlowers, type, x, z);
 
   // Комнатные растения и декоративные мелочи возле окна.
-  for (const [x, z] of [[0.95, 1.3], [13.05, 1.3], [0.95, 8.9], [13.05, 8.9]]) {
-    addBox(root, geometrySet, planter, [0.52, 0.42, 0.52], [x, 0.22, z]);
-    addCylinder(root, geometrySet, green, 0.2, 0.26, 0.22, 8, [x, 0.5, z]);
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2;
-      const leaf = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 7), stdMat(PALETTE.leaf[i % PALETTE.leaf.length]));
-      leaf.geometry.scale(0.12, 0.42, 0.09);
-      geometrySet.add(leaf.geometry);
-      leaf.position.set(x + Math.cos(angle) * 0.22, 0.92 + (i % 2) * 0.12, z + Math.sin(angle) * 0.22);
-      leaf.rotation.z = Math.cos(angle) * 0.55;
-      leaf.castShadow = true;
-      root.add(leaf);
+  const flowerPots = [[0.95, 1.3], [13.05, 1.3], [0.95, 8.9], [13.05, 8.9]];
+  for (const [x, z] of flowerPots) {
+    furniture.cyl(0.3, 0.23, 0.52, 8, x, 0.28, z, '#c98767', { tinted: false });
+    furniture.cyl(0.32, 0.32, 0.075, 8, x, 0.54, z, PALETTE.trim, { tinted: false });
+    furniture.cyl(0.22, 0.25, 0.05, 8, x, 0.55, z, FLORA_COLORS.soil, { tinted: false });
+  }
+
+  const furnitureGeometry = furniture.build({ groundAO: { height: 1.25, strength: 0.24 }, underside: 0.78 });
+  geometrySet.add(furnitureGeometry);
+  const furnitureMesh = new THREE.Mesh(furnitureGeometry, stdMat('#ffffff', { vertexColors: true, roughness: 0.84 }));
+  furnitureMesh.castShadow = true;
+  furnitureMesh.receiveShadow = true;
+  root.add(furnitureMesh);
+
+  const flowerKit = createPrefabKit({ seed: 17, tint: 0.02 });
+  addFlower(flowerKit, 0, 0, 0, FLORA_COLORS.bloom[0], 1);
+  const flowerGeometry = flowerKit.build({ groundAO: { height: 0.25, strength: 0.12 } });
+  geometrySet.add(flowerGeometry);
+  const flowerInstances = new THREE.InstancedMesh(flowerGeometry, swayMaterial(0.055), 16);
+  flowerInstances.name = 'decorative-wind-flowers';
+  flowerInstances.castShadow = false;
+  flowerInstances.receiveShadow = false;
+  const flowerOffsets = [[-0.16, -0.1], [0.12, -0.14], [-0.08, 0.16], [0.19, 0.12]];
+  const flowerTones = [0xe88eab, 0xf1c862, 0xfff7e7, 0x9fb9d7];
+  let flowerIndex = 0;
+  const flowerTransform = new THREE.Object3D();
+  const instanceColor = new THREE.Color();
+  for (const [x, z] of flowerPots) {
+    for (let i = 0; i < flowerOffsets.length; i++) {
+      const [dx, dz] = flowerOffsets[i];
+      flowerTransform.position.set(x + dx, 0.56, z + dz);
+      flowerTransform.rotation.y = (i * 0.8 + x) % (Math.PI * 2);
+      flowerTransform.scale.setScalar(0.72 + (i % 2) * 0.12);
+      flowerTransform.updateMatrix();
+      flowerInstances.setMatrixAt(flowerIndex, flowerTransform.matrix);
+      flowerInstances.setColorAt(flowerIndex, instanceColor.setHex(flowerTones[i]));
+      flowerIndex++;
     }
   }
+  flowerInstances.instanceMatrix.needsUpdate = true;
+  if (flowerInstances.instanceColor) flowerInstances.instanceColor.needsUpdate = true;
+  root.add(flowerInstances);
 
   // Фасад помещения открыт для обзора; физические границы не дают игроку выйти из cutaway.
   colliders.push(
@@ -227,6 +268,12 @@ export function buildFloristLayout() {
       wrapping: new THREE.Vector3(10.65, 1.05, 8.1),
       handoff: new THREE.Vector3(3.2, 1.16, 2.24),
     },
+    setQuality(level) {
+      const detail = QUALITY_PRESETS[level]?.detail ?? QUALITY_PRESETS.medium.detail;
+      flowerInstances.count = Math.max(4, Math.round(16 * detail));
+      return flowerInstances.count;
+    },
+    getDecorativeFlowerCount: () => flowerInstances.count,
     dispose() {
       for (const flower of displayFlowers) disposeFlower(flower);
       for (const label of labels) disposeLabel(label);

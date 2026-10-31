@@ -38,12 +38,15 @@ button { font: inherit; }
   pointer-events: auto;
 }
 .card-eyebrow { color: #72917c; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.order-stage { margin: 5px 0 0; color: #4d8a68; font-size: 11px; font-weight: 750; }
 .order-card h2 { margin: 5px 0 6px; font-size: 18px; line-height: 1.2; }
 .order-copy { margin: 0 0 12px; color: #66786b; font-size: 12px; line-height: 1.45; }
 .order-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .order-list li { display: flex; align-items: center; gap: 8px; color: #596d60; font-size: 12px; }
 .order-list strong { margin-left: auto; color: #697d6e; font-variant-numeric: tabular-nums; }
 .order-list .is-correct strong { color: #438266; }
+.order-list .is-over { color: #a44f45; }
+.order-list .is-over strong { color: #b44f45; }
 .flower-dot { width: 11px; height: 11px; border-radius: 50%; background: #e99ab5; box-shadow: inset -2px -2px 0 #00000012; }
 .flower-dot--white_daisy { background: #fff7e7; border: 1px solid #dfd4bf; }
 .flower-dot--greenery { background: #73a969; }
@@ -51,6 +54,7 @@ button { font: inherit; }
 .order-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8ab57d, #e7adbf); transition: width .25s ease; }
 .held-note { margin: 0; color: #748174; font-size: 11px; line-height: 1.4; }
 .held-note--success { margin-top: 10px; color: #3d8060; font-weight: 700; }
+.correction-hint { margin: 7px 0 0; padding: 7px 9px; border-radius: 9px; background: #fff0e8; color: #9d584b; font-size: 11px; line-height: 1.4; }
 .ribbon-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 11px; }
 .ribbon-label, .ribbon-picker small { grid-column: 1 / -1; color: #6c7f70; font-size: 11px; }
 .ribbon-picker small { line-height: 1.35; }
@@ -67,11 +71,18 @@ button { font: inherit; }
 kbd { display: inline-grid; min-width: 24px; min-height: 22px; place-items: center; padding: 1px 5px; border: 1px solid #d8dfd3; border-radius: 7px; background: #f7f6ed; color: #42624f; font: 700 10px/1 system-ui, sans-serif; }
 .controls-body { display: grid; gap: 6px; margin-top: 10px; color: #627467; font-size: 11px; }
 .controls-body kbd { margin-right: 5px; }
+.quality-picker { min-width: 0; margin: 5px 0 0; padding: 7px 0 0; border: 0; border-top: 1px solid #e3e7dc; }
+.quality-picker legend { padding: 0; color: #627467; font-size: 10px; font-weight: 700; }
+.quality-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 5px; }
+.quality-choice { min-height: 28px; padding: 4px 3px; border: 1px solid #dce3d8; border-radius: 8px; background: #fffdf7; color: #536b5a; cursor: pointer; font-size: 9px; }
+.quality-choice.is-selected { border-color: #609270; background: #e5f0e5; color: #315d44; font-weight: 750; }
+.quality-choice:focus-visible { outline: 3px solid #edb841; outline-offset: 2px; }
 .controls-card--closed { width: 150px; }
 .welcome-hint { position: absolute; top: 105px; left: 50%; max-width: 340px; padding: 10px 15px; transform: translateX(-50%); color: #587064; font-size: 13px; text-align: center; }
 .interaction-prompt { position: absolute; bottom: 28px; left: 50%; display: flex; align-items: center; gap: 9px; max-width: min(520px, calc(100vw - 32px)); padding: 11px 16px; border: 1px solid #fff; border-radius: 14px; background: rgba(255,251,241,.96); box-shadow: 0 8px 28px #334a3a22; transform: translateX(-50%); color: #385647; font-size: 13px; font-weight: 700; }
 .interaction-prompt kbd { width: 29px; height: 27px; font-size: 12px; }
 .toast { position: absolute; top: 50%; left: 50%; max-width: min(520px, calc(100vw - 36px)); padding: 12px 16px; border: 1px solid #fff; border-radius: 13px; background: #fffaf0ed; box-shadow: 0 8px 26px #344c3c25; transform: translate(-50%, 72px); color: #456450; font-size: 13px; text-align: center; }
+.toast--error { background: #fff1ebf2; color: #984f43; }
 .footer-note { position: absolute; right: 18px; bottom: 18px; max-width: 300px; color: #647d6d; font-size: 10px; text-align: right; text-shadow: 0 1px 2px #fff; }
 
 .dialog-backdrop { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(44,69,56,.18); backdrop-filter: blur(3px); pointer-events: auto; }

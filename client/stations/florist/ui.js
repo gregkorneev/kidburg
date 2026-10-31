@@ -1,18 +1,22 @@
 import { h, render } from 'preact';
 import { FLOWERS, ORDER, RIBBONS } from './state.js';
+import { QUALITY_LABELS, QUALITY_LEVELS } from '../../engine/art/quality.js';
 
 const flowerCount = (stems, type) => stems.filter((stem) => stem.type === type).length;
 
 function OrderCard({ state, onRibbon }) {
+  const stageTitle = ({ briefing: 'Шаг 1 · знакомство', collecting: 'Шаг 2 · сборка', wrapping: 'Шаг 3 · упаковка', handoff: 'Шаг 4 · выдача' })[state.stage] ?? 'Заказ';
   const correct = Object.entries(ORDER.stems).every(([type, count]) => flowerCount(state.stems, type) === count)
     && state.stems.length === ORDER.total;
   return h('section', { class: 'order-card', 'aria-live': 'polite' },
     h('div', { class: 'card-eyebrow' }, state.stage === 'wrapping' ? 'ЗАКАЗ СОБРАН' : 'ЗАКАЗ ЛИЛИИ'),
+    h('p', { class: 'order-stage' }, stageTitle),
     h('h2', null, 'Нежный букет ко дню рождения'),
     h('p', { class: 'order-copy' }, '2 розовых тюльпана · 2 белые ромашки · 1 веточка зелени · розовая лента'),
     h('ul', { class: 'order-list' }, Object.entries(ORDER.stems).map(([type, count]) => {
       const actual = flowerCount(state.stems, type);
-      return h('li', { key: type, class: actual === count ? 'is-correct' : '' },
+      const className = actual === count ? 'is-correct' : actual > count ? 'is-over' : '';
+      return h('li', { key: type, class: className },
         h('span', { class: `flower-dot flower-dot--${type}` }),
         h('span', null, FLOWERS[type].plural),
         h('strong', null, `${actual}/${count}`),
@@ -22,6 +26,7 @@ function OrderCard({ state, onRibbon }) {
     h('p', { class: 'held-note' }, state.heldFlower
       ? `В руке: ${FLOWERS[state.heldFlower.type].label}. Отнесите на рабочий стол.`
       : `В букете: ${state.stems.length}/${ORDER.total} стеблей${state.stage === 'wrapping' ? ` · состав ${correct ? 'верный' : 'нужно исправить'}` : ''}.`),
+    state.stage === 'wrapping' && !correct && h('p', { class: 'correction-hint' }, 'Сверь количества и подойди к рабочему столу: E уберёт последний стебель.'),
     state.stage === 'wrapping' && h('div', { class: 'ribbon-picker', role: 'group', 'aria-label': 'Выбрать ленту' },
       h('span', { class: 'ribbon-label' }, `Лента: ${state.ribbon ? RIBBONS[state.ribbon] : 'не выбрана'}`),
       Object.entries(RIBBONS).map(([id, label]) => h('button', {
@@ -64,7 +69,7 @@ function Dialog({ stage, onAcceptOrder, onRepeat }) {
   return null;
 }
 
-export function FloristUI({ state, prompt = '', notice = '', controlsOpen = true, onAcceptOrder, onRibbon, onRepeat, onToggleControls }) {
+export function FloristUI({ state, prompt = '', notice = '', noticeType = 'success', controlsOpen = true, quality = 'medium', onQuality, onAcceptOrder, onRibbon, onRepeat, onToggleControls }) {
   return h('div', { class: 'florist-ui' },
     h('header', { class: 'brand-card' },
       h('div', { class: 'brand-icon', 'aria-hidden': 'true' }, '✿'),
@@ -81,10 +86,22 @@ export function FloristUI({ state, prompt = '', notice = '', controlsOpen = true
         h('div', null, h('kbd', null, 'E'), ' действие'),
         h('div', null, h('kbd', null, 'H'), ' подсказки'),
         h('div', null, h('kbd', null, 'L'), ' в город'),
+        h('fieldset', { class: 'quality-picker' },
+          h('legend', null, 'Качество графики'),
+          h('div', { class: 'quality-options', role: 'group', 'aria-label': 'Качество графики' },
+            QUALITY_LEVELS.map((level) => h('button', {
+              key: level,
+              type: 'button',
+              class: `quality-choice${quality === level ? ' is-selected' : ''}`,
+              'aria-pressed': quality === level,
+              onClick: () => onQuality(level),
+            }, QUALITY_LABELS[level])),
+          ),
+        ),
       ),
     ),
     prompt && h('div', { class: 'interaction-prompt', 'aria-live': 'polite' }, h('kbd', null, 'E'), h('span', null, prompt.replace(/^E — /, ''))),
-    notice && h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }, notice),
+    notice && h('div', { class: `toast toast--${noticeType}`, role: 'status', 'aria-live': 'polite' }, notice),
     state.stage === 'not_started' && h('div', { class: 'welcome-hint' }, 'Подойди к Лилии и нажми E, чтобы начать обучение.'),
     h(Dialog, { stage: state.stage, onAcceptOrder, onRepeat }),
     h('footer', { class: 'footer-note' }, 'Локальный прототип · прогресс хранится только до перезагрузки страницы'),
