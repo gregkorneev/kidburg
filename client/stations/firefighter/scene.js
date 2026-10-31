@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { WINDOW_HIT_LIMIT } from './preview-state.js';
+import { SAFETY_ZONE, blockedBySafetyZone } from './safety-zone.js';
+import { canMoveWithHose } from './hose-length.js';
 
 const mat = (color, roughness = 0.86) => new THREE.MeshStandardMaterial({ color, roughness, flatShading: true });
 const shared = {
@@ -129,10 +131,18 @@ function createPerson({ name, outfit, helmet = false, player = false }) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  sphere(body, 0, 1.05, 0, 0.43, 0.59, 0.3, outfit, 8);
-  const leftArm = cylinder(body, -0.57, 0.95, 0, 0.13, 0.16, 0.9, outfit, 7, { z: -0.15 });
-  const rightArm = cylinder(body, 0.57, 0.95, 0, 0.13, 0.16, 0.9, outfit, 7, { z: 0.15 });
-  root.userData.arms = [leftArm, rightArm];
+  const torso = sphere(body, 0, 1.05, 0, 0.43, 0.59, 0.3, outfit, 8);
+  const arms = [-1, 1].map((side) => {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.52, 1.4, 0);
+    body.add(shoulder);
+    const sleeve = cylinder(shoulder, 0, -0.45, 0, 0.15, 0.14, 0.9, outfit, 7);
+    const stripe = cylinder(shoulder, 0, -0.62, 0, 0.155, 0.155, 0.13, shared.yellow, 7);
+    const hand = sphere(shoulder, 0, -0.92, 0, 0.16, 0.17, 0.16, shared.charcoal, 7);
+    stripe.visible = hand.visible = false;
+    return { shoulder, sleeve, stripe, hand };
+  });
+  root.userData.arms = arms;
   cylinder(body, -0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: 0.04 });
   cylinder(body, 0.2, 0.35, 0, 0.16, 0.18, 0.78, shared.navy, 7, { z: -0.04 });
   sphere(body, 0, 1.95, 0.03, 0.48, 0.48, 0.43, mat('#efc89e'), 9);
@@ -145,9 +155,20 @@ function createPerson({ name, outfit, helmet = false, player = false }) {
     box(body, 0, 2.22, 0.4, 0.24, 0.11, 0.07, shared.yellow);
   }
   if (player) {
+    const uniform = new THREE.Group();
+    box(uniform, 0, 0.94, 0.02, 0.77, 0.12, 0.58, shared.yellow);
+    for (const x of [-0.2, 0.2]) {
+      cylinder(uniform, x, 0.18, 0.05, 0.19, 0.2, 0.36, shared.black, 7);
+      box(uniform, x, 0.1, 0.13, 0.38, 0.2, 0.48, shared.black);
+    }
+    body.add(uniform);
+    root.userData.uniform = uniform;
+    root.userData.torso = torso;
+    uniform.visible = false;
     const helmetGroup = new THREE.Group();
-    sphere(helmetGroup, 0, 2.35, 0, 0.56, 0.18, 0.5, shared.yellow, 8);
-    box(helmetGroup, 0, 2.25, 0.17, 0.73, 0.08, 0.46, shared.orange);
+    sphere(helmetGroup, 0, 2.35, 0, 0.56, 0.18, 0.5, shared.red, 8);
+    box(helmetGroup, 0, 2.25, 0.17, 0.73, 0.08, 0.46, shared.darkRed);
+    box(helmetGroup, 0, 2.25, 0.42, 0.22, 0.12, 0.07, shared.yellow);
     body.add(helmetGroup);
     root.userData.helmet = helmetGroup;
     helmetGroup.visible = false;
@@ -275,6 +296,19 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   addLabel(targetBase, 'УЧЕБНАЯ СТЕНА', '#a04d36').position.set(0, 7.8, 0.35);
   scene.add(targetBase);
 
+  // Raised geometry avoids z-fighting with the paths and ground.
+  for (let i = 0; i < 16; i++) {
+    box(scene, SAFETY_ZONE.minX + (i + 0.5) * 0.5, 0.045, SAFETY_ZONE.maxZ, 0.5, 0.05, 0.46, i % 2 ? shared.black : shared.yellow, false);
+  }
+  for (let i = 0; i < 10; i++) {
+    for (const x of [SAFETY_ZONE.minX, SAFETY_ZONE.maxX]) {
+      box(scene, x, 0.045, SAFETY_ZONE.maxZ - (i + 0.5) * 0.51, 0.32, 0.05, 0.51, i % 2 ? shared.black : shared.yellow, false);
+    }
+  }
+  for (let i = 0; i < 16; i++) box(scene, SAFETY_ZONE.minX + (i + 0.5) * 0.5, 0.045, SAFETY_ZONE.minZ, 0.5, 0.05, 0.32, i % 2 ? shared.black : shared.yellow, false);
+  const warning = addLabel(scene, 'НЕ ПЕРЕСЕКАТЬ', '#a94436');
+  warning.position.set(3.5, 0.65, 6.05);
+
   const hoseStand = new THREE.Group();
   hoseStand.position.set(-0.9, 0, 7.4);
   box(hoseStand, 0, 0.55, 0, 0.85, 1.1, 0.78, shared.darkGreen);
@@ -287,11 +321,54 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   addLabel(hoseStand, 'УЧЕБНЫЙ РУКАВ', '#315548').position.set(0, 2.0, 0);
   scene.add(hoseStand);
   const heldHose = new THREE.Group();
-  heldHose.position.set(0, 1.15, 0.4);
-  cylinder(heldHose, 0, 0, 0.3, 0.13, 0.17, 1.1, shared.charcoal, 8, { x: Math.PI / 2 });
-  cylinder(heldHose, 0, 0, 0.88, 0.1, 0.13, 0.22, shared.blue, 8, { x: Math.PI / 2 });
-  player.add(heldHose);
+  heldHose.position.set(0.25, 1.18, 0.48);
+  cylinder(heldHose, 0, 0, 0.35, 0.19, 0.19, 1.2, shared.charcoal, 8, { x: Math.PI / 2 });
+  cylinder(heldHose, 0, 0, 1.03, 0.24, 0.16, 0.3, shared.blue, 8, { x: Math.PI / 2 });
+  cylinder(heldHose, 0, 0, -0.45, 0.16, 0.19, 0.5, shared.orange, 8, { x: Math.PI / 2 });
+  player.userData.body.add(heldHose);
   heldHose.visible = false;
+
+  // Reuse a fixed set of instances; no geometry is rebuilt during movement.
+  const hoseSegments = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.13, 1, 7), shared.orange, 24);
+  hoseSegments.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  hoseSegments.frustumCulled = false;
+  hoseSegments.visible = false;
+  scene.add(hoseSegments);
+  const hoseCurve = new THREE.CatmullRomCurve3(Array.from({ length: 5 }, () => new THREE.Vector3()));
+  const hoseStart = new THREE.Vector3();
+  const hoseEnd = new THREE.Vector3();
+  const hosePrevious = new THREE.Vector3();
+  const hoseNext = new THREE.Vector3();
+  const hoseDirection = new THREE.Vector3();
+  const hoseDummy = new THREE.Object3D();
+  const hoseAxis = new THREE.Vector3(0, 1, 0);
+
+  function updateHose() {
+    hoseStand.localToWorld(hoseStart.set(0, 1.2, 0.43));
+    heldHose.localToWorld(hoseEnd.set(0, 0, -0.7));
+    hoseCurve.points[0].copy(hoseStart);
+    hoseCurve.points[4].copy(hoseEnd);
+    for (let i = 1; i < 4; i++) {
+      const point = hoseCurve.points[i].lerpVectors(hoseStart, hoseEnd, i / 4);
+      point.y = 0.16;
+      // A small sideways bow keeps the line soft when the player stands nearby.
+      point.x += Math.sin(i * Math.PI / 4) * 0.3;
+    }
+    hoseCurve.getPoint(0, hosePrevious);
+    for (let i = 0; i < hoseSegments.count; i++) {
+      hoseCurve.getPoint((i + 1) / hoseSegments.count, hoseNext);
+      hoseNext.y = Math.max(0.14, hoseNext.y);
+      hoseDirection.subVectors(hoseNext, hosePrevious);
+      const length = hoseDirection.length();
+      hoseDummy.position.copy(hosePrevious).add(hoseNext).multiplyScalar(0.5);
+      if (length > 0) hoseDummy.quaternion.setFromUnitVectors(hoseAxis, hoseDirection.multiplyScalar(1 / length));
+      hoseDummy.scale.set(1, length + 0.03, 1);
+      hoseDummy.updateMatrix();
+      hoseSegments.setMatrixAt(i, hoseDummy.matrix);
+      hosePrevious.copy(hoseNext);
+    }
+    hoseSegments.instanceMatrix.needsUpdate = true;
+  }
 
   const mannequin = createMannequin();
   mannequin.position.set(8.2, 0, 10.1);
@@ -317,7 +394,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   addLabel(safeZone, 'БЕЗОПАСНАЯ ЗОНА', '#315548').position.set(0, 2.1, 0);
   scene.add(safeZone);
 
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.12, 1, 6), new THREE.MeshStandardMaterial({ color: '#91e4e4', emissive: '#5cc9cf', emissiveIntensity: 0.28, transparent: true, opacity: 0.72, roughness: 0.2 }));
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 1, 8), new THREE.MeshBasicMaterial({ color: '#a2f6ff', transparent: true, opacity: 0.9 }));
   beam.visible = false;
   scene.add(beam);
 
@@ -341,6 +418,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   let hoseActive = false;
   let hitAccumulator = 0;
   let previousTarget = null;
+  let lastSafetyNotice = -Infinity;
   let prompt = '';
   let previousStage = '';
   let bobTime = 0;
@@ -363,12 +441,23 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     waterHeld = false;
     beam.visible = false;
     heldHose.visible = false;
+    hoseSegments.visible = false;
     nozzle.visible = true;
-    player.userData.arms.forEach((arm, i) => { arm.rotation.set(0, 0, i ? 0.15 : -0.15); });
+    resetArms();
     onTarget(null);
     onHoseMode(false);
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
   };
+
+  function resetArms() {
+    player.userData.arms.forEach(({ shoulder, sleeve, stripe, hand }) => {
+      shoulder.rotation.set(0, 0, 0);
+      sleeve.scale.y = 1;
+      sleeve.position.y = -0.45;
+      stripe.position.y = -0.62;
+      hand.position.y = -0.92;
+    });
+  }
 
   function setTaskState(next) {
     state = next;
@@ -378,6 +467,12 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     npc.userData.body.rotation.z = 0;
     const helmet = player.userData.helmet;
     if (helmet) helmet.visible = Boolean(state?.equipped);
+    player.userData.uniform.visible = Boolean(state?.equipped);
+    player.userData.torso.material = state?.equipped ? shared.red : shared.green;
+    player.userData.arms.forEach(({ sleeve, stripe, hand }) => {
+      sleeve.material = state?.equipped ? shared.red : shared.green;
+      stripe.visible = hand.visible = Boolean(state?.equipped);
+    });
     windows.forEach(({ flames }, index) => {
       const window = state.windows[index];
       flames.visible = stage === 'fire_drill' && window.status !== 'done';
@@ -425,8 +520,9 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       hoseActive = !hoseActive;
       waterHeld = false;
       heldHose.visible = hoseActive;
+      hoseSegments.visible = hoseActive;
       nozzle.visible = !hoseActive;
-      player.userData.arms.forEach((arm, i) => { arm.rotation.set(hoseActive ? -1 : 0, 0, i ? 0.15 : -0.15); });
+      if (!hoseActive) resetArms();
       onHoseMode(hoseActive);
       if (hoseActive) {
         onNotice('Учебный рукав готов. Наведите прицел на окно и удерживайте левую кнопку мыши.');
@@ -513,8 +609,17 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight')) ? 7.2 : 4.5;
     const nextX = player.position.x + dx * speed * delta;
     const nextZ = player.position.z + dz * speed * delta;
-    if (!isBlocked(nextX, player.position.z)) player.position.x = nextX;
-    if (!isBlocked(player.position.x, nextZ)) player.position.z = nextZ;
+    const blockedSafety = (x, z) => {
+      if (!blockedBySafetyZone(state?.stage, x, z)) return false;
+      if (clock.elapsedTime - lastSafetyNotice > 2.8) {
+        lastSafetyNotice = clock.elapsedTime;
+        onNotice('Не пересекайте ограничительную линию!');
+      }
+      return true;
+    };
+    const canMove = (x, z) => canMoveWithHose(hoseActive, player.position, { x, z }, hoseStand.position);
+    if (!isBlocked(nextX, player.position.z) && !blockedSafety(nextX, player.position.z) && canMove(nextX, player.position.z)) player.position.x = nextX;
+    if (!isBlocked(player.position.x, nextZ) && !blockedSafety(player.position.x, nextZ) && canMove(player.position.x, nextZ)) player.position.z = nextZ;
     if (!hoseActive) player.rotation.y = Math.atan2(dx, dz);
     bobTime += delta * (speed > 5 ? 15 : 10);
     player.userData.body.position.y = Math.abs(Math.sin(bobTime)) * 0.055;
@@ -529,15 +634,14 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     const distance = 8.6;
     const height = 3.8;
     camera.position.set(
-      player.position.x + Math.sin(cameraYaw) * distance,
+      player.position.x + Math.sin(cameraYaw) * distance + Math.cos(cameraYaw) * 1.8,
       height,
-      player.position.z + Math.cos(cameraYaw) * distance,
+      player.position.z + Math.cos(cameraYaw) * distance - Math.sin(cameraYaw) * 1.8,
     );
     camera.lookAt(target);
   }
 
   function updateWater(delta) {
-    if (hoseActive) player.rotation.y = cameraYaw + Math.PI;
     if (!hoseActive || state?.stage !== 'fire_drill') {
       beam.visible = false;
       hitAccumulator = 0;
@@ -547,6 +651,23 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     updateCamera();
     raycaster.setFromCamera(centerScreen, camera);
     const hits = raycaster.intersectObjects(windows.map((window) => window.pane));
+    const end = hits.length ? hits[0].point : raycaster.ray.at(18, new THREE.Vector3());
+    player.rotation.y = Math.atan2(raycaster.ray.direction.x, raycaster.ray.direction.z);
+    player.updateMatrixWorld(true);
+    heldHose.lookAt(end);
+    player.updateMatrixWorld(true);
+    player.userData.arms.forEach(({ shoulder, sleeve, stripe, hand }, i) => {
+      const grip = heldHose.localToWorld(new THREE.Vector3(i ? 0.14 : -0.14, 0, i ? 0.05 : 0.55));
+      const localGrip = shoulder.parent.worldToLocal(grip).sub(shoulder.position);
+      const length = localGrip.length();
+      shoulder.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), localGrip.normalize());
+      sleeve.scale.y = length / 0.9;
+      sleeve.position.y = -length / 2;
+      stripe.position.y = -length * 0.7;
+      hand.position.y = -length;
+    });
+    player.updateMatrixWorld(true);
+    updateHose();
     const index = hits.length ? hits[0].object.userData.windowIndex : null;
     if (index !== previousTarget) hitAccumulator = 0;
     previousTarget = index;
@@ -556,8 +677,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       hitAccumulator = 0;
       return;
     }
-    const start = heldHose.localToWorld(new THREE.Vector3(0, 0, 1));
-    const end = hits.length ? hits[0].point : raycaster.ray.at(18, new THREE.Vector3());
+    const start = heldHose.localToWorld(new THREE.Vector3(0, 0, 1.18));
     const direction = end.clone().sub(start);
     beam.position.copy(start).addScaledVector(direction, 0.5);
     beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
@@ -601,6 +721,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       window.removeEventListener('mouseup', onPointerUp);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('pointerlockchange', onPointerLockChange);
+      hoseSegments.geometry.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },
