@@ -142,7 +142,7 @@ export function createInteractive({ db, placement, dynamic = null, now = Date.no
     if (id && id !== heldId) return fail(CODE.NOT_HOLDING, 'Этот предмет не у вас в руках');
     const prop = props.get(heldId);
     const spot = findSpot(prop, player, mode === 'drop' ? DROP_PROBES : PLACE_PROBES);
-    if (!spot) return fail(CODE.BLOCKED, 'Здесь не поставить: отойдите от стены, дорожки или другого предмета');
+    if (!spot) return fail(CODE.BLOCKED, 'Нельзя поставить за пределами игрового мира');
     Object.assign(prop, { x: spot.x, z: spot.z, ry: round2(player.ry), state: 'placed', holder: 0 });
     holders.delete(player.id);
     persist(prop);

@@ -9,6 +9,7 @@ import { openDb } from '../server/db/index.js';
 import { createDynamicWorld } from '../server/world/dynamic-objects.js';
 import { createInteractive } from '../server/world/interactive-state.js';
 import { createPlacement } from '../server/world/placement.js';
+import { PATHS } from '../tools/build-world/layout.js';
 import { ADMIN_PASSWORD, adminLogin, adminRequest, listen } from './helpers.js';
 
 test('стартовые места предметов допустимы и не пересекаются друг с другом', () => {
@@ -27,13 +28,30 @@ test('стартовые места предметов допустимы и н�
   }
 });
 
-test('checkProp отвергает здания, край мира и нечисловые входы', () => {
+test('переносимый предмет можно оставить в здании, на дорожке и поверх другого предмета', () => {
   const placement = createPlacement();
   const b = BUILDINGS[0];
-  assert.equal(placement.checkProp(b.x, b.z, 0.5).ok, false);
+  const path = PATHS[0];
+  const prop = PROP_HOMES[0];
+  assert.equal(placement.checkProp(b.x, b.z, 0.5).ok, true, 'внутри здания');
+  assert.equal(placement.checkProp(path.x, path.z, 0.5).ok, true, 'на дорожке');
+  assert.equal(placement.checkProp(prop.x, prop.z, PROP_TYPES[prop.type].radius).ok, true, 'на месте другого предмета');
   assert.equal(placement.checkProp(0.5, 0.5, 0.5).ok, false);
   assert.equal(placement.checkProp(Number.NaN, 400, 0.5).ok, false);
   assert.equal(placement.checkProp(400, 400, Infinity).ok, false);
+});
+
+test('сервер разрешает поставить переносимый предмет прямо на дорожку', () => {
+  const db = openDb(':memory:');
+  const placement = createPlacement();
+  const interactive = createInteractive({ db, placement });
+  const prop = PROP_HOMES.find((home) => home.id === 'crate-1');
+  assert.equal(interactive.take({ id: 1, x: prop.x + 1, z: prop.z, ry: 0 }, prop.id).ok, true);
+  const path = PATHS[0];
+  const result = interactive.place({ id: 1, x: path.x, z: path.z + 1, ry: 0 }, prop.id);
+  assert.equal(result.ok, true, result.message);
+  assert.deepEqual([result.prop.x, result.prop.z], [path.x, path.z]);
+  db.close();
 });
 
 test('мячи стартуют на поле и в стороне от препятствий', () => {
