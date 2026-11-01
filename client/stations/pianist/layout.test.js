@@ -4,6 +4,7 @@ import { AUDIENCE_CHAIRS, AUDIENCE_COLLIDERS, BETWEEN_PIANOS_CHAIRS, MAESTRO_COL
 import { collides, createPlayer, stepPlayer } from '../../engine/player.js';
 import { buildPianistLayout } from './layout.js';
 import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
+import { getPianoSeatPose } from './pianist-pose.js';
 
 test('план комнаты 20×15×6 разделяет учебную, зрительскую и сценическую зоны', () => {
   assert.deepEqual(ROOM, { width: 20, depth: 15, height: 6 });
@@ -92,15 +93,17 @@ test('камера сокращает дистанцию перед зрител
   assert.ok(safeCameraDistance(focus, desired, [chair]) < Math.hypot(desired.x - focus.x, desired.y - focus.y, desired.z - focus.z));
 });
 
-test('ракурсы обоих пианино свободны от блокирующих рядов стульев', () => {
+test('ракурсы обоих пианино остаются вне корпуса и рядов стульев', () => {
   const { instrumentCamera } = PIANIST_PLAN;
-  const practiceFocus = { x: PIANIST_PLAN.practicePiano.x, y: 1.02, z: PIANIST_PLAN.practicePiano.z + 0.18 };
+  const practiceCollider = pianoCollider(PIANIST_PLAN.practicePiano, PIANIST_PLAN.practicePiano.rotationY);
+  const stageCollider = pianoCollider({ ...PIANIST_PLAN.stagePiano, y: PIANIST_PLAN.stage.height }, Math.PI);
+  const practiceFocus = { x: PIANIST_PLAN.practicePiano.x + Math.sin(PIANIST_PLAN.practicePiano.rotationY) * 1.2, y: 1.02, z: PIANIST_PLAN.practicePiano.z + Math.cos(PIANIST_PLAN.practicePiano.rotationY) * 1.2 };
   const practiceCamera = { x: PIANIST_PLAN.practicePiano.x + instrumentCamera.practice.x, y: 2.8, z: PIANIST_PLAN.practicePiano.z + instrumentCamera.practice.z };
-  const stageFocus = { x: PIANIST_PLAN.stagePiano.x, y: 1.02 + PIANIST_PLAN.stage.height, z: PIANIST_PLAN.stagePiano.z - 0.18 };
+  const stageFocus = { x: PIANIST_PLAN.stagePiano.x, y: 1.02 + PIANIST_PLAN.stage.height, z: PIANIST_PLAN.stagePiano.z - 1.2 };
   const stageCamera = { x: PIANIST_PLAN.stagePiano.x - instrumentCamera.concert.x, y: 2.8 + PIANIST_PLAN.stage.height, z: PIANIST_PLAN.stagePiano.z - instrumentCamera.concert.z };
   for (const [focus, camera] of [[practiceFocus, practiceCamera], [stageFocus, stageCamera]]) {
     const desiredDistance = Math.hypot(camera.x - focus.x, camera.y - focus.y, camera.z - focus.z);
-    assert.ok(safeCameraDistance(focus, camera, AUDIENCE_COLLIDERS, { radius: 0.2, clearance: 0.12 }) >= desiredDistance - 1e-6);
+    assert.ok(safeCameraDistance(focus, camera, [...AUDIENCE_COLLIDERS, practiceCollider, stageCollider], { radius: 0.2, clearance: 0.12 }) >= desiredDistance - 1e-6);
   }
 });
 
@@ -117,10 +120,27 @@ test('периметр и стулья блокируют предметы, це
 test('коллизии закрывают корпус и клавиатурную сторону обоих пианино', () => {
   const practice = pianoCollider(PIANIST_PLAN.practicePiano, PIANIST_PLAN.practicePiano.rotationY);
   const stage = pianoCollider({ ...PIANIST_PLAN.stagePiano, y: PIANIST_PLAN.stage.height }, Math.PI);
+  const practiceSeat = getPianoSeatPose(PIANIST_PLAN.practicePiano, PIANIST_PLAN.practicePiano.rotationY);
+  const stageSeat = getPianoSeatPose({ ...PIANIST_PLAN.stagePiano, y: PIANIST_PLAN.stage.height }, Math.PI);
+  assert.equal(collides([practice], practiceSeat.x, practiceSeat.y, practiceSeat.z), false, 'ученик сидит на банкетке, снаружи корпуса');
+  assert.equal(collides([stage], stageSeat.x, stageSeat.y, stageSeat.z), false, 'пианист на сцене сидит снаружи корпуса');
   assert.equal(collides([practice], 14.5, 0, PIANIST_PLAN.practicePiano.z), true);
   assert.equal(collides([practice], 13.7, 0, PIANIST_PLAN.practicePiano.z), false);
   assert.equal(collides([stage], PIANIST_PLAN.stagePiano.x, PIANIST_PLAN.stage.height, 12.2), true);
   assert.equal(collides([stage], PIANIST_PLAN.stagePiano.x, PIANIST_PLAN.stage.height, 11.25), false);
+
+  const player = createPlayer();
+  player.x = 13.6; player.z = PIANIST_PLAN.practicePiano.z; player.yaw = -Math.PI / 2;
+  stepPlayer(player, { forward: true, back: false, left: false, right: false, run: false }, 0.1, {
+    heightAt: pianistGroundHeight, collidersNear: () => [practice],
+  });
+  assert.equal(player.x, 13.6, 'игрок не проходит с банкетной стороны в учебное пианино');
+
+  player.x = PIANIST_PLAN.stagePiano.x; player.z = 11.1; player.y = PIANIST_PLAN.stage.height; player.yaw = Math.PI;
+  stepPlayer(player, { forward: true, back: false, left: false, right: false, run: false }, 0.1, {
+    heightAt: pianistGroundHeight, collidersNear: () => [stage],
+  });
+  assert.equal(player.z, 11.1, 'игрок не проходит с банкетной стороны в сценическое пианино');
 });
 
 test('интерьер создаётся без DOM и освобождает геометрию, материалы и локальные текстуры', () => {

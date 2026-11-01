@@ -63,7 +63,6 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
   const pianoColliders = pianos.map((piano) => pianoCollider(piano.position, piano.rotationY));
   layout.colliders.push(...pianoColliders);
   layout.cameraBlockers.push(...pianoColliders);
-  const instrumentCameraBlockers = layout.cameraBlockers.filter((box) => !pianoColliders.includes(box));
 
   const focus = new THREE.Vector3(); const desired = new THREE.Vector3(); const ray = new THREE.Vector3();
   const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
@@ -187,7 +186,7 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
     if (instrumentMode && state) {
       activePiano = state.stage === 'concert' ? pianos[1] : pianos[0];
       const frontX = Math.sin(activePiano.rotationY); const frontZ = Math.cos(activePiano.rotationY);
-      focus.set(activePiano.position.x + frontX * 0.18, 1.02 + activePiano.position.y, activePiano.position.z + frontZ * 0.18);
+      focus.set(activePiano.position.x + frontX * 1.2, 1.02 + activePiano.position.y, activePiano.position.z + frontZ * 1.2);
       const cameraOffset = state.stage === 'concert' ? PIANIST_PLAN.instrumentCamera.concert : PIANIST_PLAN.instrumentCamera.practice;
       const cameraLocalX = cameraOffset.x; const cameraLocalZ = cameraOffset.z;
       desired.set(
@@ -197,7 +196,7 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
       );
       ray.subVectors(desired, focus);
       const desiredDistance = ray.length();
-      cameraArmDistance = approachCameraDistance(cameraArmDistance, safeCameraDistance(focus, desired, instrumentCameraBlockers, { radius: 0.2, clearance: 0.12 }), dt);
+      cameraArmDistance = approachCameraDistance(cameraArmDistance, safeCameraDistance(focus, desired, layout.cameraBlockers, { radius: 0.2, clearance: 0.12 }), dt);
       camera.position.copy(focus).addScaledVector(ray, desiredDistance > 0 ? cameraArmDistance / desiredDistance : 0); camera.lookAt(focus);
     } else {
       const forwardX = -Math.sin(player.yaw); const forwardZ = -Math.cos(player.yaw);

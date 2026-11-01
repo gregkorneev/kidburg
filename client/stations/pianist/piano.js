@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NOTES } from './melody.js';
+import { PIANIST_BENCH_LOCAL_Z } from './pianist-pose.js';
 
 const MAT = Object.freeze({ casing: '#282b35', edge: '#414553', upper: '#3c404a', support: '#343c4b', keyWhite: '#fffdf5', keyBlack: '#22252c', gold: '#c9a35a', wood: '#664632', stool: '#9b6543' });
 
@@ -38,8 +39,8 @@ export function createPiano({ position = { x: 0, z: 0 }, rotationY = 0, name = '
   }
   for (const x of [-0.25, 0, 0.26]) part(root, [0.28, 0.075, 0.045], [x, 0.22, 0.78], MAT.gold);
   // A friendly padded bench and four tapered-looking supports.
-  part(root, [1.36, 0.18, 0.52], [0, 0.56, 1.05], MAT.stool);
-  for (const x of [-0.52, 0.52]) for (const z of [0.86, 1.24]) part(root, [0.1, 0.47, 0.1], [x, 0.235, z], MAT.wood);
+  part(root, [1.36, 0.18, 0.52], [0, 0.56, PIANIST_BENCH_LOCAL_Z], MAT.stool);
+  for (const x of [-0.52, 0.52]) for (const z of [PIANIST_BENCH_LOCAL_Z - 0.19, PIANIST_BENCH_LOCAL_Z + 0.19]) part(root, [0.1, 0.47, 0.1], [x, 0.235, z], MAT.wood);
   const keys = new Map();
   const whiteNotes = NOTES.filter((note) => !note.black);
   const whiteWidth = 2.16 / 8;
