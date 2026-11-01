@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NOTES } from './melody.js';
 
-const MAT = Object.freeze({ casing: '#282b35', edge: '#414553', keyWhite: '#fffdf5', keyBlack: '#22252c', gold: '#c9a35a', wood: '#664632', stool: '#9b6543' });
+const MAT = Object.freeze({ casing: '#282b35', edge: '#414553', upper: '#3c404a', support: '#343c4b', keyWhite: '#fffdf5', keyBlack: '#22252c', gold: '#c9a35a', wood: '#664632', stool: '#9b6543' });
 
 export function createPiano({ position = { x: 0, z: 0 }, rotationY = 0, name = 'practice-piano' } = {}) {
   const root = new THREE.Group();
@@ -21,21 +21,21 @@ export function createPiano({ position = { x: 0, z: 0 }, rotationY = 0, name = '
     item.position.set(...at); item.castShadow = cast; item.receiveShadow = true; parent.add(item); return item;
   };
   part(root, [2.62, 0.52, 0.62], [0, 0.76, -0.36], MAT.casing);
-  part(root, [2.68, 0.09, 0.65], [0, 1.16, -0.36], MAT.edge);
-  part(root, [2.54, 0.11, 0.5], [0, 1.5, -0.43], MAT.casing);
-  part(root, [2.6, 0.07, 0.5], [0, 1.3, -0.39], MAT.edge);
+  // The upright back connects the case to its top so the upper casing cannot look suspended.
+  part(root, [2.58, 0.54, 0.16], [0, 1.28, -0.56], '#30343e');
+  part(root, [2.7, 0.12, 0.74], [0, 1.52, -0.3], MAT.upper);
   part(root, [2.3, 0.08, 0.82], [0, 0.845, 0.37], '#343743');
   for (const x of [-1.25, 1.25]) part(root, [0.16, 0.45, 0.72], [x, 0.78, 0.32], MAT.casing);
   part(root, [2.62, 0.15, 0.14], [0, 0.65, 0.62], MAT.edge);
   for (const x of [-1.12, 1.12]) for (const z of [-0.42, 0.42]) part(root, [0.12, 0.91, 0.13], [x, 0.48, z], MAT.wood);
-  // Hinged lid rests open above the soundboard.
-  part(root, [2.6, 0.08, 0.62], [0, 1.56, -0.36], MAT.edge).rotation.x = -0.16;
-  part(root, [2.14, 0.07, 0.44], [0, 1.47, -0.15], '#5c606e');
-  // Music rest and a small two-page score.
-  part(root, [1.72, 0.07, 0.1], [0, 1.75, -0.43], MAT.gold).rotation.x = -0.15;
-  const score = part(root, [0.86, 0.03, 0.58], [0, 1.79, -0.35], '#fff5d8');
+  // A short post and rail support the score directly on the piano lid.
+  part(root, [0.1, 0.18, 0.1], [0, 1.65, -0.46], MAT.support);
+  part(root, [1.72, 0.06, 0.1], [0, 1.71, -0.39], MAT.support).rotation.x = -0.15;
+  const score = part(root, [0.86, 0.03, 0.48], [0, 1.73, -0.28], '#fff5d8');
   score.rotation.x = -0.28;
-  for (let i = 0; i < 5; i++) part(root, [0.68, 0.009, 0.008], [0, 1.83 + i * 0.015, -0.48], '#8d8171', false);
+  for (let i = 0; i < 5; i++) {
+    part(root, [0.68, 0.009, 0.008], [0, 1.7495, -0.28 + (i - 2) * 0.075], '#8d8171', false).rotation.x = -0.28;
+  }
   for (const x of [-0.25, 0, 0.26]) part(root, [0.28, 0.075, 0.045], [x, 0.22, 0.78], MAT.gold);
   // A friendly padded bench and four tapered-looking supports.
   part(root, [1.36, 0.18, 0.52], [0, 0.56, 1.05], MAT.stool);
