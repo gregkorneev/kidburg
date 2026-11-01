@@ -9,8 +9,10 @@ import { SPAWN, WORLD_SIZE_X, WORLD_SIZE_Z } from '../../shared/constants.js';
 import { decode } from '../../shared/protocol.js';
 import { WORLD_OBJECT_LIMITS, WORLD_OBJECT_TYPES, isObjectType } from '../../shared/world-objects.js';
 import { BUILDINGS, PATHS, PLAZA } from '../../tools/build-world/layout.js';
-import { FIRE_STATION_ENTRANCE, FLORIST_ENTRANCE } from '../../client/engine/city-entrance.js';
-import { PLAZA_RADIUS, ROUTES, ROUTE_HALF_WIDTH } from '../../client/engine/plaza-plan.js';
+import { BAKERY_ENTRANCE, FIRE_STATION_ENTRANCE, FLORIST_ENTRANCE } from '../../client/engine/city-entrance.js';
+import { FOUNTAIN, PLAZA_RADIUS, ROUTES, ROUTE_HALF_WIDTH, plazaCollisionBoxes } from '../../client/engine/plaza-plan.js';
+import { DOOR_SPECS, doorWorldPoint } from '../../shared/doors.js';
+import { FIELD, goalGeometry } from '../../shared/interaction-contracts.js';
 
 const BUILDING_PAD = 3;
 const DOOR_RADIUS = 6;
@@ -82,7 +84,7 @@ export function createPlacement({ world = null } = {}) {
     z: PLAZA.z + route.front.z,
     r: DOOR_RADIUS,
   }));
-  for (const e of [FIRE_STATION_ENTRANCE, FLORIST_ENTRANCE]) {
+  for (const e of [FIRE_STATION_ENTRANCE, FLORIST_ENTRANCE, BAKERY_ENTRANCE]) {
     doors.push({ id: `entrance_${e.href}`, label: e.label, x: e.x, z: e.z, r: DOOR_RADIUS });
   }
   const routes = ROUTES.map((route) => ({
@@ -127,6 +129,7 @@ export function createPlacement({ world = null } = {}) {
     },
     /** Проверяет стартовую/переносимую вещь по тем же запретным зонам, что и размещаемый объект. */
     checkProp(x, z, radius) {
+      if (![x, z, radius].every(Number.isFinite) || radius < 0) return { ok: false, code: 'bad_position', reason: 'Нужны конечные координаты и радиус' };
       const m = WORLD_OBJECT_LIMITS.EDGE_MARGIN;
       if (x - radius < m || z - radius < m || x + radius > WORLD_SIZE_X - m || z + radius > WORLD_SIZE_Z - m) {
         return { ok: false, code: 'out_of_bounds', reason: 'Слишком близко к краю мира' };

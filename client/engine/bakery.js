@@ -51,7 +51,7 @@ export function buildBakeryGeometry() {
   }
 
   // Центральный вход с дверью-с-окнами, светильниками и ступеньками.
-  k.door(0, 2.35, 6.5, { w: 2.5, h: 3.4, leaf: C.wood, frame: C.trim, glass: C.glass, handle: C.gold, step: C.peach });
+  k.door(0, 2.35, 6.5, { w: 2.5, h: 3.4, leaf: C.wood, frame: C.trim, glass: C.glass, handle: C.gold, step: C.peach, leaves: false });
   for (const x of [-2.0, 2.0]) {
     k.box(0.12, 0.7, 0.14, x, 3.5, 6.75, C.dark);
     k.sphere(0.22, x, 3.05, 6.9, 0xffe3a0, { w: 8, h: 6, tinted: false });

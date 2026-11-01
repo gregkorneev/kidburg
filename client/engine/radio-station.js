@@ -54,7 +54,7 @@ export function buildRadioStationGeometry() {
     k.window(x, 6.9, 5.65, { w: 1.9, h: 2.0, glass: C.glass, frame: C.trim, sill: C.wallTeal, lintel: null });
   }
   // Вход: двустворчатая дверь, ступени, поручни.
-  k.door(0, 2.4, 5.65, { w: 2.4, h: 3.2, leaf: C.door, frame: C.trim, glass: C.glass, handle: C.brass, step: C.stone });
+  k.door(0, 2.4, 5.65, { w: 2.4, h: 3.2, leaf: C.door, frame: C.trim, glass: C.glass, handle: C.brass, step: C.stone, leaves: false });
   k.box(4.6, 0.26, 1.5, 0, 4.35, 6.4, C.wallTeal, { r: 0.07 });
   for (const sx of [-1, 1]) k.box(0.14, 3.4, 0.14, sx * 2.1, 2.5, 6.9, C.trim);
   // Эмблема: микрофон и три дуги сигнала по сторонам вывески.

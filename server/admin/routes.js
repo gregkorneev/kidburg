@@ -51,7 +51,7 @@ export function registerAdminPageGuard(app, { auth }) {
  * @param {import('fastify').FastifyInstance} app
  * @param {object} deps
  */
-export function registerAdmin(app, { auth, audit, telemetry, dynamic, placement, game, db, world, startedAt = Date.now(), now = Date.now }) {
+export function registerAdmin(app, { auth, audit, telemetry, dynamic, placement, game, db, world, interactive = null, startedAt = Date.now(), now = Date.now }) {
   const log = app.log;
   const subscribers = new Set();
   let tickTimer = null;
@@ -280,6 +280,9 @@ export function registerAdmin(app, { auth, audit, telemetry, dynamic, placement,
         zones: placement.zones(),
         cache: { dynamicBytes: dynamic.bytes },
       }));
+
+      // Игровые предметы и мячи «Интерактивного мира»: только просмотр, правка идёт через игру и не пересекается с объектами редактора.
+      scope.get('/world/interactive', async () => (interactive ? interactive.describe() : { props: [], balls: [] }));
 
       scope.post('/world/validate', { bodyLimit: 4096 }, async (req) => {
         const b = req.body ?? {};

@@ -3,9 +3,9 @@
 
 /**
  * @param {{x: number, z: number}} player
- * @param {{florist: object, fire: object}} entrances объекты с x, z, radius, href, label
+ * @param {Record<string, object>} entrances входы по типу цели ({florist, fire, bakery}): объекты с x, z, radius, href, label
  * @param {{id: string, kind: string, object: object, x: number, z: number, radius: number}[]} mechanisms
- * @returns {{kind: 'florist'|'fire'|'mechanism', label: string, distance: number, href?: string, mechanism?: object} | null}
+ * @returns {{kind: string (вход) | 'npc' | 'mechanism', label: string, distance: number, href?: string, mechanism?: object} | null}
  */
 export function pickCityInteraction(player, entrances, mechanisms = [], npc = null) {
   if (!Number.isFinite(player?.x) || !Number.isFinite(player?.z)) return null;
@@ -14,13 +14,23 @@ export function pickCityInteraction(player, entrances, mechanisms = [], npc = nu
     const distance = Math.hypot(player.x - target.x, player.z - target.z);
     if (distance <= target.radius) candidates.push({ kind, distance, ...extra });
   };
-  for (const [kind, entrance] of Object.entries(entrances)) {
+  for (const [kind, entrance] of Object.entries(entrances ?? {})) {
     if (entrance) add(kind, entrance, { label: entrance.label, href: entrance.href });
   }
   if (npc) add('npc', npc, { npc });
+  const hasYaw = Number.isFinite(player.yaw);
+  const forward = hasYaw ? { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) } : null;
   for (const m of mechanisms) {
-    if (m.kind !== 'gate') continue;
-    add('mechanism', m, { label: `${m.object.label}`, mechanism: m });
+    if (m.kind === 'gate') add('mechanism', m, { label: `${m.object.label}`, mechanism: m });
+    // Дверь без страницы интерьера открывается и закрывается клавишей E, если игрок смотрит в её сторону.
+    // Двери со страницей (href) — часть входа в здание: их открывает вход.
+    else if (m.kind === 'door' && !m.href) {
+      const dx = m.x - player.x;
+      const dz = m.z - player.z;
+      const d = Math.hypot(dx, dz);
+      if (forward && d > 0.6 && (dx * forward.x + dz * forward.z) / d < 0.15) continue;
+      add('mechanism', m, { label: `${m.object.label}`, mechanism: m });
+    }
   }
   if (candidates.length === 0) return null;
   return candidates.reduce((best, c) => (c.distance < best.distance ? c : best));

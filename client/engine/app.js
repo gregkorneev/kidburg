@@ -6,25 +6,17 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { TALK_DISTANCE } from '../../shared/constants.js';
 import { createHud } from '../hud/index.js';
-import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter } from './art/character.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter, setCarry, triggerKick } from './art/character.js';
 import { applyStylizedLook } from './art/lighting.js';
 import { readQuality } from './art/quality.js';
 import { createChunkManager, makeLabel } from './chunks.js';
 import { createDynamicObjects } from './dynamic-objects.js';
-import { cityGateColliders, pickCityInteraction } from './city-interactions.js';
+import { cityGateColliders } from './city-interactions.js';
+import { createInteractionManager } from './interactions/interaction-manager.js';
+import { createCarrySystem } from './interactions/carry-system.js';
+import { createBallRenderer } from './interactions/physics-renderer.js';
 import { createMechanismSync } from './mechanism-sync.js';
-import {
-  BAKERY_ENTRANCE,
-  FIRE_STATION_ENTRANCE,
-  FLORIST_ENTRANCE,
-  RADIO_STATION_ENTRANCE,
-  MUSIC_SCHOOL_ENTRANCE,
-  isNearFireStationEntrance,
-  isNearFloristEntrance,
-  isNearBakeryEntrance,
-  isNearRadioStationEntrance,
-  isNearMusicSchoolEntrance,
-} from './city-entrance.js';
+import { CITY_ENTRANCES } from './city-entrance.js';
 import { createEmitter } from './emitter.js';
 import { createHttp } from './http.js';
 import { createInput } from './input.js';
@@ -237,30 +229,48 @@ export function createClient({ container, networkOnly = false }) {
     const cameraGoal = { x: 0, y: 0, z: 0 };
     /** Модель локального игрока: тот же персонаж, что видят другие (по id и цвету из сессии). */
     let avatar = null;
-    let interaction = null;
+    let interaction = null; // цель клавиши E: вход, дверь, ворота, NPC, предмет или мяч
     const mechSync = createMechanismSync({ api: { on: emitter.on, net } });
+    // Мячи и предметы показываются только в загруженных чанках (кеш клиента 10% не расширяется).
+    const isLoaded = (x, z) => world.heightAt(x, z) !== null;
+    const balls = createBallRenderer({ scene, isLoaded });
+    const carry = createCarrySystem({
+      scene,
+      isLoaded,
+      selfId: () => state.me?.id ?? -1,
+      heightAt: (x, z) => world.heightAt(x, z) ?? 0,
+      anchorOf: (id) => (id === state.me?.id ? (avatar ? { parent: avatar, scale: CITY_CHARACTER_SCALE, forward: 1 } : null) : remote.anchorOf(id)),
+    });
+    /** Кто сейчас несёт предмет: позы рук обновляются при каждом изменении предметов. */
+    let carrying = new Set();
+    function syncCarryPoses() {
+      const now = new Set();
+      for (const row of carry.rows()) if (row.state === 'held') now.add(row.holder);
+      for (const id of carrying) if (!now.has(id)) (id === state.me?.id ? avatar && setCarry(avatar, false) : remote.setCarrying(id, false));
+      for (const id of now) (id === state.me?.id ? avatar && setCarry(avatar, true) : remote.setCarrying(id, true));
+      carrying = now;
+    }
+    const interactions = createInteractionManager({
+      net,
+      mechSync,
+      navigate: (href) => win.location.assign(href),
+      notify: (text) => hud.setNotice(text),
+      onNpc: () => emitter.emit('interact', state.npc),
+      onAction: (action) => {
+        if (action === 'kick' && avatar) triggerKick(avatar);
+      },
+    });
     const input = createInput({
       target: renderer.domElement,
       document,
       window: win,
-      onInteract: () => {
-        if (interaction?.href) {
-          win.location.assign(interaction.href);
-          return;
-        }
-        if (interaction?.mechanism) {
-          const { id, object } = interaction.mechanism;
-          mechSync.request(id, !object.wantsOpen, (open) => (open ? object.open() : object.close()));
-          return;
-        }
-        emitter.emit('interact', state.npc);
-      },
+      onInteract: () => interactions.activate(interaction, player),
       onChat: () => emitter.emit('chat_key', null),
     });
 
     runtime = { input };
     // Отладочный доступ для проверки графики: только при ?debug=1.
-    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, dynamic, remote, player, stylized, cameraArm, get avatar() { return avatar; }, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
+    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, dynamic, remote, player, stylized, cameraArm, carry, balls, interactions, get interaction() { return interaction; }, get avatar() { return avatar; }, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
     hud.setStatus(net.status);
     hud.setCache(state.cache);
 
@@ -300,12 +310,17 @@ export function createClient({ container, networkOnly = false }) {
       world.clear();
       dynamic.clear();
       remote.clear();
+      carry.dispose();
+      balls.dispose();
+      carrying = new Set();
+      interactions.reset();
       setNpc(null);
     }
 
     const offs = [
       emitter.on('welcome', (msg) => {
         resetWorld(); // сервер начинает зеркало кеша и список игроков заново
+        balls.resetClock();
         const s = msg.state;
         setPlayerPosition(player, s.x, s.y, s.z);
         hud.setPlayerPosition(player.x, player.z);
@@ -324,6 +339,14 @@ export function createClient({ container, networkOnly = false }) {
       emitter.on('dyn_snapshot', ({ cx, cz, objects }) => dynamic.snapshot(cx, cz, objects)),
       emitter.on('dyn_upsert', ({ object }) => dynamic.upsert(object)),
       emitter.on('dyn_remove', ({ id, rev }) => dynamic.remove(id, rev)),
+      emitter.on('prop_snapshot', ({ list }) => { carry.snapshot(list); syncCarryPoses(); }),
+      emitter.on('prop_state', ({ prop }) => { carry.state(prop); syncCarryPoses(); }),
+      emitter.on('ball_snapshot', (msg) => balls.snapshot(msg)),
+      emitter.on('ball_event', (msg) => {
+        balls.event(msg);
+        if (msg.kind === 'kick' && msg.by !== state.me?.id) remote.kick(msg.by);
+      }),
+      emitter.on('interact_result', (msg) => interactions.onResult(msg)),
       emitter.on('chunk_load', ({ cx, cz, data }) => {
         try {
           world.load(cx, cz, data);
@@ -332,7 +355,7 @@ export function createClient({ container, networkOnly = false }) {
         }
       }),
       emitter.on('cache_stats', () => hud.setCache(state.cache)),
-      emitter.on('player_join', (msg) => remote.join(msg.id, msg.name, msg.appearance)),
+      emitter.on('player_join', (msg) => { remote.join(msg.id, msg.name, msg.appearance); syncCarryPoses(); }),
       emitter.on('player_leave', (msg) => remote.leave(msg.id)),
       emitter.on('players', (msg) => remote.snapshot(msg.list, performance.now())),
       emitter.on('correct', (msg) => {
@@ -449,13 +472,17 @@ export function createClient({ container, networkOnly = false }) {
           const nearbyNpc = world.nearestNpc(player.x, player.y, player.z, TALK_DISTANCE);
           const mechanisms = world.mechanisms();
           mechSync.reconcile(mechanisms);
-          interaction = pickCityInteraction(player, {
-            fire: FIRE_STATION_ENTRANCE,
-            florist: FLORIST_ENTRANCE,
-            bakery: BAKERY_ENTRANCE,
-            radio: RADIO_STATION_ENTRANCE,
-            music: MUSIC_SCHOOL_ENTRANCE,
-          }, mechanisms, nearbyNpc ? { ...nearbyNpc, radius: TALK_DISTANCE } : null);
+          interactions.setMechanisms(mechanisms);
+          interaction = interactions.pick({
+            player,
+            entrances: CITY_ENTRANCES,
+            mechanisms,
+            npc: nearbyNpc ? { ...nearbyNpc, radius: TALK_DISTANCE } : null,
+            props: carry.groundProps(),
+            balls: balls.positions(),
+            held: carry.heldByMe(),
+            colliders: worldView.collidersNear(player.x, player.z),
+          });
           setNpc(interaction?.npc ?? null);
           lastPrompt = interaction?.label ?? '';
           hud.setEntrancePrompt(lastPrompt);
@@ -463,6 +490,9 @@ export function createClient({ container, networkOnly = false }) {
       }
 
       remote.update(now);
+      interactions.update();
+      carry.update(dt);
+      balls.update(dt);
       world.update(dt, now / 1000, player);
       updateAvatarAndCamera(now / 1000, dt);
       stylized.update(player, now / 1000);
@@ -488,6 +518,8 @@ export function createClient({ container, networkOnly = false }) {
       input.dispose();
       clearAvatar();
       remote.dispose();
+      carry.dispose();
+      balls.dispose();
       mechSync.dispose();
       dynamic.dispose();
       world.dispose();

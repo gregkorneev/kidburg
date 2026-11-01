@@ -124,6 +124,7 @@ export function createGame({
   /** Игроки, прошедшие hello. */
   const players = new Map();
   let tickNo = 0;
+  let physicsNo = 0; // счётчик шагов физики мячей: клиент отбрасывает снимки старше уже применённых
 
   const send = (conn, msg) => {
     if (conn.ws.readyState === WebSocket.OPEN) conn.ws.send(encode(msg));
@@ -270,7 +271,7 @@ export function createGame({
   const nearField = (p) => Math.hypot(p.x - FIELD.x, p.z - FIELD.z) <= BALL_VIEW_M;
 
   /** Мячи, о которых игрок ещё не знает или которые движутся; полный набор при подключении. */
-  function sendBalls(p, tick = tickNo) {
+  function sendBalls(p, tick = physicsNo) {
     if (!interactive || !nearField(p)) return;
     const rows = [];
     for (const ball of interactive.balls.list()) {
@@ -313,7 +314,6 @@ export function createGame({
   }
 
   /** Фиксированный физический шаг мячей и рассылка снимков (реже, чем шаги). */
-  let physicsNo = 0;
   function physicsTick() {
     if (!interactive) return;
     physicsNo += 1;

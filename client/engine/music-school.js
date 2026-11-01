@@ -62,7 +62,7 @@ export function buildMusicSchoolGeometry() {
   // Вход: лестница, дверь, козырёк на колонках и золотые ручки.
   k.slab(4.8, 0.3, 1.6, 0, 0.5, 6.1, C.stone, { r: 0.07 });
   k.slab(4.2, 0.26, 1.1, 0, 0.8, 6.0, C.white, { r: 0.07 });
-  k.door(0, 2.7, 5.1, { w: 2.5, h: 3.3, leaf: C.door, frame: C.white, glass: C.glass, handle: C.gold });
+  k.door(0, 2.7, 5.1, { w: 2.5, h: 3.3, leaf: C.door, frame: C.white, glass: C.glass, handle: C.gold, leaves: false });
   k.box(7.8, 0.9, 2.0, 0, 4.55, 6.1, C.blueDark, { r: 0.08 });
   k.box(8.0, 0.14, 2.15, 0, 5.07, 6.1, C.white, { r: 0.05 });
   for (const sx of [-1, 1]) {

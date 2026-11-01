@@ -71,7 +71,7 @@ export function buildCityHallGeometry() {
   k.sphere(0.2, 0, 8.6, 7.68, C.roofEdge, { w: 8, h: 6 });
 
   // Центральные двери, фонари и вазоны.
-  k.door(0, 3.4, 5.2, { w: 2.9, h: 3.1, leaf: C.door, frame: C.trim, handle: C.brass });
+  k.door(0, 3.4, 5.2, { w: 2.9, h: 3.1, leaf: C.door, frame: C.trim, handle: C.brass, leaves: false });
   for (const x of [-3.7, 3.7]) {
     k.box(0.22, 0.5, 0.22, x, 3.3, 5.45, C.brass, { tinted: false });
     k.sphere(0.2, x, 3.0, 5.45, 0xffe9a8, { w: 7, h: 6, tinted: false });

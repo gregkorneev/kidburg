@@ -9,6 +9,7 @@ const PROTECTED = [
   ['GET', '/api/admin/clients'],
   ['GET', '/api/admin/stream'],
   ['GET', '/api/admin/world'],
+  ['GET', '/api/admin/world/interactive'],
   ['POST', '/api/admin/world/objects'],
   ['PATCH', '/api/admin/world/objects/o_0000000000'],
   ['DELETE', '/api/admin/world/objects/o_0000000000'],

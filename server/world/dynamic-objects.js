@@ -50,6 +50,8 @@ export function createDynamicWorld({ db, placement, world = null, now = Date.now
   const wireBytes = new Map();
   const listeners = new Set();
   let revision = 0;
+  /** Игровые предметы занимают места и не должны перекрываться административными объектами. */
+  let reserved = () => [];
 
   const sizeOf = (o) => encode(toWire(o)).length;
 
@@ -132,6 +134,11 @@ export function createDynamicWorld({ db, placement, world = null, now = Date.now
       const need = r + WORLD_OBJECT_TYPES[other.type].radius * other.scale + WORLD_OBJECT_LIMITS.MIN_GAP;
       if (gap < need) return fail(422, 'overlap', 'Пересекается с другим динамическим объектом');
     }
+    for (const spot of reserved()) {
+      if (Math.hypot(spot.x - candidate.x, spot.z - candidate.z) < r + spot.r + WORLD_OBJECT_LIMITS.MIN_GAP) {
+        return fail(422, 'overlap', `Место занято игровым предметом («${spot.label}»)`);
+      }
+    }
     return { ok: true, candidate };
   }
 
@@ -172,6 +179,9 @@ export function createDynamicWorld({ db, placement, world = null, now = Date.now
       return dynBytes.reduce((a, b) => a + b, 0);
     },
     list: () => [...objects.values()],
+    setReserved(fn) {
+      reserved = typeof fn === 'function' ? fn : () => [];
+    },
     get: (id) => objects.get(id) ?? null,
     /** Объекты чанка в формате протокола. */
     forChunk(cx, cz) {

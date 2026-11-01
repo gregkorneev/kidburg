@@ -2,7 +2,7 @@
 // Отображаем с задержкой INTERP_DELAY_MS, чтобы почти всегда было два снимка вокруг момента показа.
 
 import * as THREE from 'three';
-import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter } from './art/character.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter, setCarry, triggerKick } from './art/character.js';
 
 const LABEL_HEIGHT = 2.15;
 const RUN_SPEED = 6; // м/с: быстрее считаем бегом, как в пожарной части
@@ -83,6 +83,20 @@ export function createRemotePlayers({ scene, createLabel, quality = 'medium' }) 
     join(id, name, appearance) {
       if (players.has(id)) destroy(players.get(id));
       players.set(id, create(id, name, appearance));
+    },
+    /** Куда крепить предмет в руках игрока: его группа (без масштаба); игрок смотрит в −Z. null — игрока нет. */
+    anchorOf(id) {
+      const p = players.get(id);
+      return p ? { parent: p.group, scale: 1, forward: -1 } : null;
+    },
+    /** Поза «несёт в руках» / удар ногой для удалённого игрока. */
+    setCarrying(id, value) {
+      const p = players.get(id);
+      if (p) setCarry(p.avatar, value);
+    },
+    kick(id) {
+      const p = players.get(id);
+      if (p) triggerKick(p.avatar);
     },
     leave(id) {
       const p = players.get(id);

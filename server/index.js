@@ -148,6 +148,7 @@ export async function buildApp(overrides = {}) {
     game,
     db,
     world,
+    interactive,
     now: config.now,
   });
   return app;

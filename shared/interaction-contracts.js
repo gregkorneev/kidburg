@@ -55,14 +55,14 @@ export const BALL = Object.freeze({
   restitutionWall: 0.52, // доля нормальной скорости после удара о препятствие
   restitutionBall: 0.85,
   wallFriction: 0.92, // доля касательной скорости после удара о препятствие
-  rollDecel: 0.9, // м/с²: постоянное замедление качения
-  rollDamping: 0.5, // 1/с: пропорциональное замедление
+  rollDecel: 1.5, // м/с²: постоянное замедление качения
+  rollDamping: 0.55, // 1/с: пропорциональное замедление
   airDamping: 0.06, // 1/с
   groundBounceMin: 0.9, // м/с: слабее — мяч не подпрыгивает, а катится
   restSpeed: 0.12, // м/с: медленнее и на земле — мяч останавливается
   maxSpeed: 20,
-  kickSpeed: 9.5,
-  kickLift: 3.1,
+  kickSpeed: 8.5,
+  kickLift: 2.8,
   kickKeep: 0.25, // доля прежней скорости мяча, сохраняемая при ударе
   contactSpeedMin: 1.4,
   contactSpeedMax: 4.5,
@@ -118,7 +118,7 @@ export const PROP_HOMES = Object.freeze([
   Object.freeze({ id: 'cone-1', type: 'cone', x: 392, z: 394, ry: 0 }),
   Object.freeze({ id: 'cone-2', type: 'cone', x: 395, z: 393, ry: 0 }),
   // на свободной части площади
-  Object.freeze({ id: 'crate-3', type: 'crate', x: 398, z: 430, ry: 0.7 }),
+  Object.freeze({ id: 'crate-3', type: 'crate', x: 397, z: 430, ry: 0.7 }),
   Object.freeze({ id: 'cone-3', type: 'cone', x: 436, z: 398, ry: 0 }),
   // у поля
   Object.freeze({ id: 'crate-4', type: 'crate', x: 441, z: 388, ry: 0.2 }),

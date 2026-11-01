@@ -59,7 +59,7 @@ export function buildFlowerShopGeometry() {
   }
 
   // Вход под аркой из плюща.
-  k.door(0, 2.3, 4.55, { w: 1.9, h: 3.0, leaf: C.door, frame: C.trim, glass: C.glass, handle: C.yellow, step: C.stone });
+  k.door(0, 2.3, 4.55, { w: 1.9, h: 3.0, leaf: C.door, frame: C.trim, glass: C.glass, handle: C.yellow, step: C.stone, leaves: false });
   for (const sx of [-1, 1]) k.box(0.2, 3.9, 0.2, sx * 1.35, 2.15, 5.5, C.frameDark, { r: 0.05 });
   k.torus(1.35, 0.1, 0, 4.1, 5.5, C.frameDark, { rot: [0, 0, 0], arc: Math.PI, radial: 6, tubular: 18 });
   for (let i = 0; i < 12; i++) {

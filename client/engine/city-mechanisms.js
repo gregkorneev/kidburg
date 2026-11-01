@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { createSectionalGate } from './mechanisms/gate.js';
 import { createSatelliteDish } from './mechanisms/antenna.js';
+import { createDoor } from './mechanisms/door.js';
+import { DOOR_REACH, doorSpec } from '../../shared/doors.js';
 import { createSignDecor } from './city-decor.js';
 import { FIRE_STATION_SIGNS, GARAGE_X, GATE, GATE_PALETTE } from './fire-station.js';
 import { DISH_POST, MAST_BEACON, RADIO_STATION_SIGNS } from './radio-station.js';
@@ -87,4 +89,42 @@ export function decorateRadioStation(args) {
     setQuality: (level) => dish.setQuality(level),
     dispose: () => { dish.dispose(); root.removeFromParent(); },
   });
+}
+
+/**
+ * Входные двери здания: створки на петлях поверх неподвижной рамы префаба. Дверь — такой же механизм с общим
+ * состоянием, как ворота (mech_set / mech_state): kind 'door', href — страница интерьера, если она есть.
+ * @param {(args: object) => {update?: Function, setQuality?: Function, dispose: Function, mechanisms?: object[]}} makeBase
+ * @param {string[]} doorIds идентификаторы из shared/doors.js
+ */
+export function withDoors(makeBase, doorIds) {
+  return (args) => {
+    const base = makeBase(args);
+    const { group, instance } = args;
+    const root = instanceRoot(group, instance);
+    const doors = doorIds.map((id) => {
+      const spec = doorSpec(id);
+      const door = createDoor({ id, w: spec.local.w, h: spec.local.h, leaf: spec.leaf, glass: spec.glass, handle: spec.handle });
+      door.root.position.set(spec.local.x, spec.local.y, spec.local.z);
+      root.add(door.root);
+      return { spec, door };
+    });
+    const mechanisms = doors.map(({ spec, door }) => ({
+      id: spec.id,
+      kind: 'door',
+      object: door,
+      href: spec.href,
+      doorLabel: spec.label,
+      // Точка перед порогом, от которой считается дальность клавиши E; угол здания нужен для выбора по направлению взгляда.
+      ...toWorld(group, instance, spec.local.x, spec.local.z + 1.4),
+      rotationY: instance.ry,
+      radius: DOOR_REACH * instance.scale,
+    }));
+    return {
+      update(dt, elapsed) { base.update?.(dt, elapsed); for (const { door } of doors) door.update(dt, elapsed); },
+      setQuality(level) { base.setQuality?.(level); },
+      dispose() { for (const { door } of doors) door.dispose(); root.removeFromParent(); base.dispose(); },
+      mechanisms: [...(base.mechanisms ?? []), ...mechanisms],
+    };
+  };
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { turnNpcToward } from '../../engine/npc-facing.js';
 import { WINDOW_HIT_LIMIT } from './state.js';
 import { LOCAL_POINTS, LOCAL_WINDOWS, START, WALL, WINDOW_DEPTH } from './layout.js';
+import { FURNITURE, furnitureBlockers } from './furniture-plan.js';
 import { SAFETY_ZONE, blockedBySafetyZone } from './safety-zone.js';
 import { canMoveWithHose } from './hose-length.js';
 import { advanceReel, REEL_RADIUS, woundTurns } from './reel-motion.js';
@@ -18,6 +19,7 @@ import { buildFireTruck, buildHoseStand, buildLocker, buildMannequin, buildSafeZ
 import { createScenery } from './scenery.js';
 import { createMechanismSync } from '../../engine/mechanism-sync.js';
 import { createSectionalGate } from '../../engine/mechanisms/gate.js';
+import { createCabinet, createDrawerChest } from '../../engine/mechanisms/furniture.js';
 import { nearestInteraction } from './interaction-target.js';
 import { BENCHES, BUSHES, CONES, FENCES, LAMPS, PLANTERS, TREES } from './yard-plan.js';
 
@@ -114,6 +116,18 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
     station.add(gate.root);
     return gate;
   });
+  // Мебель тренировочной части: два шкафа с дверцами на петлях и тумба с тремя независимыми ящиками.
+  // Состояние локальное для страницы станции: это декорация, не влияющая на задания, поэтому в сеть не уходит.
+  const cabinets = FURNITURE.cabinets.map((spec) => {
+    const cabinet = createCabinet(spec);
+    cabinet.root.position.set(spec.x, 0, spec.z);
+    scene.add(cabinet.root);
+    return cabinet;
+  });
+  const chest = createDrawerChest(FURNITURE.chest);
+  chest.root.position.set(FURNITURE.chest.x, 0, FURNITURE.chest.z);
+  scene.add(chest.root);
+  const furniture = [...cabinets, ...chest.drawers];
   mechSync?.reconcile([
     { id: 'fire-truck-ladder', kind: 'ladder', object: truckMechanism },
     ...yardGates.map((gate) => ({ id: gate.id, kind: 'gate', object: gate })),
@@ -287,6 +301,7 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
       minX: Math.min(x0, x1) - 0.12, maxX: Math.max(x0, x1) + 0.12,
       minZ: Math.min(z0, z1) - 0.12, maxZ: Math.max(z0, z1) + 0.12,
     })),
+    ...furnitureBlockers(),
   ];
   // Высоты для камеры: здание, грузовик и учебная стена выше камеры, остальное — ниже.
   const CAMERA_BLOCKER_HEIGHTS = [4, 9, 3.6, 2.2, 1.6];
@@ -399,6 +414,7 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
       else add('deliver', safeZone, LOCAL_POINTS.safe_zone.radius, 'Доставить манекен');
     }
     for (const gate of yardGates) add('gate', gate.root, 3, gate.label, { gate });
+    for (const item of furniture) add('furniture', item.root, FURNITURE.reach, item.label, { item });
     add('truck', truck, 3.6, truckMechanism.wantsOpen ? 'Убрать лестницу' : 'Выдвинуть лестницу');
     return nearestInteraction(candidates);
   }
@@ -446,6 +462,7 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
       else gate.toggle();
       return;
     }
+    if (target.kind === 'furniture') return void target.item.toggle();
     if (target.kind === 'truck') {
       const next = !truckMechanism.wantsOpen;
       if (mechSync) mechSync.request('fire-truck-ladder', next, () => truckMechanism.toggle());
@@ -755,6 +772,7 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
     scenery.update(elapsed);
     truckMechanism.update(delta, elapsed);
     for (const gate of yardGates) gate.update(delta, elapsed);
+    for (const item of furniture) item.update(delta, elapsed);
     if (!aim) updateCamera();
     look.update(player.position, elapsed);
     updatePrompt();
@@ -810,6 +828,7 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
     /** Инструменты проверки (?debug=1 в main.js): положение камеры, статистика отрисовки, прямой доступ к сцене. */
     debug: {
       scene, camera, renderer, player, npc,
+      teleport(x, z, heading = 0) { setLocalPosition({ x, z, heading }); },
       setCamera(position, target) { debugCamera = position ? { position: new THREE.Vector3(...position), target: new THREE.Vector3(...target) } : null; },
       stats() {
         const { render, memory } = renderer.info;
@@ -837,6 +856,8 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
       clearRemotePlayers();
       mechSync?.dispose();
       for (const gate of yardGates) gate.dispose();
+      for (const cabinet of cabinets) cabinet.dispose();
+      chest.dispose();
       for (const root of [player, npc, station, truck, locker, wall.group, hoseStand, mannequin, safeZone]) disposeModel(root);
       hoseSegments.geometry.dispose();
       coilSegments.geometry.dispose();

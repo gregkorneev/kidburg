@@ -10,7 +10,7 @@ import { BAKERY_SIGNS } from './bakery.js';
 import { buildCityPlazaGeometry } from './city-plaza.js';
 import { buildPathGeometry, pathIdAt } from './city-paths.js';
 import { createSignDecor, decoratePlaza } from './city-decor.js';
-import { decorateFireStation, decorateRadioStation } from './city-mechanisms.js';
+import { decorateFireStation, decorateRadioStation, withDoors } from './city-mechanisms.js';
 import { treeProfile } from './art/wind.js';
 import { buildFireStationGeometry, fireStationCollisionBoxes } from './fire-station.js';
 import { FLOWER_SHOP_SIGNS, buildFlowerShopGeometry } from './flower-shop.js';
@@ -28,12 +28,12 @@ const PREFABS = {
   3: { name: 'lamp', color: 0xffffff, vertexColors: true, collider: [0.5, 4, 0.5], build: buildLampPrefab },
   4: { name: 'bed', color: 0xdfe7ee, collider: [1, 1, 2], build: box(1, 1, 2) },
   5: { name: 'cabinet', color: 0xb9c4cf, collider: [1, 2, 1], build: box(1, 2, 1) },
-  10: { name: 'city_hall', color: 0xffffff, vertexColors: true, collider: [22, 9, 14], build: buildCityHallGeometry, decorate: createSignDecor(CITY_HALL_SIGNS) },
-  11: { name: 'fire_station', color: 0xffffff, vertexColors: true, colliders: fireStationCollisionBoxes, build: buildFireStationGeometry, decorate: decorateFireStation },
-  12: { name: 'bakery', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildBakeryGeometry, decorate: createSignDecor(BAKERY_SIGNS) },
-  13: { name: 'flower_shop', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildFlowerShopGeometry, decorate: createSignDecor(FLOWER_SHOP_SIGNS) },
-  14: { name: 'music_school', color: 0xffffff, vertexColors: true, collider: [22, 9, 14], build: buildMusicSchoolGeometry, decorate: createSignDecor(MUSIC_SCHOOL_SIGNS) },
-  15: { name: 'radio_station', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildRadioStationGeometry, decorate: decorateRadioStation },
+  10: { name: 'city_hall', color: 0xffffff, vertexColors: true, collider: [22, 9, 14], build: buildCityHallGeometry, decorate: withDoors(createSignDecor(CITY_HALL_SIGNS), ['door-city-hall']) },
+  11: { name: 'fire_station', color: 0xffffff, vertexColors: true, colliders: fireStationCollisionBoxes, build: buildFireStationGeometry, decorate: withDoors(decorateFireStation, ['door-fire']) },
+  12: { name: 'bakery', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildBakeryGeometry, decorate: withDoors(createSignDecor(BAKERY_SIGNS), ['door-bakery']) },
+  13: { name: 'flower_shop', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildFlowerShopGeometry, decorate: withDoors(createSignDecor(FLOWER_SHOP_SIGNS), ['door-florist']) },
+  14: { name: 'music_school', color: 0xffffff, vertexColors: true, collider: [22, 9, 14], build: buildMusicSchoolGeometry, decorate: withDoors(createSignDecor(MUSIC_SCHOOL_SIGNS), ['door-music-school']) },
+  15: { name: 'radio_station', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildRadioStationGeometry, decorate: withDoors(decorateRadioStation, ['door-radio']) },
   20: { name: 'city_plaza', color: 0xffffff, vertexColors: true, collider: null, colliders: plazaCollisionBoxes, build: buildCityPlazaGeometry, decorate: decoratePlaza },
   // Все дорожки в мире имеют один ID; размеры берутся из PATHS по положению инстанса (city-paths.js).
   21: {

@@ -83,7 +83,7 @@ export function buildFireStationGeometry() {
   }
 
   // Входная дверь с остеклением справа (E — вход в учебную пожарную часть).
-  k.door(7.72, 2.4, 6.75, { w: 2.2, h: 3.1, leaf: C.green, frame: C.cream, glass: C.glass, handle: C.gold, step: C.stone });
+  k.door(7.72, 2.4, 6.75, { w: 2.2, h: 3.1, leaf: C.green, frame: C.cream, glass: C.glass, handle: C.gold, step: C.stone, leaves: false });
   k.box(3.2, 0.2, 1.4, 7.72, 4.35, 7.4, C.red, { r: 0.07 }); // козырёк
   for (const sx of [-1, 1]) k.box(0.1, 0.5, 1.2, 7.72 + sx * 1.5, 4.08, 7.35, C.darkRed);
 

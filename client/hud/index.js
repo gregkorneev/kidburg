@@ -37,6 +37,13 @@ export function createHud(container) {
   entrance.hidden = true;
   container.appendChild(entrance);
 
+  const notice = document.createElement('div');
+  notice.className = 'city-notice';
+  notice.setAttribute('role', 'status');
+  notice.hidden = true;
+  container.appendChild(notice);
+  let noticeTimer = 0;
+
   const hud = {
     setStatus(status) {
       lines.status.textContent = `Связь: ${STATUS_TEXT[status] ?? status}`;
@@ -64,6 +71,13 @@ export function createHud(container) {
       entrance.hidden = !label;
       entrance.textContent = label ? `E  ${label}` : '';
     },
+    /** Короткое сообщение игроку; само исчезает через ~2,6 с. */
+    setNotice(text = '') {
+      clearTimeout(noticeTimer);
+      notice.hidden = !text;
+      notice.textContent = text;
+      if (text) noticeTimer = setTimeout(() => { notice.hidden = true; }, 2600);
+    },
     setPlayerPosition(x, z) {
       minimap.setPosition(x, z);
     },
@@ -72,6 +86,8 @@ export function createHud(container) {
       minimap.dispose();
       root.remove();
       entrance.remove();
+      clearTimeout(noticeTimer);
+      notice.remove();
     },
   };
   hud.setStatus('closed');

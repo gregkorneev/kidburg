@@ -197,16 +197,19 @@ export function createPrefabKit({ seed = 1, tint = 0.035 } = {}) {
   }
 
   /** Двустворчатая дверь с рамой, стеклом, ручками и порожком. z — плоскость стены. */
-  function door(x, y, z, { w = 2.4, h = 3.2, leaf = 0x5b3727, frame = 0xfff1d8, glass = 0x86bccd, handle = 0xf0c85f, step = null, transom = true } = {}) {
+  /** leaves: false — створки и ручки не добавляются (их строит подвижная дверь, client/engine/mechanisms/door.js). */
+  function door(x, y, z, { w = 2.4, h = 3.2, leaf = 0x5b3727, frame = 0xfff1d8, glass = 0x86bccd, handle = 0xf0c85f, step = null, transom = true, leaves = true } = {}) {
     box(w + 0.4, h + 0.35, 0.16, x, y + 0.05, z + 0.05, frame, { r: 0.05 });
     box(w, h, 0.12, x, y, z + 0.1, 0x2a1d17, { tinted: false });
-    for (const side of [-1, 1]) {
-      box(w / 2 - 0.08, h - 0.1, 0.1, x + side * (w / 4), y, z + 0.17, leaf, { r: 0.04 });
-      box(w / 2 - 0.4, h * 0.34, 0.06, x + side * (w / 4), y + h * 0.17, z + 0.23, glass, { r: 0.03, tinted: false });
-      box(w / 2 - 0.34, h * 0.26, 0.05, x + side * (w / 4), y - h * 0.24, z + 0.23, tmpColor.set(leaf).multiplyScalar(0.82).getHex(), { r: 0.03, tinted: false });
+    if (leaves) {
+      for (const side of [-1, 1]) {
+        box(w / 2 - 0.08, h - 0.1, 0.1, x + side * (w / 4), y, z + 0.17, leaf, { r: 0.04 });
+        box(w / 2 - 0.4, h * 0.34, 0.06, x + side * (w / 4), y + h * 0.17, z + 0.23, glass, { r: 0.03, tinted: false });
+        box(w / 2 - 0.34, h * 0.26, 0.05, x + side * (w / 4), y - h * 0.24, z + 0.23, tmpColor.set(leaf).multiplyScalar(0.82).getHex(), { r: 0.03, tinted: false });
+      }
+      box(0.08, h, 0.14, x, y, z + 0.2, frame, { r: 0.02 });
+      for (const side of [-1, 1]) sphere(0.07, x + side * 0.2, y - 0.1, z + 0.3, handle, { w: 6, h: 5 });
     }
-    box(0.08, h, 0.14, x, y, z + 0.2, frame, { r: 0.02 });
-    for (const side of [-1, 1]) sphere(0.07, x + side * 0.2, y - 0.1, z + 0.3, handle, { w: 6, h: 5 });
     if (transom) box(w + 0.1, 0.12, 0.2, x, y + h / 2 + 0.05, z + 0.17, frame, { r: 0.04 });
     if (step !== null) {
       box(w + 1.2, 0.18, 1.1, x, 0.09 + 0.02, z + 0.6, step, { r: 0.06 });
