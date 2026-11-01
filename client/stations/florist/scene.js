@@ -12,7 +12,7 @@ import { FLOWERS, ORDER } from './state.js';
 import { characterYawForPlayer } from './orientation.js';
 import { targetsForState } from './targets.js';
 import { FLORIST_PLAN } from './layout-plan.js';
-import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
+import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
 
 const INTERACTION_RADIUS = 1.72;
 const MOUSE_SENSITIVITY = 0.0024;
@@ -104,9 +104,7 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
   let lastActionTime = 0;
   const focus = new THREE.Vector3();
   const desiredCamera = new THREE.Vector3();
-  const cameraRay = new THREE.Vector3();
-  const standardCameraDistance = Math.hypot(5.4, 1.45);
-  let cameraArmDistance = standardCameraDistance;
+  const cameraArm = createCameraArm({ distance: Math.hypot(5.4, 1.45) });
 
   function clearHeldFlower() {
     if (!heldModel) return;
@@ -279,12 +277,10 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
       player.y + 2.65 + player.pitch * 1.2,
       player.z - forwardZ * 4.8,
     );
-    const targetArmDistance = safeCameraDistance(focus, desiredCamera, layout.cameraBlockers, { radius: 0.2, clearance: 0.1 });
-    cameraArmDistance = approachCameraDistance(cameraArmDistance, targetArmDistance, dt);
-    cameraRay.subVectors(desiredCamera, focus);
-    const desiredLength = cameraRay.length();
-    camera.position.copy(focus).addScaledVector(cameraRay, desiredLength > 0 ? cameraArmDistance / desiredLength : 0);
+    const cameraPosition = cameraArm.resolve(focus, desiredCamera, layout.cameraBlockers, dt);
+    camera.position.set(cameraPosition.x, cameraPosition.y, cameraPosition.z);
     camera.lookAt(focus);
+    avatar.visible = cameraArm.length >= MIN_VISIBLE_ARM;
 
     const elapsed = (now - started) / 1000;
     animateCharacter(avatar, dt, elapsed, { speed: player.moving ? (player.running ? 2 : 1) : 0 });
