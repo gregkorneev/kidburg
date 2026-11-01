@@ -182,13 +182,16 @@ export function buildFloristLayout() {
       furniture.box(0.42, 0.035, 0.04, 15.3 + i * 0.86, y + 0.5, 14.18, FLORA_COLORS.cream, { r: 0.015, tinted: false });
     }
   }
-  cameraBlockers.push({ minX: 14.95, maxX: 17.45, minY: 1.05, maxY: 3.5, minZ: 13.92, maxZ: 14.48 });
+  const ribbonShelf = { minX: 14.95, maxX: 17.45, minY: 1.05, maxY: 3.5, minZ: 13.92, maxZ: 14.48 };
+  colliders.push(ribbonShelf);
+  cameraBlockers.push(ribbonShelf);
   addLabel(root, labels, 'БУМАГА · ЛЕНТЫ · ДЕКОР', [16.2, 4.08, 14.0], 0.7, '#75a8bd');
 
   // Витрины для четырёх видов цветов вдоль боковых стен.
   const buckets = {};
   for (const [type, { x, z }] of Object.entries(FLORIST_PLAN.buckets)) {
     buckets[type] = addBucket(root, geometrySet, labels, displayFlowers, type, x, z);
+    colliders.push({ minX: x - 0.45, maxX: x + 0.45, minY: 0, maxY: 0.88, minZ: z - 0.45, maxZ: z + 0.45 });
     furniture.box(1.42, 0.1, 1.42, x, 0.02, z, '#e5d7b5', { r: 0.08 });
     furniture.box(1.0, 0.06, 1.0, x, 0.1, z, '#b7c5a3', { r: 0.06 });
   }
@@ -247,10 +250,10 @@ export function buildFloristLayout() {
   root.add(flowerInstances);
 
   colliders.push(
-    { minX: 0, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: 0.3 },
-    { minX: 0, maxX: 0.3, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: ROOM.depth },
-    { minX: ROOM.width - 0.3, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: ROOM.depth },
-    { minX: 0, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: ROOM.depth - 0.3, maxZ: ROOM.depth },
+    { minX: 0, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: 0.8 },
+    { minX: 0, maxX: 0.8, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: ROOM.depth },
+    { minX: ROOM.width - 0.8, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: 0, maxZ: ROOM.depth },
+    { minX: 0, maxX: ROOM.width, minY: 0, maxY: ROOM.height, minZ: ROOM.depth - 0.8, maxZ: ROOM.depth },
   );
   // Боковые и задняя стены существуют физически; фасад открыт и остаётся вне camera blockers.
   cameraBlockers.push(

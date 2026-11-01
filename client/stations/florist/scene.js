@@ -10,7 +10,7 @@ import { buildFloristLayout } from './layout.js';
 import { bouquetStemTransform, createFlower, disposeFlower, createWrapping, disposeWrapping } from './flowers.js';
 import { FLOWERS, ORDER } from './state.js';
 import { characterYawForPlayer } from './orientation.js';
-import { targetsForState } from './targets.js';
+import { targetDistance, targetsForState } from './targets.js';
 import { FLORIST_PLAN } from './layout-plan.js';
 import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
 
@@ -181,7 +181,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
       else if (target.kind === 'take') prompt = `E — Взять: ${FLOWERS[target.flower].label.toLowerCase()}`;
       else if (target.kind === 'add') prompt = 'E — Поставить цветок в букет';
       else if (target.kind === 'remove') prompt = 'E — Убрать последний стебель';
-      else if (target.kind === 'wrap') prompt = state?.ribbon === 'pink' ? 'E — Упаковать букет' : state?.ribbon ? 'Нужна розовая лента: выберите её в карточке заказа' : 'Выберите розовую ленту в карточке заказа';
+      else if (target.kind === 'wrap') prompt = state?.ribbon === 'pink' ? 'E — Упаковать букет' : state?.ribbon ? 'Нужна розовая лента: нажмите 1' : 'Нажмите 1 для розовой ленты';
       else if (target.kind === 'handoff') prompt = 'E — Сдать заказ Лилии';
     }
     if (prompt !== lastPrompt) {
@@ -201,7 +201,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
     let nearest = null;
     let distance = INTERACTION_RADIUS;
     for (const target of targets) {
-      const d = Math.hypot(player.x - target.position.x, player.z - target.position.z);
+      const d = targetDistance(target, player.x, player.z);
       if (d < distance) { nearest = target; distance = d; }
     }
     return nearest;

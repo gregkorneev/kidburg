@@ -1,6 +1,6 @@
 import { createFloristScene } from './scene.js';
 import { currentPlayerAppearance } from '../../engine/player-appearance.js';
-import { createInitialState, transitionTask } from './state.js';
+import { createInitialState, orderMatches, ribbonForKey, transitionTask } from './state.js';
 import { mountFloristUI } from './ui.js';
 import './style.css';
 
@@ -104,7 +104,10 @@ renderUI();
 
 function onKeyDown(event) {
   if (isTyping(event.target) || event.repeat) return;
-  if (event.code === 'KeyH') {
+  const ribbon = ribbonForKey(event.code);
+  if (ribbon && state.stage === 'wrapping' && orderMatches(state.stems)) {
+    commit({ type: 'choose_ribbon', ribbon });
+  } else if (event.code === 'KeyH') {
     controlsOpen = !controlsOpen;
     renderUI();
   } else if (event.code === 'KeyL' && !['briefing', 'completed'].includes(state.stage)) {

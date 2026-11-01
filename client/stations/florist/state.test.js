@@ -83,3 +83,11 @@ test('неизвестные и повторные действия не пов�
   assert.equal(act(state, 'accept_order').changed, false);
   assert.equal(state.stems.length, 0);
 });
+
+test('цифры основной и дополнительной клавиатуры выбирают три ленты', async () => {
+  const { ribbonForKey } = await import('./state.js');
+  for (const prefix of ['Digit', 'Numpad']) {
+    assert.deepEqual([1, 2, 3].map((n) => ribbonForKey(`${prefix}${n}`)), ['pink', 'yellow', 'blue']);
+  }
+  assert.equal(ribbonForKey('Digit4'), null);
+});
