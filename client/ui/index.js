@@ -31,9 +31,9 @@ export function mountUI(api, { createPreview } = {}) {
   let status = api.net.status;
   let busy = false;
   let step = 'login';
-  let avatar = { skin: 0, clothes: 0, hair: 0, shoes: 0 };
+  let avatar = { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 };
   let preview = null;
-  const categories = [['skin', 'Цвет кожи'], ['clothes', 'Одежда'], ['hair', 'Причёска'], ['shoes', 'Обувь']];
+  const categories = [['skin', 'Цвет кожи'], ['clothes', 'Одежда'], ['hair', 'Причёска'], ['hairColor', 'Цвет волос'], ['shoes', 'Обувь']];
   const errors = { bad_name: 'Проверьте имя игрока.', bad_room: 'Проверьте код комнаты.', name_taken: 'Это имя уже занято.', bad_appearance: 'Не удалось сохранить внешность. Попробуйте ещё раз.', network: 'Сервер недоступен. Проверьте подключение.' };
 
   async function join(withAvatar) {

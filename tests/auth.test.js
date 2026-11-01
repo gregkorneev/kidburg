@@ -12,7 +12,7 @@ import { createTicketStore } from '../server/net/tickets.js';
 import { TestClient, getTicket, join, listen, makeApp, register, TEST_AUTH_PEPPER, TEST_AUTH_SESSION_SECRET } from './helpers.js';
 import { createAttemptLimiter } from '../server/net/room.js';
 
-const appearance = { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } };
+const appearance = { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } };
 const post = (app, url, payload, headers) => app.inject({ method: 'POST', url, payload, headers });
 const bearer = (token) => ({ authorization: `Bearer ${token}` });
 

@@ -337,7 +337,7 @@ test('нечисловые входы кадра (первый кадр без t
 test('профиль удалённого игрока совпадает с локальным и переживает смену пожарной экипировки', async () => {
   const { createRemotePlayers } = await import('../remote.js');
   const { createPlayerAppearance } = await import('../player-appearance.js');
-  const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, shoes: 0 } };
+  const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, hairColor: 0, shoes: 0 } };
   const scene = new THREE.Scene();
   const createLabel = () => { const label = new THREE.Object3D(); label.element = { remove() {} }; return label; };
   const remote = createRemotePlayers({ scene, createLabel });

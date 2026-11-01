@@ -8,12 +8,12 @@ import { AVATAR_VARIANT_COUNT, DEFAULT_AVATAR, normalizeAvatar } from '../shared
 import { openDb } from '../server/db/index.js';
 import { makeApp } from './helpers.js';
 
-const avatar = { skin: 3, clothes: 1, hair: 2, shoes: 0 };
+const avatar = { skin: 3, clothes: 1, hair: 2, hairColor: 1, shoes: 0 };
 const post = (app, url, payload) => app.inject({ method: 'POST', url, payload });
 
 test('avatar: strict fields, ranges and unusual objects', () => {
   assert.equal(AVATAR_VARIANT_COUNT, 4);
-  assert.deepEqual(DEFAULT_AVATAR, { skin: 0, clothes: 0, hair: 0, shoes: 0 });
+  assert.deepEqual(DEFAULT_AVATAR, { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 });
   for (const field of Object.keys(avatar)) {
     for (const value of [0, 1, 2, 3]) assert.deepEqual(normalizeAvatar({ ...avatar, [field]: value }), { ...avatar, [field]: value });
     for (const value of [-1, 4, '1', 1.5, NaN, Infinity, null]) assert.equal(normalizeAvatar({ ...avatar, [field]: value }), null);
@@ -51,11 +51,13 @@ test('join persists avatar; repeated join and legacy keep their saved appearance
   const dbPath = path.join(dir, 'city.db');
   const seed = openDb(dbPath);
   seed.createUser({ name: 'Legacy', passHash: 'h', salt: 's', appearance: { color: 42 } });
+  const oldAvatar = { skin: 3, clothes: 2, hair: 3, shoes: 0 };
+  seed.createUser({ name: 'OldAvatar', passHash: 'h', salt: 's', appearance: { avatar: oldAvatar } });
   seed.createUser({ name: 'Empty', passHash: 'h', salt: 's', appearance: {} });
   seed.close();
   let app = await makeApp({ dbPath, roomCode: 'ABCD' });
   try {
-    for (const invalid of [undefined, null, {}, { ...avatar, skin: 4 }, { ...avatar, extra: 1 }]) {
+    for (const invalid of [undefined, null, {}, { skin: 3, clothes: 1, hair: 2, shoes: 0 }, { ...avatar, skin: 4 }, { ...avatar, extra: 1 }]) {
       const res = await post(app, '/api/join', { name: 'Invalid', room: 'ABCD', appearance: { avatar: invalid } });
       assert.equal(res.statusCode, 400); assert.equal(res.json().error, 'bad_appearance');
     }
@@ -68,19 +70,22 @@ test('join persists avatar; repeated join and legacy keep their saved appearance
     assert.deepEqual(again.json().user.appearance, { avatar });
     const legacy = await post(app, '/api/join', { name: 'Legacy', room: 'ABCD' });
     assert.deepEqual(legacy.json().user.appearance, { color: 42 });
+    const old = await post(app, '/api/join', { name: 'OldAvatar', room: 'ABCD', appearance: { avatar } });
+    assert.deepEqual(old.json().user.appearance, { avatar: oldAvatar });
     const empty = await post(app, '/api/join', { name: 'Empty', room: 'ABCD', appearance: { avatar } });
     assert.deepEqual(empty.json().user.appearance, {});
-    const db = openDb(dbPath); assert.deepEqual(db.getUser(user.id).appearance, { avatar }); db.close();
+    const db = openDb(dbPath); assert.deepEqual(db.getUser(user.id).appearance, { avatar }); assert.deepEqual(db.findUserByName('OldAvatar').appearance, { avatar: oldAvatar }); db.close();
     await app.close();
     app = await makeApp({ dbPath, roomCode: 'ABCD' });
     assert.deepEqual((await post(app, '/api/join', { name: 'Anna', room: 'ABCD' })).json().user.appearance, { avatar });
+    assert.deepEqual((await post(app, '/api/join', { name: 'OldAvatar', room: 'ABCD' })).json().user.appearance, { avatar: oldAvatar });
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('password register requires avatar; login never replaces it', async () => {
   const app = await makeApp({ passwordAuth: true });
   try {
-    for (const invalid of [undefined, null, { ...avatar, hair: '1' }]) {
+    for (const invalid of [undefined, null, { skin: 3, clothes: 1, hair: 2, shoes: 0 }, { ...avatar, hair: '1' }]) {
       const res = await post(app, '/api/register', { name: 'Anna', password: 'secret', appearance: { avatar: invalid } });
       assert.equal(res.statusCode, 400); assert.equal(res.json().error, 'bad_appearance');
     }

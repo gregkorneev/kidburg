@@ -1,6 +1,6 @@
 import { createSession } from './session.js';
 import { appearanceFromSeed } from './art/character-appearance.js';
-import { normalizeAvatar } from '../../shared/avatar.js';
+import { normalizeStoredAvatar } from '../../shared/avatar.js';
 
 const SKINS = ['#f7d6b8', '#e9ae83', '#c98b63', '#a96a49'];
 const CLOTHES = [
@@ -10,6 +10,7 @@ const CLOTHES = [
   { top: 'sweater', outfit: '#9872a8', pants: '#6a5f78', topAccent: '#a9d7cf' },
 ];
 const HAIR = ['short', 'bob', 'curly', 'ponytail'];
+const HAIR_COLORS = ['#c9a66b', '#b9532f', '#70452f', '#292420'];
 const SHOES = [
   { shoes: 'sneaker', shoeColor: '#ece3d2' },
   { shoes: 'sneaker', shoeColor: '#426eac' },
@@ -20,11 +21,11 @@ const SHOES = [
 /** Resolve a saved profile or a bare avatar for both game players and previews. */
 export function resolvePlayerAppearance({ id = 0, appearance = {} } = {}) {
   if (!Number.isSafeInteger(id) || id < 0) return null;
-  const avatar = normalizeAvatar(appearance?.avatar ?? appearance);
+  const avatar = normalizeStoredAvatar(appearance?.avatar ?? appearance);
   const color = typeof appearance?.color === 'number' ? appearance.color : null;
   const base = appearanceFromSeed(id, color);
   if (!avatar) return base;
-  return { ...base, skin: SKINS[avatar.skin], ...CLOTHES[avatar.clothes], hairStyle: HAIR[avatar.hair], ...SHOES[avatar.shoes], accessory: 'none' };
+  return { ...base, skin: SKINS[avatar.skin], ...CLOTHES[avatar.clothes], hairStyle: HAIR[avatar.hair], hair: HAIR_COLORS[avatar.hairColor], ...SHOES[avatar.shoes], accessory: 'none' };
 }
 
 /** One stable appearance for a player ID; profile color is shared with remote avatars. */

@@ -11,7 +11,7 @@ test('preview renders the shared character with each selected avatar and release
   const renderer = { domElement: canvas, setPixelRatio() {}, setSize() {}, render(scene) { frames.push(scene.children.find((child) => child.userData.look)); }, dispose() { disposed++; } };
   const container = { append(node) { assert.equal(node, canvas); } };
   const preview = createCharacterPreview(container, { createRenderer: () => renderer });
-  const avatar = { skin: 3, clothes: 1, hair: 2, shoes: 0 };
+  const avatar = { skin: 3, clothes: 1, hair: 2, hairColor: 0, shoes: 0 };
   preview.setAvatar(avatar);
   assert.deepEqual(frames[0].userData.look, resolvePlayerAppearance({ id: 0, appearance: avatar }));
   for (const key of Object.keys(avatar)) {
@@ -22,7 +22,7 @@ test('preview renders the shared character with each selected avatar and release
   preview.dispose();
   preview.dispose();
   preview.setAvatar(avatar);
-  assert.equal(frames.length, 5);
+  assert.equal(frames.length, 6);
   assert.equal(disposed, 1);
   assert.equal(removed, 1);
 });
@@ -41,8 +41,8 @@ test('all variants change real character meshes and remain framed after resize',
   const renderer = { domElement: { remove() {} }, setPixelRatio() {}, setSize() {}, render(s, c) { scene = s; camera = c; } , dispose() {} };
   const container = { clientWidth: 300, clientHeight: 200, append() {} };
   const preview = createCharacterPreview(container, { createRenderer: () => renderer, ResizeObserverImpl: Observer });
-  const selected = { skin: 0, clothes: 0, hair: 0, shoes: 0 };
-  const samples = { skin: new Set(), clothes: new Set(), hair: new Set(), shoes: new Set() };
+  const selected = { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 };
+  const samples = { skin: new Set(), clothes: new Set(), hair: new Set(), hairColor: new Set(), shoes: new Set() };
   for (const key of Object.keys(selected)) {
     for (let value = 0; value < 4; value++) {
       preview.setAvatar({ ...selected, [key]: value });
@@ -56,6 +56,7 @@ test('all variants change real character meshes and remain framed after resize',
       if (key === 'skin') samples.skin.add(u.skin.color.getHexString());
       if (key === 'clothes') samples.clothes.add(u.torso.material.color.getHexString());
       if (key === 'hair') samples.hair.add(u.hair.children[0].geometry.uuid);
+      if (key === 'hairColor') samples.hairColor.add(u.hair.children[0].material.color.getHexString());
       if (key === 'shoes') samples.shoes.add(u.legs[0].boot.material.color.getHexString());
       person.updateMatrixWorld(true);
       person.traverseVisible((part) => {
@@ -75,4 +76,28 @@ test('all variants change real character meshes and remain framed after resize',
   assert.equal(camera.aspect, 0.75);
   preview.dispose();
   assert.equal(disconnects, 1);
+});
+
+
+test('preview, local and remote models use the same selected hair color', async () => {
+  const THREE = await import('three');
+  const { createRemotePlayers } = await import('./remote.js');
+  const { createPlayerAppearance } = await import('./player-appearance.js');
+  const avatar = { skin: 3, clothes: 2, hair: 3, hairColor: 1, shoes: 0 };
+  let person;
+  const renderer = { domElement: { remove() {} }, setPixelRatio() {}, setSize() {}, render(scene) { person = scene.children.find((item) => item.userData.look); }, dispose() {} };
+  const preview = createCharacterPreview({ append() {} }, { createRenderer: () => renderer });
+  preview.setAvatar(avatar);
+  const previewLook = person.userData.look;
+  const localLook = createPlayerAppearance({ id: 42, appearance: { avatar } });
+  const scene = new THREE.Scene();
+  const remote = createRemotePlayers({ scene, createLabel: () => { const label = new THREE.Object3D(); label.element = { remove() {} }; return label; } });
+  remote.join(42, 'Аня', { avatar });
+  const remotePerson = scene.children[0].children[0];
+  assert.equal(previewLook.hair, '#b9532f');
+  assert.equal(previewLook.hair, localLook.hair);
+  assert.equal(localLook.hair, remotePerson.userData.look.hair);
+  assert.equal(person.userData.hair.children[0].material.color.getHexString(), remotePerson.userData.hair.children[0].material.color.getHexString());
+  preview.dispose();
+  remote.dispose();
 });

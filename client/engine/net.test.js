@@ -18,7 +18,7 @@ function fakeStorage() {
 }
 
 const ROOM = 'BCDF';
-const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, shoes: 0 } };
+const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, hairColor: 1, shoes: 0 } };
 
 async function startServer() {
   const app = await buildApp({ roomCode: ROOM, dbPath: ':memory:', logLevel: 'silent', worldDir: '/нет/такой/папки' });
@@ -201,7 +201,15 @@ test('http: appearance передаётся при регистрации и н�
     assert.deepEqual(first.user.appearance.avatar, appearance.avatar);
     const again = await http.join('Аня', ROOM);
     assert.deepEqual(again.user.appearance, first.user.appearance);
-    const draft = await http.join('Аня', ROOM, { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } });
+    const draft = await http.join('Аня', ROOM, { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } });
     assert.deepEqual(draft.user.appearance, first.user.appearance);
   } finally { await app.close(); }
+});
+
+test('http: join sends the complete five-field avatar in appearance', async () => {
+  let request;
+  const http = createHttp({ fetch: async (url, options) => { request = { url, ...options }; return { ok: true, json: async () => ({}) }; } });
+  await http.join('Аня', 'BCDF', appearance);
+  assert.equal(request.url, '/api/join');
+  assert.deepEqual(JSON.parse(request.body), { name: 'Аня', room: 'BCDF', appearance: { avatar: { skin: 3, clothes: 1, hair: 2, hairColor: 1, shoes: 0 } } });
 });

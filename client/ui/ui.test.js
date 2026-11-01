@@ -90,7 +90,7 @@ test('автозаполнение: игроку остаётся ввести �
   assert.match(ui.root.text(), /Создай персонажа/);
   await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
   await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
-  assert.deepEqual(ui.calls, [['Аня', 'BCDF', { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } }]]);
+  assert.deepEqual(ui.calls, [['Аня', 'BCDF', { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } }]]);
 });
 
 test('другой компьютер: сервер кода не дал, поле пустое и код не показан', async () => {
@@ -137,7 +137,7 @@ test('категории, выбор, доступность и preview сохр
   const ui = mount({ createPreview: () => ({ setAvatar: (value) => updates.push(value) }) });
   await customize(ui);
   const groups = ui.root.all().filter((node) => node.tag === 'fieldset');
-  assert.equal(groups.length, 4);
+  assert.equal(groups.length, 5);
   for (const group of groups) {
     const choices = group.all().filter((node) => node.className === 'avatar-choice');
     assert.equal(choices.length, 4);
@@ -146,11 +146,11 @@ test('категории, выбор, доступность и preview сохр
     await choices[2].fire('click');
     assert.equal(choices[2].attributes['aria-pressed'], 'true');
   }
-  assert.deepEqual(updates.at(-1), { skin: 2, clothes: 2, hair: 2, shoes: 2 });
+  assert.deepEqual(updates.at(-1), { skin: 2, clothes: 2, hair: 2, hairColor: 2, shoes: 2 });
   await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
   await ui.root.all().find((node) => node.textContent === 'Назад').fire('click');
-  assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice' && node.attributes['aria-pressed'] === 'true').length, 4);
-  assert.deepEqual(updates.at(-1), { skin: 2, clothes: 2, hair: 2, shoes: 2 });
+  assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice' && node.attributes['aria-pressed'] === 'true').length, 5);
+  assert.deepEqual(updates.at(-1), { skin: 2, clothes: 2, hair: 2, hairColor: 2, shoes: 2 });
 });
 
 test('ошибки не сбрасывают выбор, повтор отправляет полный avatar, серверный user сохраняется', async () => {
@@ -159,14 +159,16 @@ test('ошибки не сбрасывают выбор, повтор отпра
   const ui = mount({ join: async () => { if (count++ === 0) throw Object.assign(new Error('offline'), { code: 'network' }); return serverUser; } });
   await customize(ui);
   await ui.root.all().filter((node) => node.className === 'avatar-choice')[3].fire('click');
+  await ui.root.all().filter((node) => node.className === 'avatar-choice')[13].fire('click');
   await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
   await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
   assert.match(ui.root.text(), /Сервер недоступен/);
   await ui.root.all().find((node) => node.textContent === 'Назад').fire('click');
   assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice')[3].attributes['aria-pressed'], 'true');
+  assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice')[13].attributes['aria-pressed'], 'true');
   await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
   await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
-  assert.deepEqual(ui.calls[1][2], { avatar: { skin: 3, clothes: 0, hair: 0, shoes: 0 } });
+  assert.deepEqual(ui.calls[1][2], { avatar: { skin: 3, clothes: 0, hair: 0, hairColor: 1, shoes: 0 } });
   assert.match(ui.root.text(), /Сервер/);
 });
 
@@ -183,13 +185,13 @@ test('ошибки контракта показываются без потер
   }
 });
 
-test('все 16 кнопок обновляют только выбранную категорию, оформление и preview', async () => {
+test('все 20 кнопок обновляют только выбранную категорию, оформление и preview', async () => {
   const updates = [];
   const ui = mount({ createPreview: () => ({ setAvatar: (value) => updates.push(value) }) });
   await customize(ui);
-  const state = { skin: 0, clothes: 0, hair: 0, shoes: 0 };
+  const state = { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 };
   const groups = ui.root.all().filter((node) => node.tag === 'fieldset');
-  for (const [groupIndex, key] of ['skin', 'clothes', 'hair', 'shoes'].entries()) {
+  for (const [groupIndex, key] of ['skin', 'clothes', 'hair', 'hairColor', 'shoes'].entries()) {
     const choices = groups[groupIndex].all().filter((node) => node.className === 'avatar-choice');
     for (let value = 0; value < 4; value++) {
       const count = updates.length;

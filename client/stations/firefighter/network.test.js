@@ -126,7 +126,7 @@ test('игроки: join, players в локальных координатах, 
 
 test('экипировка удалённого игрока применяется при появлении и обновляется после события', () => {
   const { emitter, calls } = setup();
-  const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, shoes: 0 }, firefighterEquipped: true };
+  const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, hairColor: 0, shoes: 0 }, firefighterEquipped: true };
   emitter.emit('player_join', { t: 'player_join', id: 7, name: 'Аня', appearance });
   emitter.emit('player_appearance', { t: 'player_appearance', id: 7, appearance: { firefighterEquipped: false } });
   assert.deepEqual(calls.filter((c) => ['add', 'equipment'].includes(c[0])), [

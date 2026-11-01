@@ -158,7 +158,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
       const reg = await fetch(`http://127.0.0.1:${port}/api/join`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'Сигнал', room, appearance: { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } } }),
+        body: JSON.stringify({ name: 'Сигнал', room, appearance: { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } } }),
       }).then((r) => r.json());
       const { ticket } = await fetch(`http://127.0.0.1:${port}/api/ws-ticket`, {
         method: 'POST',

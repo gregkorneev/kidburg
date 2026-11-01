@@ -8,7 +8,7 @@ const OWN_LAN = '192.168.1.5';
 const get = (app, { remoteAddress = '127.0.0.1', headers = {} } = {}) =>
   app.inject({ method: 'GET', url: '/api/local-room', remoteAddress, headers });
 const join = (app, remoteAddress, room, name = 'Аня') =>
-  app.inject({ method: 'POST', url: '/api/join', remoteAddress, payload: { name, room, appearance: { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } } } });
+  app.inject({ method: 'POST', url: '/api/join', remoteAddress, payload: { name, room, appearance: { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } } } });
 
 async function withApp(run, overrides = {}) {
   const app = await makeApp({ roomCode: 'BCDF', localAddresses: () => [OWN_LAN, 'fe80::1%en0'], ...overrides });
