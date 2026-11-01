@@ -4,7 +4,11 @@ export const PIANIST_PLAN = Object.freeze({
   spawn: Object.freeze({ x: 10, z: 4.2 }),
   maestro: Object.freeze({ x: 6.2, z: 3.2 }),
   practicePiano: Object.freeze({ x: 15.2, z: 4.5, rotationY: -Math.PI / 2 }),
-  practiceShelves: Object.freeze({ x: 18.75, z: 4.5 }),
+  wallShelves: Object.freeze([
+    Object.freeze({ x: 0.28, z: 5.4 }),
+    Object.freeze({ x: 0.28, z: 9.8 }),
+  ]),
+  instrumentDisplay: Object.freeze({ x: 18.9, z: 1.2, rotationY: 0 }),
   stagePiano: Object.freeze({ x: 10.8, z: 12.55 }),
   stage: Object.freeze({ minX: 6.2, maxX: 15.4, minZ: 11.25, maxZ: 14.55, height: 0.3 }),
   stairs: Object.freeze({ centerX: 10.8, width: 4.4, startZ: 9.99, stepDepth: 0.42, stepHeight: 0.1, count: 3 }),

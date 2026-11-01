@@ -19,6 +19,8 @@ test('план комнаты 20×15×6 разделяет учебную, зр�
   assert.equal(BETWEEN_PIANOS_CHAIRS.filter(({ side }) => side === 'left').length, 2);
   assert.equal(BETWEEN_PIANOS_CHAIRS.filter(({ side }) => side === 'right').length, 2);
   assert.ok(BETWEEN_PIANOS_CHAIRS.every(({ z }) => z > PIANIST_PLAN.practicePiano.z && z < PIANIST_PLAN.stagePiano.z));
+  assert.equal(PIANIST_PLAN.wallShelves.length, 2);
+  assert.ok(PIANIST_PLAN.wallShelves.every(({ x, z }) => x < 1 && Math.hypot(x - PIANIST_PLAN.practicePiano.x, z - PIANIST_PLAN.practicePiano.z) > 5));
   const aisle = Math.min(...PIANIST_PLAN.audienceRightXs) - Math.max(...PIANIST_PLAN.audienceLeftXs) - 0.68;
   assert.ok(aisle >= 2, `центральный проход ${aisle.toFixed(2)} м`);
 });
@@ -99,6 +101,8 @@ test('периметр и стулья блокируют предметы, це
 test('интерьер создаётся без DOM и освобождает геометрию, материалы и локальные текстуры', () => {
   const layout = buildPianistLayout();
   assert.equal(layout.root.getObjectByName('audience-chairs').children.length, 20);
+  assert.ok(layout.root.getObjectByName('instrument-display'));
+  assert.equal(layout.root.getObjectByName('music-stands'), undefined);
   for (let i = 0; i < BETWEEN_PIANOS_CHAIRS.length; i++) assert.ok(layout.root.getObjectByName(`between-pianos-chair-${i + 1}`));
   for (let i = 0; i < POSTER_MOUNTS.length; i++) assert.ok(layout.root.getObjectByName(`music-poster-${i}`));
   assert.ok(layout.colliders.length >= ROOM_COLLIDERS.length + AUDIENCE_CHAIRS.length + BETWEEN_PIANOS_CHAIRS.length + STAGE_COLLIDERS.length);

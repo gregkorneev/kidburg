@@ -139,18 +139,39 @@ export function buildPianistLayout() {
   }
   colliders.push(...AUDIENCE_COLLIDERS);
   cameraBlockers.push(...AUDIENCE_COLLIDERS);
-  // Shelves with sheet music and a few music books.
-  for (const { x, z } of [{ x: 1.8, z: 6.0 }, PIANIST_PLAN.practiceShelves]) {
-    mesh(root, [2.25, 0.12, 0.42], [x, 1.3, z], COLORS.wood);
-    mesh(root, [2.25, 0.12, 0.42], [x, 2.25, z], COLORS.wood);
-    for (const y of [1.75, 2.7]) for (let i = 0; i < 6; i++) mesh(root, [0.22, 0.34, 0.28], [x - 0.8 + i * 0.29, y, z], ['#d47970', '#e1bd74', '#82aab1', '#798e78'][i % 4]);
+  // Music books sit below the windows on the opposite wall, away from the practice piano.
+  for (const { x, z } of PIANIST_PLAN.wallShelves) {
+    mesh(root, [0.42, 0.12, 2.25], [x, 1.15, z], COLORS.wood);
+    mesh(root, [0.42, 0.12, 2.25], [x, 1.95, z], COLORS.wood);
+    for (const y of [1.6, 2.25]) for (let i = 0; i < 6; i++) mesh(root, [0.28, 0.34, 0.22], [x + 0.16, y, z - 0.8 + i * 0.29], ['#d47970', '#e1bd74', '#82aab1', '#798e78'][i % 4]);
+    const shelfCollider = { minX: x - 0.21, maxX: x + 0.21, minY: 0, maxY: 2.5, minZ: z - 1.125, maxZ: z + 1.125 };
+    colliders.push(shelfCollider); cameraBlockers.push(shelfCollider);
   }
-  // Small music stands beside the practice space.
-  for (const x of [4.0, 17.0]) {
-    mesh(root, [0.7, 0.46, 0.08], [x, 1.55, 6.2], '#76523e');
-    mesh(root, [0.08, 1.35, 0.08], [x, 0.82, 6.25], '#7d624a');
-    mesh(root, [0.52, 0.35, 0.025], [x, 1.57, 6.145], '#fff4d4', { cast: false });
-  }
+  // A compact corner rack displays instruments instead of empty music boards.
+  const display = new THREE.Group(); display.name = 'instrument-display';
+  display.position.set(PIANIST_PLAN.instrumentDisplay.x, 0, PIANIST_PLAN.instrumentDisplay.z);
+  display.rotation.y = PIANIST_PLAN.instrumentDisplay.rotationY; root.add(display);
+  mesh(display, [1.2, 0.12, 0.48], [0, 0.08, 0], COLORS.wood);
+  for (const x of [-0.52, 0.52]) mesh(display, [0.08, 1.55, 0.08], [x, 0.83, -0.08], COLORS.wood);
+  mesh(display, [1.15, 0.1, 0.1], [0, 1.52, -0.08], COLORS.gold);
+  const instrumentSphere = (at, scale, color) => {
+    if (!materials.has(color)) materials.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.78 }));
+    const geometry = new THREE.SphereGeometry(0.22, 8, 6); geometry.scale(...scale); ownedGeometries.add(geometry);
+    const item = new THREE.Mesh(geometry, materials.get(color)); item.position.set(...at); item.castShadow = true; item.receiveShadow = true; display.add(item);
+  };
+  instrumentSphere([-0.28, 0.48, 0.12], [0.92, 1.2, 0.42], '#a9673e');
+  mesh(display, [0.075, 0.76, 0.08], [-0.28, 1.12, 0.12], '#714b35');
+  mesh(display, [0.14, 0.16, 0.1], [-0.28, 1.55, 0.12], COLORS.gold);
+  mesh(display, [0.012, 1.0, 0.015], [-0.31, 0.94, 0.205], '#e8d5ad');
+  mesh(display, [0.012, 1.0, 0.015], [-0.25, 0.94, 0.205], '#e8d5ad');
+  instrumentSphere([0.24, 0.55, 0.12], [0.72, 1.05, 0.36], '#9d4d49');
+  mesh(display, [0.06, 0.64, 0.065], [0.24, 1.15, 0.12], '#523a32');
+  mesh(display, [0.12, 0.13, 0.08], [0.24, 1.53, 0.12], COLORS.gold);
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 8), materials.get(COLORS.blue));
+  drum.rotation.x = Math.PI / 2; drum.position.set(0.46, 0.52, 0.22); drum.castShadow = true; display.add(drum); ownedGeometries.add(drum.geometry);
+  mergeStaticMeshes(display);
+  const displayCollider = { minX: display.position.x - 0.64, maxX: display.position.x + 0.64, minY: 0, maxY: 1.7, minZ: display.position.z - 0.28, maxZ: display.position.z + 0.28 };
+  colliders.push(displayCollider); cameraBlockers.push(displayCollider);
   cameraBlockers.push(...ROOM_COLLIDERS.slice(0, 3));
   function mergeStaticMeshes(parent) {
     const groups = new Map();
