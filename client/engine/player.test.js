@@ -64,6 +64,19 @@ test('коллизии: стена останавливает, вдоль сте
   assert.equal(collides([wall], 100, 0, 95), true);
 });
 
+test('если игрок оказался внутри нового препятствия, он может выйти наружу', () => {
+  const player = createPlayer();
+  player.x = 1.5;
+  const obstacle = { minX: 1, maxX: 2, minY: 0, maxY: 3, minZ: -1, maxZ: 1 };
+  stepPlayer(player, { forward: false, back: false, left: false, right: true, run: false }, 0.1, flat([obstacle]));
+  assert.ok(player.x > 1.5, 'движение наружу уменьшает пересечение');
+
+  const trapped = createPlayer();
+  trapped.x = 1.2;
+  stepPlayer(trapped, { forward: false, back: false, left: false, right: true, run: false }, 0.1, flat([obstacle]));
+  assert.equal(trapped.x, 1.2, 'движение глубже в препятствие остаётся заблокировано');
+});
+
 test('высота берётся из рельефа, у границы мира игрок остаётся внутри', () => {
   const hill = { heightAt: (x) => x * 0.01, collidersNear: () => [] };
   const p = createPlayer();

@@ -41,6 +41,32 @@ export function collides(boxes, x, y, z) {
   return false;
 }
 
+function collisionDepth(boxes, x, y, z) {
+  let depth = 0;
+  const r = PLAYER.radius;
+  for (const b of boxes) {
+    if (y >= b.maxY || y + PLAYER.height <= b.minY) continue;
+    let localX = x - (b.minX + b.maxX) / 2;
+    let localZ = z - (b.minZ + b.maxZ) / 2;
+    let halfWidth = (b.maxX - b.minX) / 2;
+    let halfDepth = (b.maxZ - b.minZ) / 2;
+    if (b.rotationY && Number.isFinite(b.halfWidth) && Number.isFinite(b.halfDepth)) {
+      const dx = x - b.x;
+      const dz = z - b.z;
+      const cos = Math.cos(b.rotationY);
+      const sin = Math.sin(b.rotationY);
+      localX = cos * dx - sin * dz;
+      localZ = sin * dx + cos * dz;
+      halfWidth = b.halfWidth;
+      halfDepth = b.halfDepth;
+    }
+    const overlapX = r + halfWidth - Math.abs(localX);
+    const overlapZ = r + halfDepth - Math.abs(localZ);
+    if (overlapX > 0 && overlapZ > 0) depth += Math.min(overlapX, overlapZ);
+  }
+  return depth;
+}
+
 export function createPlayer() {
   return { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, moving: false, running: false };
 }
@@ -80,8 +106,13 @@ export function stepPlayer(player, keys, dt, world) {
     // По осям раздельно: упираясь в стену, игрок скользит вдоль неё.
     const nx = clamp(player.x + dx, 0, WORLD_SIZE_X - EDGE);
     if (!collides(boxes, nx, player.y, player.z)) player.x = nx;
+    // Сохранённая позиция может пересекать новый коллайдер: разрешаем только шаг наружу.
+    else if (collides(boxes, player.x, player.y, player.z)
+      && collisionDepth(boxes, nx, player.y, player.z) < collisionDepth(boxes, player.x, player.y, player.z)) player.x = nx;
     const nz = clamp(player.z + dz, 0, WORLD_SIZE_Z - EDGE);
     if (!collides(boxes, player.x, player.y, nz)) player.z = nz;
+    else if (collides(boxes, player.x, player.y, player.z)
+      && collisionDepth(boxes, player.x, player.y, nz) < collisionDepth(boxes, player.x, player.y, player.z)) player.z = nz;
   }
 
   const ground = world.heightAt(player.x, player.z);
