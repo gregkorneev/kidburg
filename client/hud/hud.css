@@ -13,8 +13,8 @@
 
 .city-hud {
   position: fixed;
-  bottom: 8px;
-  left: 8px;
+  top: 8px;
+  right: 8px;
   z-index: 10;
   box-sizing: border-box;
   width: fit-content;
@@ -30,17 +30,17 @@
 
 .city-minimap {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  bottom: 8px;
+  left: 8px;
   z-index: 10;
-  width: 176px;
-  padding: 8px;
+  width: 140px;
+  padding: 6px;
   border: 1px solid rgba(70, 91, 67, 0.2);
   border-radius: 16px;
   background: rgba(255, 253, 242, 0.94);
   box-shadow: 0 8px 24px rgba(36, 55, 42, 0.18);
   color: #31483b;
-  font: 600 12px/1.2 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font: 600 11px/1.2 system-ui, -apple-system, 'Segoe UI', sans-serif;
   user-select: none;
   pointer-events: none;
 }
