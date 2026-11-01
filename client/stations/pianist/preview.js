@@ -1,5 +1,6 @@
 import { createPianistScene } from './scene.js';
 import { bindCityExit } from '../../engine/room-exit.js';
+import { navigateWithLoading } from '../../engine/location-loading.js';
 import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { createInitialState, transitionTask } from './state.js';
 import { MELODY } from './melody.js';
@@ -76,7 +77,7 @@ function onKeyDown(event) {
   if (event.code === 'KeyH' && !state.pianoMode) { controlsOpen = !controlsOpen; renderUI(); }
 }
 window.addEventListener('keydown', onKeyDown);
-const unbindCityExit = bindCityExit({ onExit: () => window.location.assign('/') });
+const unbindCityExit = bindCityExit({ onExit: () => navigateWithLoading(window, document, '/') });
 if (new URLSearchParams(window.location.search).has('debug')) {
   window.__pianistDebug = {
     setQuality: (level) => { quality = scene.setQuality(level).level; renderUI(); },

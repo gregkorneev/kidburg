@@ -1,5 +1,6 @@
 import { createClient } from '../../engine/app.js';
 import { bindCityExit } from '../../engine/room-exit.js';
+import { navigateWithLoading } from '../../engine/location-loading.js';
 import { mountNpcChat } from '../../ui/npc-chat.js';
 import { connectFireNetwork } from './network.js';
 import { createMarusyaChat } from './chat-flow.js';
@@ -144,7 +145,7 @@ chat.onOpenChange((open) => {
 network = connectFireNetwork({
   api: client.api,
   world,
-  onAuthRequired: () => window.location.replace('/'),
+  onAuthRequired: () => navigateWithLoading(window, document, '/', { replace: true }),
   onSession: (value) => {
     online = value;
     if (!online) {
@@ -184,7 +185,7 @@ const telemetry = startTelemetry({
 if (new URLSearchParams(location.search).has('debug')) window.__fire = world.debug;
 
 const unbindCityExit = bindCityExit({
-  onExit: () => window.location.assign('/'),
+  onExit: () => navigateWithLoading(window, document, '/'),
   isBlocked: () => dialog !== null || chatOpen,
 });
 

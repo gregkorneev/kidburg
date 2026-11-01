@@ -1,4 +1,5 @@
 import { bindCityExit } from '../../engine/room-exit.js';
+import { navigateWithLoading } from '../../engine/location-loading.js';
 import { readQuality } from '../../engine/art/quality.js';
 import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { applyBakeryAction, createInitialState } from './state.js';
@@ -77,7 +78,7 @@ if (captureViews[captureView]) {
 }
 
 const unbindCityExit = bindCityExit({
-  onExit: () => window.location.assign('/'),
+  onExit: () => navigateWithLoading(window, document, '/'),
 });
 
 // Центральный мониторинг Control Center: FPS и ping этой страницы; кадры — по фактическим вызовам renderer.render.

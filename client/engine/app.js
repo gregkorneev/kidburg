@@ -17,6 +17,7 @@ import { createInteractionManager } from './interactions/interaction-manager.js'
 import { createCarrySystem } from './interactions/carry-system.js';
 import { createBallRenderer } from './interactions/physics-renderer.js';
 import { createMechanismSync } from './mechanism-sync.js';
+import { navigateWithLoading } from './location-loading.js';
 import { CITY_ENTRANCES } from './city-entrance.js';
 import { createEmitter } from './emitter.js';
 import { createHttp } from './http.js';
@@ -258,7 +259,7 @@ export function createClient({ container, networkOnly = false }) {
     const interactions = createInteractionManager({
       net,
       mechSync,
-      navigate: (href) => win.location.assign(href),
+      navigate: (href) => navigateWithLoading(win, document, href),
       notify: (text) => hud.setNotice(text),
       onNpc: () => emitter.emit('interact', state.npc),
       onAction: (action) => {

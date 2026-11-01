@@ -1,5 +1,6 @@
 import { createFloristScene } from './scene.js';
 import { currentPlayerAppearance } from '../../engine/player-appearance.js';
+import { navigateWithLoading } from '../../engine/location-loading.js';
 import { createInitialState, orderMatches, ribbonForKey, transitionTask } from './state.js';
 import { mountFloristUI } from './ui.js';
 import { startTelemetry } from '../../engine/telemetry.js';
@@ -116,7 +117,7 @@ function onKeyDown(event) {
     controlsOpen = !controlsOpen;
     renderUI();
   } else if (event.code === 'KeyL' && !['briefing', 'completed'].includes(state.stage)) {
-    window.location.assign('/');
+    navigateWithLoading(window, document, '/');
   }
 }
 

@@ -3,6 +3,7 @@ import { createCountdown } from './countdown.js';
 import { createTeleprompter } from './teleprompter.js';
 import { createRadioStudio } from './scene.js';
 import { mountRadioUI, unmountRadioUI } from './ui.js';
+import { navigateWithLoading } from '../../engine/location-loading.js';
 
 /** Orchestrates the isolated studio, existing server task sync, and Radio UI. */
 export function mountRadioPreview({
@@ -178,7 +179,7 @@ export function mountRadioPreview({
 
   function leaveStation() {
     dispose();
-    win.location.assign('/');
+    navigateWithLoading(win, doc, '/');
   }
 
   refresh();
