@@ -49,6 +49,22 @@ quality = world.getQuality();
 world.setState(state);
 refresh();
 
+// Temporary local screenshot positions, removed after the visual capture pass.
+const captureViews = {
+  spawn: { position: { x: 0, z: 5.25 } },
+  overview: { position: { x: 0, z: 3.2 }, yaw: 0 },
+  ingredients: { position: { x: -4.5, z: 0.5 }, yaw: Math.PI / 2 },
+  worktable: { position: { x: 0, z: -1.1 }, yaw: 0 },
+  oven: { position: { x: 5, z: 2.25 }, yaw: 0 },
+  npc: { position: { x: -5.8, z: 5.7 }, yaw: 0 },
+  gameplay: { position: { x: 2.1, z: 3.8 }, yaw: 0.25 },
+};
+const captureView = new URLSearchParams(location.search).get('view');
+if (captureViews[captureView]) {
+  world.setPosition(captureViews[captureView].position);
+  if (Number.isFinite(captureViews[captureView].yaw)) world.debug.setCameraLook(captureViews[captureView].yaw);
+}
+
 const unbindCityExit = bindCityExit({
   onExit: () => window.location.assign('/'),
 });

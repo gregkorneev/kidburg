@@ -1,7 +1,8 @@
 // План локальной пекарни. Координаты сцены отделены от Three.js, чтобы проходы
 // и зоны взаимодействия можно было проверять обычными unit-тестами.
 export const ROOM = Object.freeze({ minX: -8.5, maxX: 8.5, minZ: -6.5, maxZ: 6.5, wallHeight: 5.6 });
-export const SPAWN = Object.freeze({ x: 0, z: 5.55 });
+// Игрок появляется у входа, но с запасом места для камеры за плечом.
+export const SPAWN = Object.freeze({ x: 0, z: 4.25 });
 export const PLAYER_RADIUS = 0.34;
 
 export const ZONES = Object.freeze([
@@ -19,7 +20,7 @@ export const OBSTACLES = Object.freeze([
   Object.freeze({ id: 'worktable', minX: -1.65, maxX: 1.65, minZ: -5.25, maxZ: -4.0 }),
   Object.freeze({ id: 'oven', minX: 3.8, maxX: 6.2, minZ: -1.85, maxZ: -0.45 }),
   Object.freeze({ id: 'cooling-rack', minX: 4.0, maxX: 6.2, minZ: 4.05, maxZ: 5.55 }),
-  Object.freeze({ id: 'delivery-counter', minX: -3.6, maxX: -0.8, minZ: 5.15, maxZ: 6.25 }),
+  Object.freeze({ id: 'delivery-counter', minX: -4.8, maxX: -2.0, minZ: 5.15, maxZ: 6.25 }),
   Object.freeze({ id: 'mentor-stand', minX: -7.15, maxX: -5.4, minZ: 2.2, maxZ: 2.75 }),
 ]);
 

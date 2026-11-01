@@ -17,39 +17,41 @@ body { background: #d6e8e0; color: var(--ink); }
 #scene { position: absolute; inset: 0; }
 #scene canvas { display: block; width: 100%; height: 100%; outline: none; }
 #ui { position: absolute; inset: 0; pointer-events: none; }
-.bakery-ui { position: relative; width: 100%; height: 100%; padding: 16px 20px; }
+.bakery-ui { position: relative; width: 100%; height: 100%; padding: 12px 14px; }
 .bakery-brand, .objective-card, .controls-card {
   border: 1px solid #fffdf0d9; background: #fff9e9e8; box-shadow: 0 9px 26px #59453320; backdrop-filter: blur(10px);
 }
-.bakery-brand { display: inline-flex; align-items: center; gap: 10px; padding: 6px 15px 6px 6px; border-radius: 999px; }
-.bakery-mark { display: grid; place-items: center; width: 35px; height: 35px; border-radius: 50%; background: var(--accent); color: white; font-size: 18px; font-weight: 900; }
+.bakery-brand { display: inline-flex; align-items: center; gap: 8px; padding: 4px 11px 4px 4px; border-radius: 999px; }
+.bakery-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50%; background: var(--accent); color: white; font-size: 16px; font-weight: 900; }
 .bakery-brand strong, .bakery-brand small { display: block; }
 .bakery-brand strong { font-size: 11px; letter-spacing: .14em; }
 .bakery-brand small { margin-top: 2px; color: var(--muted); font-size: 11px; }
-.objective-card, .controls-card { position: absolute; border-radius: 17px; }
-.objective-card { top: 70px; left: 20px; width: min(325px, calc(100vw - 40px)); padding: 13px 15px; }
+.objective-card, .controls-card { position: absolute; border-radius: 14px; }
+.objective-card { top: 56px; left: 14px; width: min(286px, calc(100vw - 28px)); padding: 9px 11px; }
 .eyebrow { color: #857563; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
-.objective-card h1 { margin: 6px 0 5px; font-size: clamp(15px, 1.5vw, 18px); line-height: 1.3; }
-.order-copy { margin: 0; color: var(--muted); font-size: 11px; }
-.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; padding: 0; margin: 12px 0 0; list-style: none; }
-.step { min-height: 29px; display: grid; place-items: center; padding: 4px 3px; border-radius: 7px; background: #eee8d8; color: #766e5d; text-align: center; font-size: 9px; font-weight: 700; }
+.objective-card h1 { margin: 4px 0 3px; font-size: clamp(14px, 1.3vw, 16px); line-height: 1.25; }
+.order-copy { margin: 0; color: var(--muted); font-size: 10px; }
+.steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; padding: 0; margin: 8px 0 0; list-style: none; }
+.step { min-height: 25px; display: grid; place-items: center; padding: 3px 2px; border-radius: 6px; background: #eee8d8; color: #766e5d; text-align: center; font-size: 8px; font-weight: 700; }
 .step--current { background: #f4d48b; color: #5f4122; box-shadow: inset 0 0 0 1px #d2a348; }
 .step--done { background: #d9e7cd; color: #426c47; }
-.controls-card { top: 16px; right: 20px; width: 225px; padding: 11px 13px; }
-.control-row { display: flex; align-items: center; gap: 9px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.controls-card { top: 12px; right: 14px; width: 176px; padding: 8px 10px; }
+.control-row { display: flex; align-items: center; gap: 7px; margin-top: 5px; color: var(--muted); font-size: 10px; }
 kbd { min-width: 42px; padding: 5px 7px; border: 1px solid #ded5c3; border-bottom-width: 2px; border-radius: 7px; background: #fffdf7; color: #564736; text-align: center; font: 700 10px ui-monospace, monospace; }
-.quality-row { display: flex; align-items: center; gap: 4px; margin-top: 11px; padding-top: 9px; border-top: 1px solid #e9deca; color: var(--muted); font-size: 10px; pointer-events: auto; }
+.quality-row { display: flex; align-items: center; gap: 4px; margin-top: 7px; padding-top: 6px; border-top: 1px solid #e9deca; color: var(--muted); font-size: 9px; pointer-events: auto; }
 .quality-row > span { flex: 1; }
 .quality-button { padding: 4px 5px; border: 1px solid #ded5c3; border-radius: 7px; background: #fffdf7; color: #66594a; cursor: pointer; font: inherit; font-size: 9px; }
 .quality-button--active { border-color: var(--bread); background: var(--bread); color: white; }
 .bakery-reticle { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; transform: translate(-50%, -50%); border: 1px solid #fffdf7; border-radius: 50%; box-shadow: 0 1px 5px #30271d88; }
-.interaction-prompt { position: absolute; left: 50%; bottom: 64px; display: flex; align-items: center; gap: 9px; transform: translateX(-50%); padding: 7px 14px 7px 7px; border-radius: 999px; background: #fff9ecf5; box-shadow: 0 8px 22px #30271d30; color: var(--ink); font-size: 13px; font-weight: 650; white-space: nowrap; }
+.interaction-prompt { position: absolute; left: 50%; bottom: 24px; display: flex; align-items: center; gap: 9px; transform: translateX(-50%); padding: 7px 14px 7px 7px; border-radius: 999px; background: #fff9ecf5; box-shadow: 0 8px 22px #30271d30; color: var(--ink); font-size: 13px; font-weight: 650; white-space: nowrap; }
 .interaction-prompt kbd { min-width: 27px; background: var(--accent); border-color: #a4463e; color: white; font-size: 12px; }
-.toast { position: absolute; left: 50%; bottom: 17px; transform: translateX(-50%); max-width: min(520px, calc(100vw - 36px)); padding: 9px 14px; border-radius: 11px; background: #493d31ed; color: white; box-shadow: 0 7px 22px #30271d32; font-size: 12px; text-align: center; }
-.station-footnote { position: absolute; bottom: 7px; left: 18px; color: #615c4d; opacity: .7; font-size: 9px; text-shadow: 0 1px 5px #fff; }
+.toast { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: min(520px, calc(100vw - 36px)); padding: 9px 14px; border-radius: 11px; background: #493d31ed; color: white; box-shadow: 0 7px 22px #30271d32; font-size: 12px; text-align: center; }
+.station-footnote { display: none; }
 @media (max-width: 680px) {
-  .bakery-ui { padding: 10px; }
-  .controls-card { top: 10px; right: 10px; width: auto; max-width: 186px; }
-  .objective-card { top: 66px; left: 10px; width: min(290px, calc(100vw - 20px)); }
+  .bakery-ui { padding: 8px; }
+  .controls-card { top: auto; bottom: 10px; right: 8px; width: auto; max-width: 176px; }
+  .objective-card { top: 48px; left: 8px; width: min(270px, calc(100vw - 16px)); }
+  .steps { grid-template-columns: repeat(3, 1fr); }
   .station-footnote { left: 10px; }
+  .interaction-prompt { bottom: 14px; max-width: calc(100vw - 200px); white-space: normal; font-size: 11px; }
 }

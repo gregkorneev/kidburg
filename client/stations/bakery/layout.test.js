@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OBSTACLES, SPAWN, WALK_WAYPOINTS, ZONES, isWalkable } from './layout.js';
+import { OBSTACLES, ROOM, SPAWN, WALK_WAYPOINTS, ZONES, isWalkable } from './layout.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
@@ -15,6 +15,8 @@ test('план пекарни: зоны взаимодействия внутр�
     }
   }
   assert.ok(isWalkable(SPAWN.x, SPAWN.z), 'стартовая точка свободна');
+  assert.ok(isWalkable(0, 5.6), 'центр входного прохода свободен');
+  assert.ok(SPAWN.z < ROOM.maxZ - 0.8, 'старт находится за порогом комнаты');
   for (const point of WALK_WAYPOINTS) assert.ok(isWalkable(point.x, point.z), `проход свободен: ${point.x},${point.z}`);
 });
 
