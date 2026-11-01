@@ -1,11 +1,12 @@
 // Мозг NPC на локальной Ollama. Контракт: shared/agent-api.md.
 // reply() отдаёт токены ответа; память — последние реплики пары (userId, agentId) в agent_memory.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_OLLAMA_URL, OllamaError, assertLoopbackUrl, chatStream } from './ollama.js';
 import { createRepeatGuard } from './repeat-guard.js';
+import { SETTINGS_DEFAULTS, applySettings, validateSettings } from './settings.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const AGENT_ID_RE = /^[a-z][a-z0-9_]{0,31}$/;
@@ -166,9 +167,14 @@ function loadPersonaFile(dir, agentId) {
   return data;
 }
 
-function personaPrompt(p) {
-  const lines = [`Имя: ${p.name}`, `Профессия: ${p.role}`, `О себе: ${p.about}`, `Манера речи: ${p.style}`];
-  if (Array.isArray(p.topics) && p.topics.length) lines.push(`О чём охотно рассказываешь: ${p.topics.join('; ')}`);
+/** Базовая персона из JSON + блок настроек администратора (eff.directives), который идёт после и не отменяет правила. */
+function personaPrompt(p, eff) {
+  const lines = [`Имя: ${eff.name}`, `Профессия: ${p.role}`, `О себе: ${p.about}`, `Манера речи: ${p.style}`];
+  if (Array.isArray(eff.topics) && eff.topics.length) lines.push(`О чём охотно рассказываешь: ${eff.topics.join('; ')}`);
+  if (eff.directives.length) {
+    lines.push('Настройки администратора игры (уточняют поведение, но не отменяют правила выше):');
+    lines.push(...eff.directives.map((d) => `- ${d}`));
+  }
   return lines.join('\n');
 }
 
@@ -201,6 +207,18 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
   const fetchImpl = config.agents?.fetchImpl ?? fetch;
   const personas = new Map();
   let systemRules = null;
+  /** Настройки администратора по agentId: применяются к следующему запросу, перезапуск не нужен. */
+  const overrides = new Map();
+  try {
+    for (const row of db.listAgentSettings?.() ?? []) {
+      const checked = validateSettings(row.settings);
+      if (checked.ok) overrides.set(row.agentId, { settings: checked.settings, revision: row.revision, updatedAt: row.updatedAt });
+      else log?.warn({ agentId: row.agentId, errors: checked.errors }, 'сохранённые настройки агента некорректны и пропущены');
+    }
+  } catch (err) {
+    log?.error({ err }, 'не удалось прочитать настройки агентов');
+  }
+  const settingsOf = (agentId) => overrides.get(agentId)?.settings ?? SETTINGS_DEFAULTS;
 
   const getSystemRules = () => {
     systemRules ??= readFileSync(path.join(cfg.personaDir, 'system.md'), 'utf8').trim();
@@ -291,18 +309,22 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
   const RETRY_NOTE =
     'Твой прошлый вариант ответа повторял то, что ты уже говорила этому игроку. Ответь иначе: без приветствия, другими словами и скажи что-то новое по теме вопроса.';
 
-  function buildMessages(persona, req, text, situation, memory, retry = false) {
+  function buildMessages(persona, req, text, situation, memory, retry = false, eff = applySettings(persona)) {
     const context = req.context ?? {};
     const facts = [];
     const player = clean(context.playerName, 32);
     if (player) facts.push(`Собеседника зовут ${player}.`);
     const district = clean(context.district, 40);
     if (district) facts.push(`Разговор идёт в районе «${district}».`);
-    if (situation) {
+    if (situation && eff.reactToTaskProgress) {
       facts.push(`Ход задания игрока (подтверждён сервером, других сведений об успехах игрока нет): ${situation.text}`);
     }
     if (memory.exchanges === 0 && memory.turns.length === 0) {
-      facts.push('Это ваша первая встреча с этим игроком: коротко представься.');
+      facts.push(
+        eff.introduceSelf
+          ? 'Это ваша первая встреча с этим игроком: коротко представься.'
+          : 'Это ваша первая встреча с этим игроком, но не представляйся: сразу отвечай по существу.',
+      );
     } else {
       facts.push('Вы с этим игроком уже разговаривали: не здоровайся и не представляйся заново, продолжай разговор.');
       if (memory.notes.length) {
@@ -310,14 +332,14 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
           `Ты уже рассказывала: ${memory.notes.join(' ')} Не выдавай это за новое: если игрок не просит повторить, скажи что-то новое или напомни одной фразой.`,
         );
       }
-      if (situation && memory.lastSituation && memory.lastSituation.key !== situation.key) {
+      if (situation && eff.reactToTaskProgress && memory.lastSituation && memory.lastSituation.key !== situation.key) {
         facts.push(
           `С прошлого разговора ход задания изменился: тогда был этап «${memory.lastSituation.label}», теперь «${situation.label}».`,
         );
       }
     }
     if (retry) facts.push(RETRY_NOTE);
-    const system = [getSystemRules(), 'Твой персонаж:', personaPrompt(persona), facts.join(' ')]
+    const system = [getSystemRules(), 'Твой персонаж:', personaPrompt(persona, eff), facts.join(' ')]
       .filter(Boolean)
       .join('\n\n');
     return [
@@ -337,10 +359,14 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
       throw new OllamaError('not_configured', 'ИИ не настроен: администратору нужно задать переменную OLLAMA_MODEL');
     }
     const persona = getPersona(req.agentId);
+    // Настройки читаются один раз на запрос: идущая генерация не меняется на полуслове.
+    const eff = applySettings(persona, req.settingsOverride ?? settingsOf(req.agentId));
+    if (!eff.enabled) throw new OllamaError('disabled', 'Этот наставник сейчас недоступен. Загляните позже.');
     const release = await slots.acquire({ signal: req.signal, onQueue: req.onQueue });
     try {
       const situation = readSituation(req.context);
-      const memory = loadMemory(req.userId, req.agentId);
+      // Проверочные реплики администратора (ephemeral) не читают и не пишут память игроков.
+      const memory = req.ephemeral === true ? emptyMemory() : loadMemory(req.userId, req.agentId);
       const guard = createRepeatGuard({
         previous: [...memory.notes, ...memory.turns.filter((t) => isTurn(t) && t.role === 'assistant').map((t) => t.text)],
         met: memory.exchanges > 0 || memory.turns.length > 0,
@@ -350,16 +376,16 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
       // Начало ответа держится, пока не проверено, что это не повтор сказанного раньше; затем текст идёт потоком.
       // Повтор не показывается игроку: ответ генерируется заново (ограниченное число раз), иначе — ошибка.
       for (let attempt = 0; attempt <= cfg.repeatRetries; attempt++) {
-        const messages = buildMessages(persona, req, text, situation, memory, attempt > 0);
-        const temperature = Math.min(1, cfg.temperature + 0.15 * attempt);
-        const outcome = yield* generate(req, messages, temperature, guard);
+        const messages = buildMessages(persona, req, text, situation, memory, attempt > 0, eff);
+        const temperature = Math.min(1, (eff.temperature ?? cfg.temperature) + 0.15 * attempt);
+        const outcome = yield* generate(req, messages, temperature, guard, eff.numPredict ?? cfg.numPredict);
         if (req.signal?.aborted) return;
         if (outcome.repeated) {
           log?.info?.({ agentId: req.agentId, attempt }, 'ответ повторяет сказанное раньше, генерация заново');
           continue;
         }
         if (!outcome.answer.trim()) throw new OllamaError('empty', 'Модель вернула пустой ответ');
-        saveTurns(req.userId, req.agentId, text, outcome.answer.trim(), situation);
+        if (req.ephemeral !== true) saveTurns(req.userId, req.agentId, text, outcome.answer.trim(), situation);
         return;
       }
       throw new OllamaError('repeat', 'Собеседник повторился и не придумал нового ответа. Попробуйте спросить иначе или повторите вопрос.');
@@ -369,7 +395,7 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
   }
 
   /** Одна генерация: отдаёт токены после проверки начала, возвращает {answer, repeated}. */
-  async function* generate(req, messages, temperature, guard) {
+  async function* generate(req, messages, temperature, guard, numPredict = cfg.numPredict) {
     let answer = '';
     let held = '';
     let released = false;
@@ -388,7 +414,7 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
       baseUrl: cfg.baseUrl,
       model: cfg.model,
       messages,
-      options: { num_predict: cfg.numPredict, num_ctx: cfg.numCtx, temperature },
+      options: { num_predict: numPredict, num_ctx: cfg.numCtx, temperature },
       keepAlive: cfg.keepAlive,
       signal: req.signal,
       idleTimeoutMs: cfg.idleTimeoutMs,
@@ -436,6 +462,55 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     }
   }
 
+  const emptyMemory = () => ({ raw: null, topics: {}, turns: [], notes: [], exchanges: 0, lastSituation: null });
+
+  // ── API для панели администратора (server/admin/routes.js) ────────────────────────────────
+
+  /** Базовые персоны проекта (файлы personas/*.json). Повреждённый файл показывается как ошибка, а не скрывается. */
+  function listPersonas() {
+    const out = [];
+    for (const file of readdirSync(cfg.personaDir).filter((f) => f.endsWith('.json')).sort()) {
+      const id = file.slice(0, -5);
+      if (!AGENT_ID_RE.test(id)) continue;
+      try {
+        out.push({ id, persona: loadPersonaFile(cfg.personaDir, id), error: null });
+      } catch (err) {
+        out.push({ id, persona: null, error: err.message });
+      }
+    }
+    return out;
+  }
+
+  let ollamaCache = null;
+  /** Состояние локальной Ollama: коротко кешируется, чтобы панель не опрашивала её каждую секунду. */
+  async function ollamaStatus({ force = false } = {}) {
+    const t = Date.now();
+    if (!force && ollamaCache && t - ollamaCache.at < 5000) return ollamaCache.value;
+    let value;
+    if (!cfg.model) {
+      value = { state: 'not_configured', model: '', baseUrl: cfg.baseUrl, message: 'Модель не задана (переменная OLLAMA_MODEL)' };
+    } else {
+      try {
+        const res = await fetchImpl(`${cfg.baseUrl}/api/tags`, { signal: AbortSignal.timeout(1500) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const names = ((await res.json()).models ?? []).map((m) => m.name);
+        const found = names.some((n) => n === cfg.model || n === `${cfg.model}:latest`);
+        value = found
+          ? { state: 'ready', model: cfg.model, baseUrl: cfg.baseUrl, message: 'Ollama доступна, модель найдена' }
+          : { state: 'model_missing', model: cfg.model, baseUrl: cfg.baseUrl, message: `Ollama доступна, но модели «${cfg.model}» нет` };
+      } catch (err) {
+        value = { state: 'unavailable', model: cfg.model, baseUrl: cfg.baseUrl, message: 'Ollama недоступна на этом компьютере' };
+      }
+    }
+    ollamaCache = { at: t, value };
+    return value;
+  }
+
+  const view = (id) => {
+    const o = overrides.get(id);
+    return { settings: { ...SETTINGS_DEFAULTS, ...(o?.settings ?? {}) }, revision: o?.revision ?? 0, customized: Boolean(o), updatedAt: o?.updatedAt ?? null };
+  };
+
   return {
     config: cfg,
     reply,
@@ -443,8 +518,40 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     get busy() {
       return { active: slots.active, queued: slots.queued };
     },
+    admin: {
+      listPersonas,
+      ollamaStatus,
+      getSettings: view,
+      /** Сохраняет настройки (уже проверенные validateSettings) и сразу применяет. */
+      saveSettings(agentId, settings, now = Date.now()) {
+        const revision = (overrides.get(agentId)?.revision ?? 0) + 1;
+        db.saveAgentSettings(agentId, settings, revision, now);
+        overrides.set(agentId, { settings, revision, updatedAt: now });
+        return view(agentId);
+      },
+      resetSettings(agentId) {
+        db.deleteAgentSettings(agentId);
+        overrides.delete(agentId);
+        return view(agentId);
+      },
+      /** Итоговая персона и промпт, собранные из текущих настроек (без вызова модели). */
+      preview(agentId, settingsOverride) {
+        const persona = getPersona(agentId);
+        const eff = applySettings(persona, settingsOverride ?? settingsOf(agentId));
+        const messages = buildMessages(persona, { context: {} }, '(реплика игрока)', null, emptyMemory(), false, eff);
+        return {
+          enabled: eff.enabled,
+          name: eff.name,
+          numPredict: eff.numPredict ?? cfg.numPredict,
+          temperature: eff.temperature ?? cfg.temperature,
+          systemPrompt: messages[0].content,
+        };
+      },
+    },
   };
 }
+
+
 
 // Экземпляр, созданный registerAgents; reply() ниже — точка входа контракта shared/agent-api.md.
 let current = null;
@@ -452,6 +559,7 @@ let current = null;
 export function registerAgents(app, ctx) {
   const agents = createAgents({ db: ctx.db, config: ctx.config, log: ctx.log });
   current = agents;
+  app.decorate('agents', agents);
   if (!agents.config.model) agents.probe();
   else if (agents.config.probeOnStart) app.addHook('onReady', async () => void agents.probe());
   app.addHook('onClose', async () => {

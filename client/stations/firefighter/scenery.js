@@ -4,31 +4,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PALETTE } from '../../engine/art/palette.js';
+import { applyWindShadows, windMaterial, treeProfile, padWindBounds, updateWind } from '../../engine/art/wind.js';
 import { roundedBox, softBlobTexture, stdMat, texturedMat, worldUVBox } from '../../engine/art/materials.js';
 import { BENCHES, BUSHES, CONES, FENCES, LAMPS, PAVED, PLANTERS, TREES, insideRect, isYardClear, KEEP_CLEAR } from './yard-plan.js';
-
-const swayTime = { value: 0 };
-
-/** Материал листвы и травы: вершинные цвета и лёгкое покачивание на ветру, растущее с высотой. */
-function swayMaterial(strength) {
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 });
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = swayTime;
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-        float phase = instanceMatrix[3].x * 0.6 + instanceMatrix[3].z * 0.45;
-        #else
-        float phase = 0.0;
-        #endif
-        float sway = sin(uTime * 1.5 + phase) * position.y * ${strength.toFixed(3)};
-        transformed.x += sway;
-        transformed.z += sway * 0.7;`);
-  };
-  material.customProgramCacheKey = () => `sway-${strength}`;
-  return material;
-}
 
 function random(seed) {
   let s = seed >>> 0;
@@ -107,14 +85,45 @@ const bushGeometry = () => mergeBaked([
   [unit.sphereLow, { pos: [-0.46, 0.32, -0.1], scale: [0.5, 0.36, 0.46], color: PALETTE.leaf[1], bottom: 0.66 }],
 ]);
 
-function grassGeometry() {
-  const blades = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2 + (i % 2) * 0.4;
-    const lean = 0.18 + (i % 3) * 0.1;
-    blades.push([unit.cone, { pos: [Math.cos(a) * 0.07, 0.24, Math.sin(a) * 0.07], rot: [Math.sin(a) * lean, 0, -Math.cos(a) * lean], scale: [0.045, 0.5 + (i % 3) * 0.12, 0.02], color: i % 2 ? PALETTE.grassLight : PALETTE.grass, bottom: 0.55 }]);
+export function grassGeometry() {
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const segments = 4;
+  for (let blade = 0; blade < 6; blade++) {
+    const angle = (blade / 6) * Math.PI * 2 + (blade % 2) * 0.4;
+    const length = 0.5 + (blade % 3) * 0.12;
+    const lean = 0.18 + (blade % 3) * 0.1;
+    const halfWidth = 0.035;
+    const axisX = -Math.sin(angle);
+    const axisZ = Math.cos(angle);
+    const color = new THREE.Color(blade % 2 ? PALETTE.grassLight : PALETTE.grass);
+    const base = positions.length / 3;
+    for (let row = 0; row <= segments; row++) {
+      const t = row / segments;
+      const width = halfWidth * (1 - t * 0.86);
+      const centerX = Math.cos(angle) * (0.07 + lean * t);
+      const centerZ = Math.sin(angle) * (0.07 + lean * t);
+      positions.push(centerX - axisX * width, length * t, centerZ - axisZ * width);
+      positions.push(centerX + axisX * width, length * t, centerZ + axisZ * width);
+      const shade = 0.58 + 0.42 * t;
+      colors.push(color.r * shade, color.g * shade, color.b * shade, color.r * shade, color.g * shade, color.b * shade);
+      if (row < segments) {
+        const a = base + row * 2;
+        const b = a + 1;
+        const c = a + 2;
+        const d = a + 3;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
   }
-  return mergeBaked(blades);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.userData.windSegments = segments;
+  return geometry;
 }
 
 const lampGeometry = () => mergeBaked([
@@ -158,6 +167,7 @@ function instanced(geometry, material, placements, { cast = false, receive = fal
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   mesh.castShadow = cast;
   mesh.receiveShadow = receive;
+  applyWindShadows(mesh);
   mesh.computeBoundingSphere();
   return mesh;
 }
@@ -261,14 +271,13 @@ export function createScenery({ detail = 0.7 } = {}) {
   }
 
   // Деревья, кусты.
-  const foliage = track(swayMaterial(0.05));
   const dynamic = []; // мелочи, количество которых зависит от качества: [{mesh, max}]
   for (const type of ['round', 'pine', 'birch']) {
     const items = TREES.filter((t) => t.type === type).map((t, i) => ({ x: t.x, z: t.z, s: t.s, ry: i * 1.7 }));
-    if (items.length) group.add(instanced(track(treeGeometry(type)), foliage, items, { cast: true, receive: true, colors: tint }));
+    if (items.length) group.add(instanced(padWindBounds(track(treeGeometry(type)), treeProfile(type)), windMaterial(treeProfile(type)), items, { cast: true, receive: true, colors: tint }));
   }
   const bushes = BUSHES.map((b, i) => ({ x: b.x, z: b.z, s: b.s, ry: i * 2.1 }));
-  group.add(instanced(track(bushGeometry()), foliage, bushes, { cast: true, receive: true, colors: tint }));
+  group.add(instanced(padWindBounds(track(bushGeometry()), 'bush'), windMaterial('bush'), bushes, { cast: true, receive: true, colors: tint }));
 
   // Дальний лес по кругу: объём и глубина вместо пустого горизонта.
   const forest = [];
@@ -280,7 +289,7 @@ export function createScenery({ detail = 0.7 } = {}) {
   }
   for (const type of ['pine', 'round']) {
     const items = forest.filter((t) => t.type === type);
-    const mesh = instanced(track(treeGeometry(type)), foliage, items, { colors: tint });
+    const mesh = instanced(padWindBounds(track(treeGeometry(type)), treeProfile(type)), windMaterial(treeProfile(type)), items, { colors: tint });
     group.add(mesh);
     dynamic.push({ mesh, max: items.length, minDetail: 0.0, fraction: 1 });
   }
@@ -289,7 +298,7 @@ export function createScenery({ detail = 0.7 } = {}) {
   const lawn = { x0: -36, x1: 36, z0: -22, z1: 36 };
   const grassAccept = (x, z) => isYardClear(x, z, 0.35) && !TREES.some((t) => Math.hypot(t.x - x, t.z - z) < 0.9);
   const tufts = scatter(1500, rand, lawn, grassAccept).map((p) => ({ ...p, ry: rand() * 6.28, s: 0.45 + rand() * 0.6 }));
-  const grassMesh = instanced(track(grassGeometry()), track(swayMaterial(0.35)), tufts, { colors: tint });
+  const grassMesh = instanced(padWindBounds(track(grassGeometry()), 'grass'), windMaterial('grass', { side: THREE.DoubleSide }), tufts, { colors: tint });
   group.add(grassMesh);
   dynamic.push({ mesh: grassMesh, max: tufts.length, fraction: 1 });
 
@@ -301,7 +310,7 @@ export function createScenery({ detail = 0.7 } = {}) {
   const flowers = [];
   const clusters = scatter(16, rand, { x0: -22, x1: 22, z0: -9, z1: 22 }, (x, z) => isYardClear(x, z, 0.8));
   clusters.forEach((c) => { for (let i = 0; i < 12; i++) flowers.push({ x: c.x + (rand() - 0.5) * 2, z: c.z + (rand() - 0.5) * 2, ry: rand() * 6, s: 0.8 + rand() * 0.6, c: Math.floor(rand() * PALETTE.flower.length) }); });
-  const flowerMesh = instanced(flowerGeometry, track(swayMaterial(0.2)), flowers, { colors: (p) => new THREE.Color(PALETTE.flower[p.c]) });
+  const flowerMesh = instanced(padWindBounds(flowerGeometry, 'flower'), windMaterial('flower'), flowers, { colors: (p) => new THREE.Color(PALETTE.flower[p.c]) });
   group.add(flowerMesh);
   dynamic.push({ mesh: flowerMesh, max: flowers.length, fraction: 1 });
 
@@ -355,7 +364,7 @@ export function createScenery({ detail = 0.7 } = {}) {
 
   return {
     group,
-    update(elapsed) { swayTime.value = elapsed; },
+    update(elapsed) { updateWind(elapsed); },
     setDetail: applyDetail,
     dispose() {
       group.removeFromParent();

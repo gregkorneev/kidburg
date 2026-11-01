@@ -4,6 +4,7 @@ import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { applyBakeryAction, createInitialState } from './state.js';
 import { createBakeryScene } from './scene.js';
 import { mountBakeryUI } from './ui.js';
+import { startTelemetry } from '../../engine/telemetry.js';
 import './style.css';
 
 const sceneRoot = document.querySelector('#scene');
@@ -71,11 +72,23 @@ const unbindCityExit = bindCityExit({
   onExit: () => window.location.assign('/'),
 });
 
+// Центральный мониторинг Control Center: FPS и ping этой страницы; кадры — по фактическим вызовам renderer.render.
+const telemetry = startTelemetry({
+  loc: 'bakery',
+  getQuality: () => quality,
+  getFrameCount: () => world?.debug.renderer?.info.render.frame,
+  getRenderInfo: () => {
+    const info = world?.debug.renderer?.info;
+    return info ? { calls: info.render.calls, triangles: info.render.triangles, geometries: info.memory.geometries, textures: info.memory.textures } : null;
+  },
+});
+
 if (new URLSearchParams(location.search).has('debug')) window.__bakery = world.debug;
 
 window.addEventListener('pagehide', (event) => {
   if (event.persisted) return;
   clearTimeout(noticeTimer);
   unbindCityExit();
+  telemetry.stop();
   world?.dispose();
 });

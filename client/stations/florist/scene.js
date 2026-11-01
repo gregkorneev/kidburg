@@ -5,7 +5,7 @@ import { applyStylizedLook } from '../../engine/art/lighting.js';
 import { createCharacter, animateCharacter, triggerGesture, disposeCharacter } from '../../engine/art/character.js';
 import { stdMat } from '../../engine/art/materials.js';
 import { QUALITY_LABELS, readQuality, saveQuality } from '../../engine/art/quality.js';
-import { updateWind } from '../../engine/art/wind.js';
+import { updateWind, setWindQuality } from '../../engine/art/wind.js';
 import { buildFloristLayout } from './layout.js';
 import { bouquetStemTransform, createFlower, disposeFlower, createWrapping, disposeWrapping } from './flowers.js';
 import { FLOWERS, ORDER } from './state.js';
@@ -60,6 +60,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
 
   const look = applyStylizedLook({ renderer, scene, camera, fog: [32, 78], shadowExtent: 18, exposure: 1.03 });
   look.setQuality(readQuality());
+  setWindQuality(look.quality);
 
   const layout = buildFloristLayout();
   scene.add(layout.root);
@@ -317,6 +318,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
     setUiBlocked,
     setQuality(level) {
       look.setQuality(level);
+      setWindQuality(level);
       const decorativeFlowers = layout.setQuality(level);
       saveQuality(level);
       return { level, label: QUALITY_LABELS[level], decorativeFlowers };
@@ -324,6 +326,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
     getPosition: () => ({ x: player.x, y: player.y, z: player.z }),
     getQuality: () => look.quality,
     getRenderStats: () => ({
+      frame: renderer.info.render.frame,
       calls: renderer.info.render.calls,
       triangles: renderer.info.render.triangles,
       geometries: renderer.info.memory.geometries,

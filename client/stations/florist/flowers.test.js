@@ -9,6 +9,8 @@ test('четыре вида цветов имеют отдельные моде�
   assert.ok(flowers.every((flower) => flower.children.length === 1));
   assert.ok(flowers.every((flower) => flower.userData.ownedGeometries.size === 1));
   assert.ok(flowers.every((flower) => flower.children[0].geometry.getAttribute('position').count > 180));
+  assert.ok(flowers.every((flower) => flower.children[0].material.userData.windProfile === 'flower-held'));
+  assert.ok(flowers.every((flower) => flower.children[0].customDepthMaterial?.userData.windProfile === 'flower-held'));
   flowers.forEach(disposeFlower);
 });
 

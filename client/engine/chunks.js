@@ -6,7 +6,7 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CHUNK_SIZE, WORLD_CHUNKS_X, WORLD_CHUNKS_Z } from '../../shared/constants.js';
 import { decode } from '../../shared/protocol.js';
 import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter, setCharacterQuality } from './art/character.js';
-import { updateWind } from './art/wind.js';
+import { applyWindShadows, padWindBounds, setWindQuality, updateWind, windMaterial } from './art/wind.js';
 import { getPrefabVariant, variantKey } from './prefabs.js';
 import { turnNpcToward } from './npc-facing.js';
 
@@ -108,7 +108,7 @@ export function makeLabel(text) {
 }
 
 /** Коллайдер инстанса с AABB-границами и локальной формой для точной проверки поворота. */
-function instanceBox(collider, x, y, z, ry, scale) {
+export function instanceBox(collider, x, y, z, ry, scale) {
   const [w, h, d] = collider;
   const cos = Math.abs(Math.cos(ry));
   const sin = Math.abs(Math.sin(ry));
@@ -139,6 +139,7 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel, quali
   /** @type {Map<number, object>} */
   const chunks = new Map();
   let currentQuality = quality;
+  setWindQuality(quality);
 
   function build(chunk) {
     const group = new THREE.Group();
@@ -175,11 +176,14 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel, quali
     const scl = new THREE.Vector3();
     for (const { id: prefabId, variant, key, list } of byPrefab.values()) {
       const prefab = getPrefabVariant(prefabId, variant);
-      const geometry = acquire(`prefab-geo:${key}`, prefab.build);
-      const material = acquire(`prefab-mat:${prefabId}`, () => (prefab.vertexColors === true
+      const windProfile = prefab.windProfile?.(variant) ?? null;
+      const geometry = acquire(`prefab-geo:${key}`, () => (windProfile ? padWindBounds(prefab.build(), windProfile) : prefab.build()));
+      // Растения с ветром берут общий материал страницы (он не принадлежит чанку и не освобождается пулом).
+      const material = windProfile ? windMaterial(windProfile) : acquire(`prefab-mat:${prefabId}`, () => (prefab.vertexColors === true
         ? new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.86, metalness: 0 })
         : new THREE.MeshLambertMaterial({ color: prefab.color })));
       const mesh = new THREE.InstancedMesh(geometry, material, list.length);
+      applyWindShadows(mesh);
       mesh.castShadow = prefab.name !== 'city_path'; // дорожки лежат на земле и теней не отбрасывают
       mesh.receiveShadow = true;
       list.forEach(([, x, y, z, ry, scale], i) => {
@@ -301,6 +305,12 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel, quali
       }
       return out;
     },
+    /** Подвижные механизмы загруженных чанков (ворота и т. п.): {id, kind, object, x, z, radius}. */
+    mechanisms() {
+      const out = [];
+      for (const entry of chunks.values()) for (const decor of entry.decor) if (decor.mechanisms) out.push(...decor.mechanisms);
+      return out;
+    },
     /** Ближайший NPC в радиусе по горизонтали или null. */
     nearestNpc(x, y, z, radius, maxDy = 3) {
       let best = null;
@@ -334,6 +344,7 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel, quali
     setQuality(level) {
       currentQuality = level;
       setCharacterQuality(level);
+      setWindQuality(level);
       for (const entry of chunks.values()) for (const decor of entry.decor) decor.setQuality?.(level);
     },
     dispose() {

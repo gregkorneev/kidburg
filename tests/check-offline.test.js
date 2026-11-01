@@ -48,3 +48,16 @@ test('offline checker flags external module imports and fetch calls in JavaScrip
     [2, 'https://api.example/data'],
   ]);
 });
+
+
+test('SVG namespace is allowed without allowing network requests to that address', async (t) => {
+  const root = await fixture(t);
+  await writeFile(path.join(root, 'main.js'), [
+    "const SVG = 'http://www.w3.org/2000/svg';",
+    "document.createElementNS('http://www.w3.org/2000/svg', 'svg');",
+    "fetch('http://www.w3.org/2000/svg');",
+    "import 'https://cdn.example/module.js';",
+  ].join('\n'));
+  const violations = await checkOffline(root);
+  assert.deepEqual(violations.map(({ line }) => line), [3, 4]);
+});

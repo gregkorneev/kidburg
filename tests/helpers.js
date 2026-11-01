@@ -142,3 +142,27 @@ export function tempWorld() {
   makeFixtures(dir);
   return { worldDir: dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
+
+// ── Control Center ────────────────────────────────────────────────────────────────────────
+export const ADMIN_PASSWORD = 'correct-horse-battery';
+const ADMIN_HEADERS = { host: 'localhost:3000', origin: 'http://localhost:3000' };
+
+/** Приложение с включённой панелью администратора. */
+export const makeAdminApp = (overrides = {}) => makeApp({ adminPassword: ADMIN_PASSWORD, ...overrides });
+
+/** Вход администратора через inject: { cookie, csrf }. */
+export async function adminLogin(app, password = ADMIN_PASSWORD) {
+  const res = await app.inject({ method: 'POST', url: '/api/admin/login', headers: ADMIN_HEADERS, payload: { password } });
+  if (res.statusCode !== 200) throw new Error(`admin login: ${res.statusCode} ${res.body}`);
+  return { cookie: res.headers['set-cookie'].split(';')[0], csrf: res.json().csrf };
+}
+
+/** Запрос к /api/admin с cookie, CSRF и Origin администратора. */
+export function adminRequest(app, session, method, url, payload, headers = {}) {
+  return app.inject({
+    method,
+    url,
+    payload,
+    headers: { ...ADMIN_HEADERS, cookie: session.cookie, 'x-csrf-token': session.csrf, ...headers },
+  });
+}

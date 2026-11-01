@@ -41,7 +41,7 @@ export function createAnimState(seed = 0) {
     quirk: { breath: 1.7 + h(4) * 0.7, stride: 0.94 + h(5) * 0.14, fidget: 0.6 + h(6) * 0.8, sway: 0.7 + h(7) * 0.6 },
     glanceAt: 2 + h(8) * 4, glanceYaw: 0, glancePitch: 0, glance: 0,
     talkGate: 1, glanceHold: 0, glanceBlend: 0, expr: 'neutral', exprIntensity: 1, exprUntil: 0, exprApplied: '', clock: 0,
-    gazeX: 0, gazeY: 0, carry: false, lean: 0, shake: 0,
+    gazeX: 0, gazeY: 0, carry: false, lean: 0, shake: 0, kickT: 99,
   };
 }
 
@@ -52,6 +52,12 @@ export function triggerGesture(person, kind) {
   anim.gesture = kind;
   anim.gestureT = 0;
   return true;
+}
+
+/** Удар ногой: замах правой ногой и выпад вперёд (~0,5 с), поверх походки. */
+export const KICK_LEN = 0.5;
+export function triggerKick(person) {
+  person.userData.anim.kickT = 0;
 }
 
 /** Эмоция лица: name из EXPRESSIONS; duration>0 — через столько секунд вернётся к нейтральному. */
@@ -212,6 +218,20 @@ export function animateCharacter(person, dt, t, { speed = 0, talking = false, lo
     leg.foot.rotation.x = -(hip + flex) * 0.92 + toeOff - heel;
     const h = THIGH_LEN * (1 - Math.cos(hip)) + SHIN_LEN * (1 - Math.cos(hip + flex));
     if (h < lowest) lowest = h;
+  }
+  if (a.kickT < KICK_LEN) {
+    // Замах назад (0–0,16 с), удар вперёд (до 0,5 с), затем плавный возврат к обычной походке.
+    a.kickT += dt;
+    const k = a.kickT;
+    const leg = u.legs[1];
+    const wind = smoothstep(0, 0.16, k);
+    const strike = smoothstep(0.16, 0.34, k);
+    const back = 1 - smoothstep(0.38, KICK_LEN, k);
+    const hipK = lerp(0, 0.7, wind) + (-1.15 - 0.7) * strike;
+    const kneeK = lerp(0.1, 1.2, wind) + (0.1 - 1.2) * strike;
+    leg.pivot.rotation.x = lerp(leg.pivot.rotation.x, hipK, back);
+    leg.knee.rotation.x = lerp(leg.knee.rotation.x, kneeK, back);
+    leg.foot.rotation.x = lerp(leg.foot.rotation.x, -(hipK + kneeK) * 0.92, back);
   }
   const lift = run * 0.075 * Math.abs(Math.sin(phase));
   u.body.position.y = -lowest + lift;

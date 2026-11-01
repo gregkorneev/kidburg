@@ -2,6 +2,7 @@ import { createFloristScene } from './scene.js';
 import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { createInitialState, orderMatches, ribbonForKey, transitionTask } from './state.js';
 import { mountFloristUI } from './ui.js';
+import { startTelemetry } from '../../engine/telemetry.js';
 import './style.css';
 
 const isTyping = (target) => !!target?.closest?.('input, textarea, select, [contenteditable="true"]');
@@ -102,6 +103,10 @@ if (new URLSearchParams(window.location.search).has('debug')) {
 scene.setTaskState(state);
 renderUI();
 
+// Центральный мониторинг Control Center: FPS и ping этой страницы.
+// Кадры — по фактическим вызовам renderer.render (счётчик renderer.info.render.frame из getRenderStats).
+const telemetry = startTelemetry({ loc: 'florist', getQuality: () => quality, getRenderInfo: () => scene.getRenderStats(), getFrameCount: () => scene.getRenderStats().frame });
+
 function onKeyDown(event) {
   if (isTyping(event.target) || event.repeat) return;
   const ribbon = ribbonForKey(event.code);
@@ -120,5 +125,6 @@ window.addEventListener('pagehide', () => {
   clearTimeout(noticeTimer);
   clearInterval(statsTimer);
   window.removeEventListener('keydown', onKeyDown);
+  telemetry.stop();
   scene.dispose();
 }, { once: true });

@@ -1,0 +1,32 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { buildFireTruck } from './station-art.js';
+
+test('лестница, маячки и колёса пожарной машины движутся независимо', () => {
+  const truck = buildFireTruck();
+  const m = truck.userData.mechanism;
+  assert.equal(m.wheels.length, 4);
+  m.update(0, 0);
+  m.toggle();
+  assert.equal(m.state, 'deploying');
+  for (let i = 0; i < 241; i++) m.update(1 / 60, i / 60);
+  assert.equal(m.progress, 1);
+  assert.equal(m.state, 'deployed');
+  assert.ok(m.ladder.rotation.z > 0 && m.ladder.rotation.z <= 0.65);
+  assert.ok(m.extension.position.x > 1);
+  assert.equal(m.wheels[0].rotation.z, 0);
+  truck.position.x += 0.56;
+  m.update(0, 5);
+  assert.ok(Math.abs(m.wheels[0].rotation.z + 1) < 1e-10);
+  truck.position.x -= 0.56;
+  m.update(0, 6);
+  assert.ok(Math.abs(m.wheels[0].rotation.z) < 1e-10);
+  m.applyRemote({ deployed: false, progress: 0.5 });
+  assert.equal(m.state, 'retracting');
+  m.toggle();
+  assert.equal(m.state, 'deploying');
+  assert.equal(m.progress, 0.5);
+  m.toggle();
+  m.update(2, 7);
+  assert.equal(m.progress, 0);
+});

@@ -1,0 +1,90 @@
+// Подвижные механизмы зданий города. Создаются вместе с чанком (хук decorate префаба) и выгружаются вместе с ним:
+// ворота пожарной части и спутниковая антенна радиостанции. Неподвижная основа — в слитой геометрии префаба,
+// здесь только движущиеся части. Сетевое состояние ворот подключает mechanism-sync.js через decor.mechanisms.
+import * as THREE from 'three';
+import { createSectionalGate } from './mechanisms/gate.js';
+import { createSatelliteDish } from './mechanisms/antenna.js';
+import { createSignDecor } from './city-decor.js';
+import { FIRE_STATION_SIGNS, GARAGE_X, GATE, GATE_PALETTE } from './fire-station.js';
+import { DISH_POST, MAST_BEACON, RADIO_STATION_SIGNS } from './radio-station.js';
+
+/** Идентификаторы механизмов города: те же значения знает сервер (shared/mechanisms.js). */
+export const CITY_GATE_IDS = Object.freeze(['fire-city-gate-0', 'fire-city-gate-1']);
+export const GATE_INTERACT_RADIUS = 3.4;
+
+/** Корень инстанса: локальные координаты здания -> группа чанка (то же преобразование, что у вывесок). */
+function instanceRoot(group, instance) {
+  const root = new THREE.Group();
+  root.position.set(instance.x, instance.y, instance.z);
+  root.rotation.y = instance.ry;
+  root.scale.setScalar(instance.scale);
+  group.add(root);
+  return root;
+}
+
+/** Мировая точка из локальных координат здания (для подсказок и дальности клавиши E). */
+function toWorld(group, instance, x, z) {
+  const c = Math.cos(instance.ry);
+  const s = Math.sin(instance.ry);
+  return {
+    x: group.position.x + instance.x + (x * c + z * s) * instance.scale,
+    z: group.position.z + instance.z + (-x * s + z * c) * instance.scale,
+  };
+}
+
+function compose(base, extra) {
+  return {
+    update(dt, elapsed) { base.update?.(dt, elapsed); extra.update(dt, elapsed); },
+    setQuality(level) { base.setQuality?.(level); extra.setQuality?.(level); },
+    dispose() { extra.dispose(); base.dispose(); },
+    mechanisms: extra.mechanisms ?? [],
+  };
+}
+
+export function decorateFireStation(args) {
+  const base = createSignDecor(FIRE_STATION_SIGNS)(args);
+  const { group, instance } = args;
+  const root = instanceRoot(group, instance);
+  const gates = GARAGE_X.map((x, i) => {
+    const gate = createSectionalGate({
+      id: CITY_GATE_IDS[i], width: GATE.width, height: GATE.height, sections: GATE.sections, thickness: GATE.thickness, radius: GATE.radius, palette: GATE_PALETTE,
+    });
+    gate.root.position.set(x, GATE.baseY, GATE.z);
+    root.add(gate.root);
+    return gate;
+  });
+  const mechanisms = gates.map((gate, i) => ({
+    id: gate.id,
+    kind: 'gate',
+    object: gate,
+    ...toWorld(group, instance, GARAGE_X[i], GATE.z),
+    width: GATE.width * instance.scale,
+    depth: GATE.thickness * instance.scale,
+    minY: instance.y + GATE.baseY * instance.scale,
+    maxY: instance.y + (GATE.baseY + GATE.height) * instance.scale,
+    rotationY: instance.ry,
+    radius: GATE_INTERACT_RADIUS * instance.scale,
+  }));
+  return compose(base, {
+    update: (dt, elapsed) => { for (const gate of gates) gate.update(dt, elapsed); },
+    dispose: () => { for (const gate of gates) gate.dispose(); root.removeFromParent(); },
+    mechanisms,
+  });
+}
+
+export function decorateRadioStation(args) {
+  const base = createSignDecor(RADIO_STATION_SIGNS)(args);
+  const { group, instance } = args;
+  const root = instanceRoot(group, instance);
+  // Фаза зависит от положения здания: перенаведение не совпадает у разных экземпляров.
+  const dish = createSatelliteDish({
+    id: 'radio-dish', position: [DISH_POST.x, DISH_POST.top, DISH_POST.z], beaconPosition: [MAST_BEACON.x, MAST_BEACON.y, MAST_BEACON.z],
+    seed: Math.floor(instance.x * 7 + instance.z * 13), baseYaw: Math.PI,
+  });
+  root.add(dish.root);
+  return compose(base, {
+    update: (dt, elapsed) => dish.update(dt, elapsed),
+    setQuality: (level) => dish.setQuality(level),
+    dispose: () => { dish.dispose(); root.removeFromParent(); },
+  });
+}

@@ -8,6 +8,10 @@ const C = {
   glass: 0x86c2d2, glassDark: 0x3d6f82, door: 0x3a6872, brass: 0xf0c85f, stone: 0xd0c8b4, aerial: 0x506875, red: 0xe0462f, white: 0xffffff,
 };
 
+/** Верх стойки тарелки и шар маячка на мачте (координаты здания): подвижные части ставит city-mechanisms.js. */
+export const DISH_POST = Object.freeze({ x: -1.5, z: -3.4, top: 10.4 });
+export const MAST_BEACON = Object.freeze({ x: 4.6, y: 16.5, z: -2.4 });
+
 export const RADIO_STATION_SIGNS = Object.freeze([
   { text: 'РАДИО', x: 0, y: 7.55, z: 5.95, w: 3.8, h: 1.05, color: '#345568', border: '#f28b35', background: '#fff5df' },
 ]);
@@ -82,12 +86,10 @@ export function buildRadioStationGeometry() {
     k.box(0.06, 0.06, 0.9, mx + 0.4, y, mz, C.aerial, { tinted: false });
   }
   for (const y of [14.1, 15.0]) k.box(2.4, 0.09, 0.09, mx, y, mz, C.aerial, { tinted: false });
-  k.sphere(0.28, mx, 16.5, mz, C.red, { w: 8, h: 6, tinted: false });
   for (const [ex, ez] of [[-3.5, -3.0], [3.0, 2.5], [-3.5, 3.5]]) k.tube([[mx, 14.2, mz], [mx + ex * 0.5, 11.8, mz + ez * 0.5], [mx + ex, 9.2, mz + ez]], 0.025, C.aerial, { radial: 4 });
-  // Спутниковая тарелка.
-  k.cyl(0.08, 0.1, 1.2, 6, -1.5, 9.8, -3.4, C.aerial);
-  k.sphere(1.0, -1.5, 10.55, -3.2, C.white, { s: [1, 0.35, 1], w: 14, h: 6, rot: [0.9, 0, 0] });
-  k.cyl(0.04, 0.04, 0.9, 5, -1.5, 11.0, -2.8, C.aerial, { rot: [0.9, 0, 0] });
+  // Стойка спутниковой тарелки: сама тарелка и маячок мачты — подвижные детали (mechanisms/antenna.js).
+  k.cyl(0.08, 0.1, 1.2, 6, DISH_POST.x, 9.8, DISH_POST.z, C.aerial);
+  k.cyl(0.18, 0.22, 0.12, 8, DISH_POST.x, 9.26, DISH_POST.z, C.dark);
 
   bin(k, 7.0, 8.0);
   k.bench(-3.5, 8.2, 0, { width: 2.0, metal: C.dark });

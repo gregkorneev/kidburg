@@ -18,6 +18,7 @@ import {
   WORLD_SIZE_Z,
 } from '../../shared/constants.js';
 import { C2S, ERROR_CODES, LIMITS, S2C, decode, encode, validate } from '../../shared/protocol.js';
+import { BALL, FIELD, INTERACT_CODES, INTERACT_LIMITS } from '../../shared/interaction-contracts.js';
 import { reply as defaultReply } from '../agents/index.js';
 import { createChunkMirror } from './chunks.js';
 import { chooseSpawn } from './spawn.js';
@@ -30,6 +31,11 @@ const MAX_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED = 512 * 1024;
 // task_answer: серия попаданий по окнам идёт примерно 8 раз в секунду.
 const TASK_PER_SEC = 20;
+const MECH_PER_SEC = 4;
+// Мячи и предметы рассылаются игрокам не дальше этого расстояния от поля (мяч не уходит от поля дальше hardMargin).
+const BALL_VIEW_M = FIELD.hardMargin + FIELD.halfW + 70;
+const PHYSICS_DT = 1 / BALL.stepHz;
+const SNAPSHOT_EVERY = Math.max(1, Math.round(BALL.stepHz / BALL.snapshotHz));
 /** Ответ обработчика {state, done, feedback, changed, error?} -> плоское поле `state` сообщения task_state. */
 const taskWire = (r) => ({ ...r.state, done: r.done, feedback: r.feedback, changed: r.changed, ...(r.error ? { error: r.error } : {}) });
 const TASK_UNAVAILABLE = 'Сервер сейчас не может прочитать прогресс. Попробуйте позже.';
@@ -85,6 +91,7 @@ function reject(socket, status, text) {
  * @param {{taskIds: readonly string[], has(id: string): boolean, getState(userId: number, id: string): object,
  *   handle(userId: number, id: string, payload: unknown, context: object): object, forget?(userId: number): void}} [deps.tasks]
  *   задания; прогресс принадлежит userId соединения, позиция берётся у сервера
+ * @param {ReturnType<import('../world/dynamic-objects.js').createDynamicWorld>} [deps.dynamic] динамические объекты мира
  * @param {typeof defaultReply} [deps.reply] мозг агента (shared/agent-api.md); подменяется в тестах
  * @param {number} [deps.npcTalkMaxChars] предел длины реплики игрока NPC
  * @param {number} [deps.npcTalkPerSec] предел npc_talk в секунду на игрока
@@ -95,6 +102,9 @@ export function createGame({
   tickets,
   now = Date.now,
   world = null,
+  dynamic = null,
+  mechanisms = null,
+  interactive = null,
   tasks = null,
   tickHz = TICK_HZ,
   pingMs = 10_000,
@@ -134,6 +144,7 @@ export function createGame({
   function removePlayer(p) {
     if (p.dirty) savePlayers([p]);
     tasks?.forget?.(p.id);
+    interactive?.release(p.id); // предмет из рук возвращается на безопасное место
     players.delete(p.id);
     for (const other of players.values()) {
       if (other.known.delete(p.id)) send(other.conn, { t: S2C.PLAYER_LEAVE, id: p.id });
@@ -152,21 +163,48 @@ export function createGame({
     if (code !== undefined && conn.ws.readyState <= WebSocket.OPEN) conn.ws.close(code, reason);
   }
 
-  /** Отправляет разницу зеркала: сначала chunk_unload, потом chunk_load, затем cache_stats. */
-  function streamChunks(p) {
+  /**
+   * Отправляет разницу зеркала: сначала chunk_unload, потом chunk_load (и dyn_snapshot с динамическими объектами
+   * чанка, если они есть), затем cache_stats. `refresh` пересчитывает размеры после правки динамического слоя.
+   */
+  function streamChunks(p, { refresh = false } = {}) {
     if (!world) return;
-    const diff = p.mirror.update(p.x, p.z);
+    const diff = refresh ? p.mirror.refresh(p.x, p.z) : p.mirror.update(p.x, p.z);
     if (!diff) return;
+    if (refresh && diff.unload.length === 0 && diff.load.length === 0 && diff.stats.bytes === p.statsBytes) return;
     for (const { cx, cz } of diff.unload) send(p.conn, { t: S2C.CHUNK_UNLOAD, cx, cz });
     for (const { cx, cz } of diff.load) {
       try {
         send(p.conn, { t: S2C.CHUNK_LOAD, cx, cz, data: world.readChunk(cx, cz) });
       } catch (err) {
         log.error({ err, cx, cz }, 'не удалось прочитать чанк');
+        continue;
       }
+      const objects = dynamic?.forChunk(cx, cz) ?? [];
+      if (objects.length > 0) send(p.conn, { t: S2C.DYN_SNAPSHOT, cx, cz, objects });
     }
+    p.statsBytes = diff.stats.bytes;
     send(p.conn, { t: S2C.CACHE_STATS, ...diff.stats });
     if (diff.stats.loaded > diff.stats.max) log.error(diff.stats, 'нарушен лимит кеша клиента');
+  }
+
+  /** Правка динамического слоя: доставляем только тем, у кого соответствующий чанк в кеше. */
+  function onDynamicChange({ ops }) {
+    for (const p of players.values()) {
+      if (!p.mirror) continue;
+      for (const op of ops) {
+        if (op.op === 'upsert') {
+          const { x, z } = op.object;
+          const cx = chunkIndex(x, WORLD_CHUNKS_X);
+          const cz = chunkIndex(z, WORLD_CHUNKS_Z);
+          if (p.mirror.has(cx, cz)) send(p.conn, { t: S2C.DYN_UPSERT, object: op.object });
+          else if (op.prev && p.mirror.has(op.prev.cx, op.prev.cz)) send(p.conn, { t: S2C.DYN_REMOVE, id: op.object.id, rev: op.object.rev });
+        } else if (p.mirror.has(op.cx, op.cz)) {
+          send(p.conn, { t: S2C.DYN_REMOVE, id: op.id, rev: op.rev });
+        }
+      }
+      streamChunks(p, { refresh: true });
+    }
   }
 
   function handleHello(conn, msg) {
@@ -194,9 +232,13 @@ export function createGame({
       cz: chunkIndex(z, WORLD_CHUNKS_Z),
       lastAt: now(),
       dirty: false,
+      statsBytes: -1,
       known: new Set(),
       posLimit: createLimiter(LIMITS.POS_PER_SEC),
       taskLimit: createLimiter(TASK_PER_SEC),
+      mechLimit: createLimiter(MECH_PER_SEC),
+      interactLimit: createLimiter(INTERACT_LIMITS.PER_SEC),
+      ballVer: new Map(),
       talkLimit: createLimiter(npcTalkPerSec),
       mirror: world && createChunkMirror(world, log),
     };
@@ -214,6 +256,60 @@ export function createGame({
     });
     streamChunks(player);
     sendTaskStates(player);
+    if (mechanisms) send(player.conn, { t: S2C.MECH_SNAPSHOT, list: mechanisms.snapshot() });
+    if (interactive) {
+      send(player.conn, { t: S2C.PROP_SNAPSHOT, list: interactive.propRows() });
+      sendBalls(player);
+    }
+  }
+
+  const nearField = (p) => Math.hypot(p.x - FIELD.x, p.z - FIELD.z) <= BALL_VIEW_M;
+
+  /** Мячи, о которых игрок ещё не знает или которые движутся; полный набор при подключении. */
+  function sendBalls(p, tick = tickNo) {
+    if (!interactive || !nearField(p)) return;
+    const rows = [];
+    for (const ball of interactive.balls.list()) {
+      if (ball.resting && p.ballVer.get(ball.id) === ball.version) continue;
+      p.ballVer.set(ball.id, ball.version);
+      rows.push(interactive.balls.wire(ball));
+    }
+    if (rows.length) send(p.conn, { t: S2C.BALL_SNAPSHOT, tick, ts: now(), list: rows });
+  }
+
+  /** Игровое действие над предметом или мячом. Дальность, владение и направление берутся из состояния сервера. */
+  function handleInteract(player, msg) {
+    const t = now();
+    const reply = (r) =>
+      send(player.conn, { t: S2C.INTERACT_RESULT, seq: msg.seq, id: msg.id, action: msg.action, ok: r.ok, code: r.code ?? INTERACT_CODES.OK, message: r.message ?? '' });
+    if (!interactive) return reply({ ok: false, code: INTERACT_CODES.UNKNOWN, message: 'Взаимодействия отключены' });
+    if (!player.interactLimit.hit(t)) {
+      if (player.interactLimit.shouldNotify(t)) sendError(player.conn, ERROR_CODES.RATE_LIMIT, 'Слишком много interact');
+      return reply({ ok: false, code: INTERACT_CODES.RATE_LIMIT, message: 'Слишком часто' });
+    }
+    const actor = { id: player.id, x: player.x, z: player.z, ry: player.ry };
+    if (msg.action === 'take') return reply(interactive.take(actor, msg.id));
+    if (msg.action === 'place' || msg.action === 'drop') return reply(interactive.place(actor, msg.id, msg.action));
+    if (msg.action === 'kick') return reply(interactive.kick(actor, msg.id));
+    return reply({ ok: false, code: INTERACT_CODES.UNKNOWN, message: 'Неизвестное действие' });
+  }
+
+  /** Фиксированный физический шаг мячей и рассылка снимков (реже, чем шаги). */
+  let physicsNo = 0;
+  function physicsTick() {
+    if (!interactive) return;
+    physicsNo += 1;
+    const actors = [];
+    for (const p of players.values()) {
+      if (Math.hypot(p.x - FIELD.x, p.z - FIELD.z) < FIELD.halfW + 40) actors.push({ id: p.id, x: p.x, z: p.z });
+    }
+    const events = interactive.step(PHYSICS_DT, actors);
+    for (const event of events) {
+      for (const p of players.values()) if (nearField(p)) send(p.conn, { t: S2C.BALL_EVENT, ...event });
+    }
+    if (physicsNo % SNAPSHOT_EVERY === 0 || events.length > 0) {
+      for (const p of players.values()) if (p.conn.ws.bufferedAmount < MAX_BUFFERED) sendBalls(p, physicsNo);
+    }
   }
 
   /** Сохранённое состояние заданий: игрок видит прогресс после входа, перезагрузки и переподключения. */
@@ -226,6 +322,22 @@ export function createGame({
         send(player.conn, { t: S2C.TASK_STATE, taskId, state: { error: 'storage', feedback: TASK_UNAVAILABLE } });
       }
     }
+  }
+
+  /** Игрок выставляет состояние механизма: дальность и частоту проверяет сервер, остальным игрокам уходит mech_state. */
+  function handleMech(player, msg) {
+    if (!mechanisms) return;
+    const t = now();
+    if (!player.mechLimit.hit(t)) {
+      if (player.mechLimit.shouldNotify(t)) sendError(player.conn, ERROR_CODES.RATE_LIMIT, 'Слишком много mech_set');
+      return;
+    }
+    const result = mechanisms.set(msg.id, msg.active, { x: player.x, z: player.z });
+    if (result.ok) {
+      // Неизменившееся состояние подтверждаем только инициатору: он мог ошибиться из-за запоздавшего снимка.
+      if (!result.changed) send(player.conn, { t: S2C.MECH_STATE, ...result.state });
+    } else if (result.reason === 'too_far') sendError(player.conn, ERROR_CODES.TOO_FAR, 'Механизм слишком далеко');
+    else sendError(player.conn, ERROR_CODES.BAD_MSG, 'Неизвестный механизм');
   }
 
   function handleTask(player, msg) {
@@ -376,6 +488,8 @@ export function createGame({
     if (msg.t === C2S.POS) return handlePos(conn.player, msg);
     if (msg.t === C2S.HELLO) return sendError(conn, ERROR_CODES.BAD_MSG, 'hello уже было');
     if (msg.t === C2S.TASK_ANSWER) return handleTask(conn.player, msg);
+    if (msg.t === C2S.MECH_SET) return handleMech(conn.player, msg);
+    if (msg.t === C2S.INTERACT) return handleInteract(conn.player, msg);
     if (msg.t === C2S.NPC_TALK) {
       return void handleNpcTalk(conn.player, msg).catch((err) => log.error({ err }, 'сбой моста npc_talk'));
     }
@@ -386,7 +500,7 @@ export function createGame({
     const previous = connByUser.get(user.id);
     if (previous) dropConn(previous, CLOSE.REPLACED, 'replaced');
 
-    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null, talk: null };
+    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null, talk: null, pingAt: 0, rttMs: null };
     conns.add(conn);
     connByUser.set(user.id, conn);
     conn.helloTimer = setTimeout(() => {
@@ -397,6 +511,7 @@ export function createGame({
     ws.on('message', (data, isBinary) => onMessage(conn, data, isBinary));
     ws.on('pong', () => {
       conn.alive = true;
+      if (conn.pingAt) conn.rttMs = Math.round(now() - conn.pingAt);
     });
     ws.on('error', (err) => log.debug({ err }, 'ошибка сокета'));
     ws.on('close', () => dropConn(conn));
@@ -418,6 +533,7 @@ export function createGame({
 
   function tick() {
     tickNo += 1;
+    if (tickNo % tickHz === 0) mechanisms?.sweep?.(); // двери, оставленные открытыми, закрываются сами
     const byChunk = new Map();
     for (const p of players.values()) {
       const key = p.cx + p.cz * WORLD_CHUNKS_X;
@@ -471,6 +587,7 @@ export function createGame({
         continue;
       }
       conn.alive = false;
+      conn.pingAt = now();
       conn.ws.ping();
     }
   }
@@ -479,6 +596,14 @@ export function createGame({
   const tickTimer = setInterval(tick, 1000 / tickHz).unref();
   const pingTimer = setInterval(ping, pingMs).unref();
   const flushTimer = setInterval(flushAll, flushMs).unref();
+  const physicsTimer = interactive ? setInterval(physicsTick, 1000 / BALL.stepHz).unref() : null;
+  const offDynamic = dynamic?.subscribe(onDynamicChange);
+  const offProps = interactive?.subscribe((prop) => {
+    for (const p of players.values()) send(p.conn, { t: S2C.PROP_STATE, prop });
+  });
+  const offMechanisms = mechanisms?.subscribe((state) => {
+    for (const p of players.values()) send(p.conn, { t: S2C.MECH_STATE, ...state });
+  });
 
   return {
     flushAll,
@@ -487,11 +612,28 @@ export function createGame({
     get online() {
       return players.size;
     },
+    /** Снимок подключённых игроков для Control Center: позиция, чанк, кеш и WebSocket-RTT (по ping/pong сервера). */
+    listPlayers() {
+      return [...players.values()].map((p) => ({
+        userId: p.id,
+        name: p.name,
+        x: p.x,
+        z: p.z,
+        cx: p.cx,
+        cz: p.cz,
+        cache: p.mirror?.stats() ?? null,
+        wsRttMs: p.conn.rttMs,
+      }));
+    },
     /** Сохраняет игроков и обрывает все сокеты (вызывается при остановке сервера). */
     close() {
       clearInterval(tickTimer);
       clearInterval(pingTimer);
       clearInterval(flushTimer);
+      if (physicsTimer) clearInterval(physicsTimer);
+      offProps?.();
+      offDynamic?.();
+      offMechanisms?.();
       app.server.off('upgrade', onUpgrade);
       flushAll();
       for (const conn of [...conns]) {

@@ -11,7 +11,12 @@ test('пожарная часть: цветной двухэтажный фас�
   const prefab=getPrefab(11);
   assert.equal(prefab.name,'fire_station');
   assert.equal(prefab.vertexColors,true);
-  assert.deepEqual(prefab.collider,[24,9,16]);
+  assert.equal(prefab.collider,undefined);
+  const shell= prefab.colliders();
+  assert.ok(shell.length>=7);
+  for(const centerX of [-5.5,1.15]) {
+    assert.equal(shell.some((b)=>centerX>=b.minX&&centerX<=b.maxX&&1>=b.minY&&1<=b.maxY&&6.75>=b.minZ&&6.75<=b.maxZ),false);
+  }
   const g=buildFireStationGeometry();
   const c=g.getAttribute('color');
   assert.ok(c);

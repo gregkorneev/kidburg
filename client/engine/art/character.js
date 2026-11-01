@@ -18,10 +18,10 @@ import { buildHair } from './character-hair.js';
 import {
   COSTUMES, TOP_SPEC, buildAccessory, buildCasualTop, ensureCostume, ensureFireKit, ensureGloves, setShoes, shoeMaterials,
 } from './character-outfits.js';
-import { createAnimState, resetArms, setArmReach, setCarry, setExpression, getExpression, triggerGesture, animateCharacter, yawToward, GESTURES } from './character-animation.js';
+import { createAnimState, resetArms, setArmReach, setCarry, setExpression, getExpression, triggerGesture, triggerKick, animateCharacter, yawToward, GESTURES } from './character-animation.js';
 
 export {
-  ARM_LENGTH, GESTURES, animateCharacter, getExpression, resetArms, setArmReach, setCarry, setExpression, triggerGesture, yawToward,
+  ARM_LENGTH, GESTURES, animateCharacter, getExpression, resetArms, setArmReach, setCarry, setExpression, triggerGesture, triggerKick, yawToward,
 };
 export {
   ACCESSORIES, BROW_STYLES, BUILDS, EYE_SHAPES, FACE_SHAPES, HAIR_STYLES, MOUTH_STYLES, NOSE_STYLES, SHOE_STYLES, TOP_STYLES, appearanceFromSeed,

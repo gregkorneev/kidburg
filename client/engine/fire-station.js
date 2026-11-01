@@ -8,6 +8,11 @@ const C = {
   white: 0xfff9e8, trim: 0xd9dfce, brick: 0xd9694d, glass: 0x86bccd,
 };
 
+/** Проём гаражных ворот (координаты здания): центры по X, ширина, высота, пол проёма и плоскость секций по Z. */
+export const GARAGE_X = Object.freeze([-5.5, 1.15]);
+export const GATE = Object.freeze({ width: 4.84, height: 4.25, baseY: 0.5, z: 7.12, thickness: 0.12, sections: 6, radius: 0.2 });
+export const GATE_PALETTE = Object.freeze({ a: 0x5f7a7e, b: 0x587276, glass: 0x7fb6bf, trim: 0xd9dfce });
+
 export const FIRE_STATION_SIGNS = Object.freeze([
   { text: 'ПОЖАРНАЯ ЧАСТЬ', x: -1.5, y: 8.25, z: 7.15, w: 9.6, h: 1.05, color: '#a63a2e', border: '#c9533e' },
 ]);
@@ -15,10 +20,29 @@ export const FIRE_STATION_SIGNS = Object.freeze([
 export function buildFireStationGeometry() {
   const k = createPrefabKit({ seed: 11 });
 
-  // Цоколь, кирпичный пояс и стены.
-  k.slab(22.8, 0.5, 14.8, 0, 0, 0, C.stone, { r: 0.1 });
-  k.slab(21.6, 1.1, 13.8, 0, 0.5, 0, C.brick);
-  k.slab(21.4, 7.5, 13.5, 0, 1.6, 0, C.cream);
+  // Пол и стены собраны как оболочка: два гаражных проёма остаются сквозными.
+  k.slab(22.8, 0.5, 13.9, 0, 0, -0.45, C.stone, { r: 0.1 });
+  const garageOpenings = GARAGE_X.map((x) => [x - GATE.width / 2, x + GATE.width / 2]);
+  const facadeSections = [];
+  let edge = -10.7;
+  for (const [lo, hi] of garageOpenings) {
+    if (lo > edge) facadeSections.push([edge, lo]);
+    edge = hi;
+  }
+  if (edge < 10.7) facadeSections.push([edge, 10.7]);
+  for (const [lo, hi] of facadeSections) {
+    const width = hi - lo;
+    const x = (lo + hi) / 2;
+    k.slab(width, 1.1, 0.5, x, 0.5, 6.75, C.brick);
+    k.slab(width, 3.65, 0.5, x, 1.6, 6.75, C.cream);
+  }
+  k.slab(21.4, 4.35, 0.5, 0, 4.75, 6.75, C.cream);
+  k.slab(21.6, 1.1, 0.5, 0, 0.5, -6.75, C.brick);
+  k.slab(21.4, 7.5, 0.5, 0, 1.6, -6.75, C.cream);
+  for (const x of [-10.55, 10.55]) {
+    k.slab(0.5, 1.1, 13.5, x, 0.5, 0, C.brick);
+    k.slab(0.5, 7.5, 13.5, x, 1.6, 0, C.cream);
+  }
   // Красные угловые пилястры и межэтажный пояс.
   for (const x of [-10.3, 10.3]) {
     for (const z of [-6.75, 6.75]) k.slab(0.8, 8.0, 0.6, x, 1.1, z, C.red, { r: 0.08 });
@@ -46,17 +70,13 @@ export function buildFireStationGeometry() {
   k.box(1.6, 0.9, 0.3, -8.3, 11.4, 2.05, C.navy, { r: 0.05 }); // жалюзи звонницы
   for (let i = 0; i < 4; i++) k.box(1.4, 0.05, 0.08, -8.3, 11.15 + i * 0.2, 2.22, C.cream, { tinted: false });
 
-  // Два гаража с секционными воротами, окошками и красными наличниками.
-  for (const x of [-5.5, 1.15]) {
-    k.box(5.9, 4.55, 0.34, x, 3.05, 6.85, C.red, { r: 0.1 });
-    k.box(5.2, 4.0, 0.3, x, 2.95, 7.0, C.navy, { r: 0.05 });
-    k.box(4.84, 3.7, 0.12, x, 2.9, 7.18, C.grey, { r: 0.04 });
-    for (let j = 0; j < 5; j++) k.box(4.86, 0.07, 0.07, x, 1.36 + j * 0.68, 7.27, C.trim, { tinted: false });
-    for (const side of [-1, 1]) k.box(0.1, 3.7, 0.08, x + side * 2.35, 2.9, 7.27, C.cream, { tinted: false });
-    for (let m = -1; m <= 1; m++) {
-      k.box(1.2, 0.5, 0.08, x + m * 1.5, 4.12, 7.27, C.blue, { tinted: false });
-      k.box(1.28, 0.08, 0.1, x + m * 1.5, 4.12 + 0.28, 7.27, C.cream, { tinted: false });
-    }
+  // Два гаража: неподвижные косяки, короб над проёмом и тёмный проём. Сами секции ворот подвижные
+  // (mechanisms/gate.js, см. city-mechanisms.js) и едут вверх в короб, поэтому в слитую геометрию не входят.
+  for (const x of GARAGE_X) {
+    for (const side of [-1, 1]) k.box(0.53, 3.95, 0.34, x + side * (GATE.width / 2 + 0.265), 2.75, 6.85, C.red, { r: 0.08 });
+    k.box(5.9, 0.575, 0.34, x, 5.04, 6.85, C.red, { r: 0.08 }); // красный наличник над проёмом
+    for (const side of [-1, 1]) k.box(0.3, 3.75, 0.44, x + side * (GATE.width / 2 + 0.15), 2.92, 7.08, C.navy, { r: 0.04 });
+    k.box(5.2, 0.5, 0.44, x, 4.97, 7.08, C.navy, { r: 0.05 }); // короб: сюда уходят секции
     // Сигнальный фонарь над воротами.
     k.box(0.42, 0.42, 0.36, x, 5.55, 7.1, C.darkRed, { r: 0.07 });
     k.box(0.28, 0.3, 0.4, x, 5.57, 7.18, C.gold, { tinted: false });
@@ -97,4 +117,23 @@ export function buildFireStationGeometry() {
   k.cyl(0.07, 0.07, 0.5, 6, 10.2, 0.55, 8.9, C.gold);
 
   return k.build({ groundAO: { height: 2.2, strength: 0.3 }, bands: [{ y0: 8.7, y1: 9.1, strength: 0.16 }] });
+}
+
+/** Коллизии оболочки здания; гаражные порталы блокируются отдельно, пока секционные ворота закрыты. */
+export function fireStationCollisionBoxes() {
+  const boxes = [];
+  const add = (minX, maxX, minY, maxY, minZ, maxZ) => boxes.push({ minX, maxX, minY, maxY, minZ, maxZ });
+  add(-12, 12, 0.5, 9.1, -8, -7.2);
+  add(-12, -11.2, 0.5, 9.1, -7.2, 7.2);
+  add(11.2, 12, 0.5, 9.1, -7.2, 7.2);
+  let edge = -12;
+  for (const x of GARAGE_X) {
+    const lo = x - GATE.width / 2;
+    const hi = x + GATE.width / 2;
+    if (lo > edge) add(edge, lo, 0.5, GATE.baseY + GATE.height, 6.5, 7.0);
+    edge = hi;
+  }
+  if (edge < 12) add(edge, 12, 0.5, GATE.baseY + GATE.height, 6.5, 7.0);
+  add(-12, 12, 4.75, 9.1, 6.5, 7.0);
+  return boxes;
 }

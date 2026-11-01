@@ -5,7 +5,7 @@ import { stdMat } from '../../engine/art/materials.js';
 import { createLabelSprite, disposeLabel } from '../../engine/art/labels.js';
 import { createPrefabKit } from '../../engine/art/prefab-kit.js';
 import { FLORA_COLORS, flower as addFlower } from '../../engine/art/flora.js';
-import { swayMaterial } from '../../engine/art/wind.js';
+import { windMaterial, padWindBounds } from '../../engine/art/wind.js';
 import { QUALITY_PRESETS } from '../../engine/art/quality.js';
 import { FLOWERS } from './state.js';
 import { createFlower, disposeFlower } from './flowers.js';
@@ -226,7 +226,7 @@ export function buildFloristLayout() {
   addFlower(flowerKit, 0, 0, 0, FLORA_COLORS.bloom[0], 1);
   const flowerGeometry = flowerKit.build({ groundAO: { height: 0.25, strength: 0.12 } });
   geometrySet.add(flowerGeometry);
-  const flowerInstances = new THREE.InstancedMesh(flowerGeometry, swayMaterial(0.055), 16);
+  const flowerInstances = new THREE.InstancedMesh(padWindBounds(flowerGeometry, 'flower'), windMaterial('flower'), 16);
   flowerInstances.name = 'decorative-wind-flowers';
   flowerInstances.castShadow = false;
   flowerInstances.receiveShadow = false;

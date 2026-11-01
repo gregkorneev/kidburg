@@ -78,7 +78,10 @@ export async function checkOffline(clientRoot) {
     const active = stripComments(source, path.extname(relative));
     for (const match of active.matchAll(URL_PATTERN)) {
       const url = match[0].replace(/[.,;:!?]+$/, '');
-      if (isLocalUrl(url)) continue;
+      // SVG namespace identifiers are not fetched; do not whitelist the same URL in fetch/import.
+      const prefix = active.slice(Math.max(0, match.index - 80), match.index);
+      const svgNamespace = url === 'http://www.w3.org/2000/svg' && /\b(?:const\s+SVG\s*=|createElementNS\s*\()\s*['"]$/.test(prefix);
+      if (svgNamespace || isLocalUrl(url)) continue;
       const line = active.slice(0, match.index).split('\n').length;
       violations.push({ file: relative.split(path.sep).join('/'), line, url });
     }

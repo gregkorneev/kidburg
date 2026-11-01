@@ -6,6 +6,7 @@ import { PALETTE } from '../../engine/art/palette.js';
 import { createBatch, createContactShadow, roundedBox, softBlobTexture, stdMat, texturedMat, worldUVBox } from '../../engine/art/materials.js';
 import { createSignPlate } from '../../engine/art/labels.js';
 import { SAFETY_ZONE } from './safety-zone.js';
+import { createProgress, createStateMachine, easeInOutSine } from '../../engine/animated.js';
 
 let cached = null;
 function mats() {
@@ -81,15 +82,7 @@ function garageBay(b, M, cx, width, height, baseY) {
   rb(b, M.trim, width + 0.8, 0.44, 0.48, cx, baseY + height + 0.2, wall + 0.22, [0, 0, 0], 0.07);
   rb(b, M.redDark, width + 0.95, 0.12, 0.54, cx, baseY + height + 0.48, wall + 0.24, [0, 0, 0], 0.04);
   rb(b, M.ink, width, height, 0.1, cx, baseY + height / 2, wall - 0.02, [0, 0, 0], 0.01); // тёмный проём
-  const sections = 6;
-  const panel = height / sections;
-  for (let i = 0; i < sections; i++) {
-    const y = baseY + panel * (i + 0.5);
-    rb(b, i % 2 ? M.steelBlue : M.steelBlueLight, width - 0.08, panel - 0.05, 0.1, cx, y, wall + 0.08, [0, 0, 0], 0.025);
-    if (i === sections - 2) for (let j = 0; j < 4; j++) rb(b, M.glassWarm, (width - 0.6) / 4 - 0.1, panel * 0.46, 0.04, cx - (width - 0.6) / 2 + ((width - 0.6) / 4) * (j + 0.5), y, wall + 0.14, [0, 0, 0], 0.02);
-  }
-  rb(b, M.red, width - 0.08, 0.1, 0.12, cx, baseY + panel * 0.5 + 0.06, wall + 0.1, [0, 0, 0], 0.02);
-  rb(b, M.steel, 0.5, 0.07, 0.07, cx, baseY + panel * 1.05, wall + 0.17, [0, 0, 0], 0.02);
+
 }
 
 function gooseneckLamp(b, M, x, y, z) {
@@ -227,9 +220,6 @@ export function buildFireTruck() {
     for (let i = 0; i < 5; i++) rb(b, M.steelBlue, 1.92, 0.04, 0.06, 1.2, 1.2 + i * 0.18, sz * 1.13, [0, 0, 0], 0.01);
     rb(b, M.steel, 0.5, 0.06, 0.07, 1.2, 1.97, sz * 1.15, [0, 0, 0], 0.02);
     for (const x of [-1.5, 1.5]) {
-      cyl(b, M.tire, 0.56, 0.36, x, 0.56, sz * 1.0, [Math.PI / 2, 0, 0]);
-      cyl(b, M.steel, 0.3, 0.4, x, 0.56, sz * 1.0, [Math.PI / 2, 0, 0]);
-      cyl(b, M.yellow, 0.12, 0.43, x, 0.56, sz * 1.0, [Math.PI / 2, 0, 0], true);
       rb(b, M.redDark, 1.3, 0.12, 0.42, x, 1.12, sz * 1.04, [0, 0, 0], 0.05);
     }
     ball(b, M.lampOn, 0.14, 0.13, 0.08, -2.48, 1.0, sz * 0.72);
@@ -239,15 +229,87 @@ export function buildFireTruck() {
   rb(b, M.ink, 0.06, 0.5, 1.0, -2.5, 1.3, 0, [0, 0, 0], 0.02);
   rb(b, M.steel, 0.18, 0.2, 2.1, 2.6, 0.5, 0, [0, 0, 0], 0.05);
   rb(b, M.trim, 0.45, 0.16, 1.5, -1.2, 2.58, 0, [0, 0, 0], 0.06);
-  rb(b, M.lightRed, 0.3, 0.14, 0.5, -1.2, 2.7, -0.55, [0, 0, 0], 0.05);
-  rb(b, M.lightBlue, 0.3, 0.14, 0.5, -1.2, 2.7, 0.55, [0, 0, 0], 0.05);
   // Лестница и рукава на крыше.
-  for (const z of [-0.42, 0.42]) rb(b, M.white, 3.2, 0.06, 0.07, 1.2, 2.42, z, [0, 0, 0], 0.02);
-  for (let i = 0; i < 9; i++) cyl(b, M.white, 0.028, 0.9, 0.0 + i * 0.4, 2.42, 0, [Math.PI / 2, 0, 0], true);
   for (const z of [-0.8, 0.8]) cyl(b, M.orange, 0.1, 2.3, 1.2, 2.5, z, [0, 0, Math.PI / 2], true);
   const group = new THREE.Group();
   group.add(b.build());
   group.add(createContactShadow(3.1, 1.6, 0.34));
+  const wheels = [];
+  for (const z of [-1, 1]) for (const x of [-1.5, 1.5]) {
+    const wheel = new THREE.Group();
+    const parts = createBatch();
+    cyl(parts, M.tire, 0.56, 0.36, 0, 0, 0, [Math.PI / 2, 0, 0]);
+    cyl(parts, M.steel, 0.3, 0.4, 0, 0, 0, [Math.PI / 2, 0, 0]);
+    cyl(parts, M.yellow, 0.12, 0.43, 0, 0, 0, [Math.PI / 2, 0, 0], true);
+    wheel.add(parts.build());
+    wheel.position.set(x, 0.56, z);
+    group.add(wheel);
+    wheels.push(wheel);
+  }
+  const turntable = new THREE.Group();
+  turntable.position.set(0.2, 2.52, 0);
+  const ladder = new THREE.Group();
+  turntable.add(ladder);
+  group.add(turntable);
+  const makeLadder = (length, width) => {
+    const batch = createBatch();
+    for (const z of [-width / 2, width / 2]) rb(batch, M.white, length, 0.07, 0.07, length / 2, 0, z);
+    for (let x = 0.15; x < length; x += 0.38) cyl(batch, M.white, 0.025, width, x, 0, 0, [Math.PI / 2, 0, 0], true);
+    return batch.build();
+  };
+  ladder.add(makeLadder(2.8, 0.8));
+  const extension = makeLadder(2.4, 0.55);
+  extension.position.y = 0.1;
+  ladder.add(extension);
+  const lights = [-1, 1].map((side) => {
+    const color = side < 0 ? 0xff3b2a : 0x3d8cff;
+    const material = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.2 });
+    const light = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.5), material);
+    light.position.set(-1.2, 2.7, side * 0.55);
+    group.add(light);
+    return light;
+  });
+  const progress = createProgress({ duration: 4 });
+  let previous = null;
+  const machine = createStateMachine({ initial: 'idle', transitions: {
+    idle: ['deploying'], deploying: ['deployed', 'retracting'],
+    deployed: ['retracting'], retracting: ['idle', 'deploying'],
+  } });
+  const syncState = () => machine.force(progress.moving
+    ? (progress.target === 1 ? 'deploying' : 'retracting')
+    : (progress.value === 1 ? 'deployed' : 'idle'));
+  const mechanism = {
+    get state() { return machine.state; },
+    setState(next) {
+      if (next !== 'deploying' && next !== 'retracting') return false;
+      progress.go(next === 'deploying' ? 1 : 0);
+      syncState();
+      return true;
+    },
+    get wantsOpen() { return progress.target === 1; },
+    get progress() { return progress.value; },
+    applyRemote({ deployed, progress: value, elapsedMs = 0 }) {
+      if (Number.isFinite(value)) progress.jump(value);
+      progress.go(deployed ? 1 : 0, elapsedMs / 1000);
+      syncState();
+    },
+    toggle() { this.setState(progress.target === 1 ? 'retracting' : 'deploying'); },
+    update(dt, elapsed) {
+      const distance = previous ? (group.position.x - previous.x) * Math.cos(group.rotation.y) - (group.position.z - previous.z) * Math.sin(group.rotation.y) : 0;
+      for (const wheel of wheels) wheel.rotation.z -= distance / 0.56;
+      if (!previous) previous = group.position.clone();
+      else previous.copy(group.position);
+      progress.update(dt);
+      syncState();
+      const p = easeInOutSine(progress.value);
+      turntable.rotation.y = p * 0.4;
+      ladder.rotation.z = p * 0.65;
+      extension.position.x = Math.max(0, (p - 0.4) / 0.6) * 1.3;
+      lights.forEach((light, i) => { light.material.emissiveIntensity = 0.15 + 1.5 * Math.max(0, Math.sin(elapsed * 5 + i * Math.PI)); });
+    },
+    wheels, turntable, ladder, extension, lights,
+  };
+  group.userData.mechanism = mechanism;
   return group;
 }
 

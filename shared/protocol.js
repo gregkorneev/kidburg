@@ -2,6 +2,7 @@
 
 import { encode as mpEncode, decode as mpDecode } from '@msgpack/msgpack';
 import { PROTO_VERSION } from './constants.js';
+import { INTERACT_LIMITS, PROP_STATES, isInteractAction } from './interaction-contracts.js';
 
 export const PROTO = PROTO_VERSION;
 
@@ -11,6 +12,10 @@ export const C2S = Object.freeze({
   CHAT: 'chat',
   NPC_TALK: 'npc_talk',
   TASK_ANSWER: 'task_answer',
+  // Игрок просит выставить состояние механизма (ворота, лестница): shared/mechanisms.js.
+  MECH_SET: 'mech_set',
+  // Игровое действие над предметом или мячом: взять, поставить, бросить, пнуть (shared/interaction-contracts.js).
+  INTERACT: 'interact',
 });
 
 export const S2C = Object.freeze({
@@ -29,6 +34,19 @@ export const S2C = Object.freeze({
   AGENT_DONE: 'agent_done',
   AGENT_ERROR: 'agent_error',
   TASK_STATE: 'task_state',
+  // Динамические объекты мира (редактор Control Center): снимок чанка, создание/изменение, удаление.
+  DYN_SNAPSHOT: 'dyn_snapshot',
+  DYN_UPSERT: 'dyn_upsert',
+  DYN_REMOVE: 'dyn_remove',
+  // Состояние механизмов: полный список после входа и одно изменение; ageMs — сколько мс назад началось движение.
+  MECH_SNAPSHOT: 'mech_snapshot',
+  MECH_STATE: 'mech_state',
+  // Интерактивный мир: ответ на interact, переносимые предметы (полный список и изменение), мячи (снимок и событие).
+  INTERACT_RESULT: 'interact_result',
+  PROP_SNAPSHOT: 'prop_snapshot',
+  PROP_STATE: 'prop_state',
+  BALL_SNAPSHOT: 'ball_snapshot',
+  BALL_EVENT: 'ball_event',
   ERROR: 'error',
 });
 
@@ -52,6 +70,17 @@ const int = (v) => Number.isInteger(v);
 const obj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const bytes = (v) => v instanceof Uint8Array;
 
+const dynObject = (o) =>
+  obj(o) && str(o.id) && str(o.type) && num(o.x) && num(o.z) && num(o.ry) && num(o.scale) && obj(o.params) && int(o.rev);
+
+const mechRow = (r) => obj(r) && str(r.id) && typeof r.active === 'boolean' && num(r.ageMs) && num(r.progress) && r.progress >= 0 && r.progress <= 1;
+
+const propRow = (p) =>
+  obj(p) && str(p.id) && str(p.type) && num(p.x) && num(p.z) && num(p.ry) && PROP_STATES.includes(p.state) && int(p.holder) && int(p.rev);
+
+/** Строка мяча: [id, x, y, z, vx, vy, vz, flags]. flags: 1 — мяч покоится, 2 — телепорт (без интерполяции). */
+const ballRow = (r) => Array.isArray(r) && r.length === 8 && str(r[0]) && r.slice(1, 7).every(num) && int(r[7]);
+
 // Схема: тип -> { поле: проверка }. Лишние поля допускаются.
 const SCHEMAS = {
   // клиент -> сервер
@@ -60,6 +89,8 @@ const SCHEMAS = {
   chat: { text: (v) => str(v) && v.length > 0 && v.length <= LIMITS.CHAT_MAX_CHARS },
   npc_talk: { agentId: str, text: (v) => str(v) && v.length > 0, reqId: (v) => str(v) || int(v) },
   task_answer: { taskId: str, payload: (v) => v !== undefined },
+  mech_set: { id: str, active: (v) => typeof v === 'boolean' },
+  interact: { id: (v) => str(v) && v.length > 0 && v.length <= INTERACT_LIMITS.MAX_ID_CHARS, action: isInteractAction, seq: int },
   // сервер -> клиент
   welcome: { proto: int, playerId: int, name: str, state: obj, consts: obj },
   player_join: { id: int, name: str, appearance: obj },
@@ -75,6 +106,16 @@ const SCHEMAS = {
   agent_done: { agentId: str, reqId: (v) => str(v) || int(v) },
   agent_error: { agentId: str, reqId: (v) => str(v) || int(v), message: str },
   task_state: { taskId: str, state: (v) => v !== undefined },
+  dyn_snapshot: { cx: int, cz: int, objects: (v) => Array.isArray(v) && v.every(dynObject) },
+  dyn_upsert: { object: dynObject },
+  dyn_remove: { id: str, rev: int },
+  mech_snapshot: { list: (v) => Array.isArray(v) && v.every(mechRow) },
+  mech_state: { id: str, active: (v) => typeof v === 'boolean', ageMs: num, progress: (v) => num(v) && v >= 0 && v <= 1 },
+  interact_result: { seq: int, id: str, action: str, ok: (v) => typeof v === 'boolean', code: str, message: str },
+  prop_snapshot: { list: (v) => Array.isArray(v) && v.every(propRow) },
+  prop_state: { prop: propRow },
+  ball_snapshot: { tick: int, ts: num, list: (v) => Array.isArray(v) && v.every(ballRow) },
+  ball_event: { id: str, kind: (v) => v === 'kick' || v === 'reset', by: int, x: num, y: num, z: num },
   error: { code: (v) => Object.values(ERROR_CODES).includes(v), message: str },
 };
 
