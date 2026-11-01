@@ -11,7 +11,7 @@ test('план комнаты 20×15×6 разделяет учебную, зр�
     assert.ok(point.x > 1 && point.x < 19 && point.z > 1 && point.z < 14);
   }
   assert.ok(PIANIST_PLAN.stage.minZ > PIANIST_PLAN.practicePiano.z);
-  assert.ok(PIANIST_PLAN.practicePiano.x < PIANIST_PLAN.maestro.x);
+  assert.ok(PIANIST_PLAN.practicePiano.x > PIANIST_PLAN.maestro.x);
   assert.equal(AUDIENCE_CHAIRS.length, 16);
   assert.equal(AUDIENCE_CHAIRS.filter(({ side }) => side === 'left').length, 8);
   assert.equal(AUDIENCE_CHAIRS.filter(({ side }) => side === 'right').length, 8);

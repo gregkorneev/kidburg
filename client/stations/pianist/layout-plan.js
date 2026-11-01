@@ -3,7 +3,7 @@ export const ROOM = Object.freeze({ width: 20, depth: 15, height: 6 });
 export const PIANIST_PLAN = Object.freeze({
   spawn: Object.freeze({ x: 10, z: 4.2 }),
   maestro: Object.freeze({ x: 6.2, z: 3.2 }),
-  practicePiano: Object.freeze({ x: 4.2, z: 6.5 }),
+  practicePiano: Object.freeze({ x: 15.2, z: 4.5, rotationY: -Math.PI / 2 }),
   stagePiano: Object.freeze({ x: 10.8, z: 12.55 }),
   stage: Object.freeze({ minX: 6.2, maxX: 15.4, minZ: 11.25, maxZ: 14.55, height: 0.3 }),
   stairs: Object.freeze({ centerX: 10.8, width: 4.4, startZ: 9.99, stepDepth: 0.42, stepHeight: 0.1, count: 3 }),

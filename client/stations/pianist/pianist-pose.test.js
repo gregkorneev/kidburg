@@ -4,9 +4,11 @@ import { getPianoSeatPose, PIANIST_PLAYING_ARM_ANGLE, PIANIST_SEATED_LEG_ANGLE }
 import { PIANIST_PLAN } from './layout-plan.js';
 
 test('игрок занимает банкетку перед учебным пианино лицом к клавишам', () => {
-  assert.deepEqual(getPianoSeatPose(PIANIST_PLAN.practicePiano, 0), {
-    x: PIANIST_PLAN.practicePiano.x, y: 0, z: PIANIST_PLAN.practicePiano.z + 1.05, yaw: 0,
-  });
+  const pose = getPianoSeatPose(PIANIST_PLAN.practicePiano, PIANIST_PLAN.practicePiano.rotationY);
+  assert.ok(Math.abs(pose.x - (PIANIST_PLAN.practicePiano.x - 1.05)) < 1e-9);
+  assert.equal(pose.y, 0);
+  assert.equal(pose.z, PIANIST_PLAN.practicePiano.z);
+  assert.equal(pose.yaw, -Math.PI / 2);
 });
 
 test('игрок занимает банкетку перед сценическим пианино с учётом поворота и высоты сцены', () => {

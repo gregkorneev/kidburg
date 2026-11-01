@@ -67,7 +67,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
   const maestro = createCharacter({ name: 'Маэстро Артём', subtitle: 'преподаватель музыки', appearance: { outfit: '#e3b868', hairStyle: 'short', hair: '#533a31', skin: '#efc19c' }, outfit: '#e3b868' });
   maestro.scale.setScalar(0.72); maestro.position.set(PIANIST_PLAN.maestro.x, 0, PIANIST_PLAN.maestro.z); maestro.rotation.y = Math.PI; addMaestroDetails(maestro); scene.add(maestro); triggerGesture(maestro, 'wave');
   const pianos = [
-    createPiano({ position: PIANIST_PLAN.practicePiano, name: 'practice-piano' }),
+    createPiano({ position: PIANIST_PLAN.practicePiano, rotationY: PIANIST_PLAN.practicePiano.rotationY, name: 'practice-piano' }),
     createPiano({ position: { ...PIANIST_PLAN.stagePiano, y: PIANIST_PLAN.stage.height }, rotationY: Math.PI, name: 'concert-piano' }),
   ];
   for (const piano of pianos) scene.add(piano.root);
@@ -197,8 +197,8 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     const elapsed = (now - started) / 1000;
     if (instrumentMode && state) {
       activePiano = state.stage === 'concert' ? pianos[1] : pianos[0];
-      const front = Math.cos(activePiano.rotationY) >= 0 ? 1 : -1;
-      focus.set(activePiano.position.x, 1.02 + activePiano.position.y, activePiano.position.z + front * 0.18);
+      const frontX = Math.sin(activePiano.rotationY); const frontZ = Math.cos(activePiano.rotationY);
+      focus.set(activePiano.position.x + frontX * 0.18, 1.02 + activePiano.position.y, activePiano.position.z + frontZ * 0.18);
       const cameraOffset = state.stage === 'concert' ? PIANIST_PLAN.instrumentCamera.concert : PIANIST_PLAN.instrumentCamera.practice;
       const cameraLocalX = cameraOffset.x; const cameraLocalZ = cameraOffset.z;
       desired.set(
@@ -216,9 +216,9 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
         .sort((a, b) => a.distance - b.distance)[0];
       if (nearbyPiano?.distance < 3.5) {
         const piano = nearbyPiano.piano;
-        const front = Math.cos(piano.rotationY) >= 0 ? 1 : -1;
-        focus.set(piano.position.x, piano.position.y + 1.12, piano.position.z + front * 0.35);
-        desired.set(piano.position.x - 3.3, piano.position.y + 4.0, piano.position.z + front * 3.0);
+        const frontX = Math.sin(piano.rotationY); const frontZ = Math.cos(piano.rotationY);
+        focus.set(piano.position.x + frontX * 0.35, piano.position.y + 1.12, piano.position.z + frontZ * 0.35);
+        desired.set(piano.position.x - 3.3 + frontX * 3.0, piano.position.y + 4.0, piano.position.z + frontZ * 3.0);
         camera.position.lerp(desired, 1 - Math.exp(-4 * dt)); camera.lookAt(focus);
       } else {
       const forwardX = -Math.sin(player.yaw); const forwardZ = -Math.cos(player.yaw);
