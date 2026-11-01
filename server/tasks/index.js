@@ -2,11 +2,14 @@
 // сетевой слой (server/net/game.js) вызывает их с userId и позицией из серверного соединения.
 
 import { FIREFIGHTER_TASK_ID, createFirefighterTask } from './firefighter_station_v1.js';
+import { RADIO_TASK_ID, createRadioTask } from './radio_station_v1.js';
+import { generateRadioScript } from '../agents/index.js';
 
 /** ctx: { db, config, log } */
 export function registerTasks(app, ctx) {
   const firefighter = createFirefighterTask({ db: ctx.db, now: ctx.config?.now, log: ctx.log });
-  const byId = new Map([[firefighter.taskId, firefighter]]);
+  const radio = createRadioTask({ db: ctx.db, now: ctx.config?.now, log: ctx.log, generateRadioScript });
+  const byId = new Map([[firefighter.taskId, firefighter], [radio.taskId, radio]]);
 
   const handlers = Object.freeze({
     /** Задания, чьё состояние отправляется игроку после hello. */
@@ -27,4 +30,4 @@ export function registerTasks(app, ctx) {
   app.decorate('taskHandlers', handlers);
 }
 
-export { FIREFIGHTER_TASK_ID };
+export { FIREFIGHTER_TASK_ID, RADIO_TASK_ID };
