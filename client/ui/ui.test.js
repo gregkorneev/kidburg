@@ -46,7 +46,7 @@ const { mountUI } = await import('./index.js');
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-function mount({ localRoom, join = async () => ({ name: 'Аня' }) } = {}) {
+function mount({ localRoom = async () => null, join = async () => ({ name: 'Аня' }), createPreview } = {}) {
   body.children = [];
   const calls = [];
   const noop = () => () => {};
@@ -55,7 +55,7 @@ function mount({ localRoom, join = async () => ({ name: 'Аня' }) } = {}) {
     on: noop,
     net: { status: 'closed', on: noop },
   };
-  const dispose = mountUI(api);
+  const dispose = mountUI(api, { createPreview });
   const root = body.children[0];
   const field = (name) => root.querySelector(`[name="${name}"]`);
   return { root, field, calls, dispose };
@@ -87,7 +87,10 @@ test('автозаполнение: игроку остаётся ввести �
   ui.field('name').value = 'Аня';
   const form = ui.root.all().find((node) => node.tag === 'form');
   await form.fire('submit');
-  assert.deepEqual(ui.calls, [['Аня', 'BCDF']]);
+  assert.match(ui.root.text(), /Создай персонажа/);
+  await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
+  await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
+  assert.deepEqual(ui.calls, [['Аня', 'BCDF', { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } }]]);
 });
 
 test('другой компьютер: сервер кода не дал, поле пустое и код не показан', async () => {
@@ -111,7 +114,7 @@ test('игрок стёр код сам — подставленный код н
   await ui.field('room').type('');
   await ui.field('name').type('Аня');
   const form = ui.root.all().find((node) => node.tag === 'form');
-  await form.fire('submit'); // неудачный вход перерисовывает форму
+  await ui.root.all().find((node) => node.textContent === 'Уже играл? Войти').fire('click'); // неудачный вход перерисовывает форму
   assert.equal(ui.field('room').value, '');
   assert.equal(ui.field('name').value, 'Аня', 'имя сохраняется');
 });
@@ -121,4 +124,61 @@ test('сбой запроса кода не ломает форму входа',
   await flush();
   assert.ok(ui.field('room'));
   assert.equal(ui.field('room').value, '');
+});
+
+async function customize(ui) {
+  await ui.field('name').type('Аня');
+  await ui.field('room').type('BCDF');
+  await ui.root.all().find((node) => node.tag === 'form').fire('submit');
+}
+
+test('категории, выбор, доступность и preview сохраняют draft до подтверждения', async () => {
+  const updates = [];
+  const ui = mount({ createPreview: () => ({ setAvatar: (value) => updates.push(value) }) });
+  await customize(ui);
+  const groups = ui.root.all().filter((node) => node.tag === 'fieldset');
+  assert.equal(groups.length, 4);
+  for (const group of groups) {
+    const choices = group.all().filter((node) => node.className === 'avatar-choice');
+    assert.equal(choices.length, 4);
+    assert.deepEqual(choices.map((node) => node.attributes['aria-pressed']), ['true', 'false', 'false', 'false']);
+    assert.ok(choices.every((node) => node.attributes['aria-label'] && node.type === 'button'));
+    await choices[2].fire('click');
+    assert.equal(choices[2].attributes['aria-pressed'], 'true');
+  }
+  assert.deepEqual(updates.at(-1), { skin: 2, clothes: 2, hair: 2, shoes: 2 });
+  await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
+  await ui.root.all().find((node) => node.textContent === 'Назад').fire('click');
+  assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice' && node.attributes['aria-pressed'] === 'true').length, 4);
+  assert.deepEqual(updates.at(-1), { skin: 2, clothes: 2, hair: 2, shoes: 2 });
+});
+
+test('ошибки не сбрасывают выбор, повтор отправляет полный avatar, серверный user сохраняется', async () => {
+  let count = 0;
+  const serverUser = { name: 'Сервер', appearance: { skin: 1 } };
+  const ui = mount({ join: async () => { if (count++ === 0) throw Object.assign(new Error('offline'), { code: 'network' }); return serverUser; } });
+  await customize(ui);
+  await ui.root.all().filter((node) => node.className === 'avatar-choice')[3].fire('click');
+  await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
+  await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
+  assert.match(ui.root.text(), /Сервер недоступен/);
+  await ui.root.all().find((node) => node.textContent === 'Назад').fire('click');
+  assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice')[3].attributes['aria-pressed'], 'true');
+  await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
+  await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
+  assert.deepEqual(ui.calls[1][2], { avatar: { skin: 3, clothes: 0, hair: 0, shoes: 0 } });
+  assert.match(ui.root.text(), /Сервер/);
+});
+
+test('ошибки контракта показываются без потери выбора', async () => {
+  for (const code of ['bad_name', 'bad_room', 'name_taken', 'bad_appearance']) {
+    const ui = mount({ join: async () => { throw Object.assign(new Error('raw'), { code }); } });
+    await customize(ui);
+    await ui.root.all().filter((node) => node.className === 'avatar-choice')[1].fire('click');
+    await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
+    await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
+    assert.ok(ui.root.all().some((node) => node.attributes.role === 'alert' && !node.hidden));
+    await ui.root.all().find((node) => node.textContent === 'Назад').fire('click');
+    assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice')[1].attributes['aria-pressed'], 'true');
+  }
 });

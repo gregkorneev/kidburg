@@ -21,7 +21,7 @@ const element = (tag, className, text) => {
  * Экран входа (имя и код комнаты), состояние соединения и разговор с NPC для игры и LAN-preview.
  * Возвращает функцию снятия интерфейса; её свойство `chat` — контроллер разговора (open, close, onOpenChange).
  */
-export function mountUI(api) {
+export function mountUI(api, { createPreview } = {}) {
   const root = element('div', 'auth-root');
   root.setAttribute('aria-live', 'polite');
   document.body.append(root);
@@ -30,6 +30,31 @@ export function mountUI(api) {
   let user = api.auth.session()?.user ?? null;
   let status = api.net.status;
   let busy = false;
+  let step = 'login';
+  let avatar = { skin: 0, clothes: 0, hair: 0, shoes: 0 };
+  let preview = null;
+  const categories = [['skin', 'Цвет кожи'], ['clothes', 'Одежда'], ['hair', 'Причёска'], ['shoes', 'Обувь']];
+  const errors = { bad_name: 'Проверьте имя игрока.', bad_room: 'Проверьте код комнаты.', name_taken: 'Это имя уже занято.', bad_appearance: 'Не удалось сохранить внешность. Попробуйте ещё раз.', network: 'Сервер недоступен. Проверьте подключение.' };
+
+  async function join(withAvatar) {
+    if (busy) return;
+    busy = true;
+    message = '';
+    render();
+    try {
+      user = await api.auth.join(draftName.trim(), draftRoom, ...(withAvatar ? [{ avatar: { ...avatar } }] : []));
+      message = '';
+      draftName = '';
+      draftRoom = '';
+      roomTouched = false;
+      step = 'login';
+    } catch (error) {
+      message = errors[error?.code] || error?.message || 'Не удалось войти. Проверьте подключение к серверу.';
+    } finally {
+      busy = false;
+      render();
+    }
+  }
   let message = '';
   let draftName = ''; // введённое не теряется при ошибке входа
   let draftRoom = '';
@@ -37,6 +62,8 @@ export function mountUI(api) {
   let hostRoom = null; // код от сервера, только если игра открыта на компьютере сервера; лишь в памяти страницы
 
   function render() {
+    preview?.dispose?.();
+    preview = null;
     root.replaceChildren();
 
     if (user) {
@@ -65,6 +92,66 @@ export function mountUI(api) {
     const content = element('div', 'auth-content');
     const panel = element('section', 'auth-panel');
     panel.setAttribute('aria-labelledby', 'auth-title');
+    if (step !== 'login') {
+      panel.className += ' auth-panel--customizer';
+      const title = element('h1', '', step === 'customize' ? 'Создай персонажа' : 'Всё готово?');
+      title.id = 'auth-title';
+      const intro = element('p', 'auth-intro', step === 'customize' ? 'Выбери, как будет выглядеть твой персонаж.' : 'Проверь выбор и отправляйся в город.');
+      const stage = element('div', 'avatar-preview');
+      stage.setAttribute('role', 'img');
+      stage.setAttribute('aria-label', 'Область предпросмотра персонажа');
+      if (createPreview) {
+        preview = createPreview(stage);
+        preview?.setAvatar?.({ ...avatar });
+      } else {
+        stage.append(element('span', 'avatar-preview__placeholder', 'Предпросмотр персонажа'));
+      }
+      panel.append(title, intro, stage);
+      if (step === 'customize') {
+        const options = element('div', 'avatar-options');
+        for (const [key, label] of categories) {
+          const group = element('fieldset', 'avatar-group');
+          group.append(element('legend', '', label));
+          const choices = element('div', 'avatar-choices');
+          for (let i = 0; i < 4; i++) {
+            const button = element('button', 'avatar-choice', String(i + 1));
+            button.type = 'button';
+            button.setAttribute('aria-label', `${label}: вариант ${i + 1}`);
+            button.setAttribute('aria-pressed', String(avatar[key] === i));
+            button.addEventListener('click', () => {
+              avatar[key] = i;
+              for (const [index, choice] of choices.children.entries()) choice.setAttribute('aria-pressed', String(index === i));
+              preview?.setAvatar?.({ ...avatar });
+            });
+            choices.append(button);
+          }
+          group.append(choices);
+          options.append(group);
+        }
+        panel.append(options);
+      } else {
+        const summary = element('p', 'avatar-summary', categories.map(([key, label]) => `${label}: ${avatar[key] + 1}`).join(' · '));
+        panel.append(summary);
+      }
+      const feedback = element('p', 'auth-message', message);
+      feedback.hidden = !message;
+      feedback.setAttribute('role', 'alert');
+      const actions = element('div', 'avatar-actions');
+      const back = element('button', 'auth-button', 'Назад');
+      back.type = 'button';
+      back.disabled = busy;
+      back.addEventListener('click', () => { step = step === 'confirm' ? 'customize' : 'login'; message = ''; render(); });
+      const next = element('button', 'auth-button auth-button--primary', busy ? 'Подключаем…' : step === 'customize' ? 'Продолжить' : 'Войти в игру');
+      next.type = 'button';
+      next.disabled = busy;
+      next.addEventListener('click', () => { if (step === 'customize') { step = 'confirm'; render(); } else join(true); });
+      actions.append(back, next);
+      panel.append(feedback, actions);
+      content.append(panel);
+      layout.append(brand, content);
+      root.append(layout);
+      return;
+    }
     const title = element('h1', '', 'Вход в игру');
     title.id = 'auth-title';
     const intro = element('p', 'auth-intro', hostRoom
@@ -103,28 +190,30 @@ export function mountUI(api) {
 
     const feedback = element('p', 'auth-message', message);
     feedback.hidden = !message;
-    const submit = element('button', 'auth-button auth-button--primary', busy ? 'Подключаем…' : 'Войти');
+    const submit = element('button', 'auth-button auth-button--primary', 'Создать персонажа');
     submit.type = 'submit';
     submit.disabled = busy;
     form.append(nameLabel, roomLabel, feedback, submit);
-    form.addEventListener('submit', async (event) => {
+    const existing = element('button', 'auth-link', busy ? 'Подключаем…' : 'Уже играл? Войти');
+    existing.type = 'button';
+    existing.disabled = busy;
+    existing.addEventListener('click', () => {
+      draftName = nameInput.value;
+      draftRoom = roomInput.value;
+      if (!nameInput.value.trim() || !roomInput.value) { message = 'Введите имя и код комнаты.'; render(); return; }
+      join(false);
+    });
+    form.append(existing);
+    feedback.setAttribute('role', 'alert');
+    form.addEventListener('submit', (event) => {
       event.preventDefault();
       if (busy) return;
-      busy = true;
+      draftName = nameInput.value;
+      draftRoom = roomInput.value;
+      if (!draftName.trim() || !draftRoom) { message = 'Введите имя и код комнаты.'; render(); return; }
       message = '';
+      step = 'customize';
       render();
-      try {
-        user = await api.auth.join(nameInput.value.trim(), roomInput.value);
-        message = '';
-        draftName = '';
-        draftRoom = '';
-        roomTouched = false;
-      } catch (error) {
-        message = error?.message || 'Не удалось войти. Проверьте подключение к серверу.';
-      } finally {
-        busy = false;
-        render();
-      }
     });
     panel.append(title, intro, form);
     if (hostRoom) {
@@ -179,6 +268,7 @@ export function mountUI(api) {
     offStatus();
     offWelcome();
     offError();
+    preview?.dispose?.();
     chat.dispose();
     root.remove();
   };

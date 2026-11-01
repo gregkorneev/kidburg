@@ -37,3 +37,17 @@
   .auth-form { gap: 15px; }
   .auth-badge { right: 8px; bottom: 8px; }
 }
+.auth-panel--customizer { width: min(520px, 100%); }
+.auth-panel--customizer .auth-intro { margin-bottom: 16px; }
+.avatar-preview { display: grid; place-items: center; min-height: 155px; overflow: hidden; border: 1px solid #cfded0; border-radius: 18px; background: radial-gradient(circle at 50% 30%, #fffdf2, #dcebdd); color: #66766c; }
+.avatar-preview__placeholder { font-size: 13px; }
+.avatar-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin-top: 18px; }
+.avatar-group { min-width: 0; margin: 0; border: 0; padding: 0; }
+.avatar-group legend { margin-bottom: 7px; color: #40574a; font-size: 14px; font-weight: 700; }
+.avatar-choices { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.avatar-choice { min-height: 42px; border: 1px solid #d7dfd3; border-radius: 10px; background: white; color: #40574a; cursor: pointer; font: inherit; font-weight: 700; }
+.avatar-choice[aria-pressed="true"] { border: 2px solid #2d705a; background: #dcefe2; color: #20523e; }
+.avatar-choice:focus-visible, .auth-button:focus-visible, .auth-link:focus-visible { outline: 3px solid #deaa42; outline-offset: 2px; }
+.avatar-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; margin-top: 18px; }
+.avatar-summary { color: #40574a; line-height: 1.6; }
+@media (max-width: 400px) { .avatar-options { grid-template-columns: 1fr; } }
