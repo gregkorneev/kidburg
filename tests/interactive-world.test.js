@@ -27,10 +27,10 @@ test('стартовые места предметов допустимы и н�
   }
 });
 
-test('checkProp разрешает любое место в мире, но проверяет границы и числа', () => {
+test('checkProp отвергает здания, край мира и нечисловые входы', () => {
   const placement = createPlacement();
   const b = BUILDINGS[0];
-  assert.equal(placement.checkProp(b.x, b.z, 0.5).ok, true);
+  assert.equal(placement.checkProp(b.x, b.z, 0.5).ok, false);
   assert.equal(placement.checkProp(0.5, 0.5, 0.5).ok, false);
   assert.equal(placement.checkProp(Number.NaN, 400, 0.5).ok, false);
   assert.equal(placement.checkProp(400, 400, Infinity).ok, false);

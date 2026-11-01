@@ -22,7 +22,7 @@ test('bakery entrance is reachable from the plaza and rejects distant or invalid
   assert.equal(isNearBakeryEntrance(416, 416), false);
   assert.equal(isNearBakeryEntrance(BAKERY_ENTRANCE.x - BAKERY_ENTRANCE.radius, BAKERY_ENTRANCE.z), true);
   assert.equal(isNearBakeryEntrance(Number.NaN, 412), false);
-  assert.equal(BAKERY_ENTRANCE.href, './bakery-preview.html');
+  assert.equal(BAKERY_ENTRANCE.href, '/bakery-preview.html');
 });
 
 test('entrance prompt does not appear while the player is far away', () => {

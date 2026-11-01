@@ -18,21 +18,21 @@ export const FLORIST_ENTRANCE = Object.freeze({
   label: 'Войти в цветочную лавку',
 });
 
-// Фасад пекарни обращён к площади: центр (450, 412), поворот -π/2.
+// Входная дверь пекарни (центр здания 450,412; поворот −π/2): локально (0, 6.5).
 export const BAKERY_ENTRANCE = Object.freeze({
   x: 443.5,
   z: 412,
   radius: 10,
-  href: './bakery-preview.html',
+  href: '/bakery-preview.html',
   label: 'Войти в пекарню',
 });
 
-// Сохраняем координаты входов для интерактивных дверей; сейчас они не ведут на отдельные страницы.
+// Координаты радио и музыкальной школы сохранены для совместимости; для них входом управляет дверь-механизм.
 export const RADIO_STATION_ENTRANCE = Object.freeze({ x: 444.06, z: 444.95, radius: 10, href: '/radio-preview.html', label: 'Войти в радиостанцию' });
 export const MUSIC_SCHOOL_ENTRANCE = Object.freeze({ x: 416, z: 450.9, radius: 10, href: '/musician-preview.html', label: 'Войти в музыкальную школу' });
 
-/** Входы с доступными игровыми страницами. */
-export const CITY_ENTRANCES = Object.freeze({ florist: FLORIST_ENTRANCE, fire: FIRE_STATION_ENTRANCE, bakery: BAKERY_ENTRANCE, radio: RADIO_STATION_ENTRANCE, music: MUSIC_SCHOOL_ENTRANCE });
+/** Входы без двери-механизма (ключ — тип цели клавиши E). */
+export const CITY_ENTRANCES = Object.freeze({ florist: FLORIST_ENTRANCE, fire: FIRE_STATION_ENTRANCE, bakery: BAKERY_ENTRANCE });
 
 export function isNearFireStationEntrance(x, z) {
   return Number.isFinite(x) && Number.isFinite(z) &&

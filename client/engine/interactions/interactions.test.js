@@ -70,7 +70,7 @@ test('менеджер: без соединения действие не отп
   assert.equal(sent.length, 0);
 });
 
-test('менеджер: вход в станцию сразу запрашивает открытие двери и переходит', () => {
+test('менеджер: вход в станцию — дверь сначала открывается, переход после раскрытия; издали — сразу', () => {
   const door = { id: 'door-bakery', kind: 'door', href: '/bakery-preview.html', x: 100, z: 101, radius: 4.2, object: { isOpen: false, progress: 0, open() {}, close() {} } };
   const { manager, navigated, requests, advance } = makeManager();
   manager.setMechanisms([door]);
@@ -78,7 +78,7 @@ test('менеджер: вход в станцию сразу запрашива
   assert.deepEqual(requests, [['door-bakery', true]]);
   assert.equal(manager.busy, true);
   manager.update();
-  assert.deepEqual(navigated, [door.href]);
+  assert.equal(navigated.length, 0);
   door.object.progress = 1;
   door.object.isOpen = true;
   manager.update();

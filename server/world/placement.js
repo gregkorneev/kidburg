@@ -114,6 +114,45 @@ export function createPlacement({ world = null } = {}) {
     return null;
   }
 
+  // Переносимые игровые предметы могут стоять на площади, но не должны блокировать двери, дорожки,
+  // ворота или существующий декор.
+  const propDoors = DOOR_SPECS.map((spec) => ({ label: `Дверь: ${spec.label}`, ...doorWorldPoint(spec), r: 3.2 }));
+  const plazaBoxes = plazaCollisionBoxes().map((b) => ({
+    minX: b.minX + PLAZA.x,
+    maxX: b.maxX + PLAZA.x,
+    minZ: b.minZ + PLAZA.z,
+    maxZ: b.maxZ + PLAZA.z,
+  }));
+  const goals = goalGeometry(FIELD);
+  const goalBoxes = goals.walls.map((w) => ({
+    minX: w.minX - 0.4,
+    maxX: w.maxX + 0.4,
+    minZ: w.minZ - 0.4,
+    maxZ: w.maxZ + 0.4,
+  }));
+  const goalMouths = [-1, 1].map((side) => ({
+    minX: Math.min(FIELD.x + side * FIELD.halfW, FIELD.x + side * (FIELD.halfW + FIELD.goalDepth)) - 0.4,
+    maxX: Math.max(FIELD.x + side * FIELD.halfW, FIELD.x + side * (FIELD.halfW + FIELD.goalDepth)) + 0.4,
+    minZ: FIELD.z - FIELD.goalWidth / 2 - 0.4,
+    maxZ: FIELD.z + FIELD.goalWidth / 2 + 0.4,
+  }));
+  const distToAabb = (px, pz, b) => Math.hypot(Math.max(b.minX - px, 0, px - b.maxX), Math.max(b.minZ - pz, 0, pz - b.maxZ));
+
+  function propBlockedBy(x, z, r) {
+    for (const b of buildings) if (distToBox(x, z, b) < r + 1.0) return b.label;
+    if (dist(x, z, PLAZA.x, PLAZA.z) < FOUNTAIN.wall[1] + 1.6 + r) return 'Фонтан';
+    if (dist(x, z, SPAWN.x, SPAWN.z) < SPAWN_RADIUS + 2 + r) return 'Точка появления игроков';
+    for (const d of propDoors) if (dist(x, z, d.x, d.z) < r + d.r) return d.label;
+    for (const c of circles) if (c.id.startsWith('npc_') && dist(x, z, c.x, c.z) < r + 2.2) return c.label;
+    for (const route of routes) if (distToSegment(x, z, route.ax, route.az, route.bx, route.bz) < r + ROUTE_HALF_WIDTH + 0.5) return route.label;
+    for (const p of pathBoxes) if (distToBox(x, z, p) < r) return p.label;
+    for (const b of plazaBoxes) if (distToAabb(x, z, b) < r + 0.3) return 'Декор площади';
+    for (const b of goalBoxes) if (distToAabb(x, z, b) < r) return 'Ворота на поле';
+    for (const b of goalMouths) if (distToAabb(x, z, b) < r) return 'Ворота на поле';
+    for (const s of statics) if (dist(x, z, s.x, s.z) < r + s.r + 0.2) return 'Существующий объект мира';
+    return null;
+  }
+
   return {
     /** Базовая проверка без учёта других динамических объектов. */
     checkStatic({ type, x, z, scale }) {
@@ -134,13 +173,24 @@ export function createPlacement({ world = null } = {}) {
       if (x - radius < m || z - radius < m || x + radius > WORLD_SIZE_X - m || z + radius > WORLD_SIZE_Z - m) {
         return { ok: false, code: 'out_of_bounds', reason: 'Слишком близко к краю мира' };
       }
-      return { ok: true };
+      const zone = propBlockedBy(x, z, radius);
+      return zone ? { ok: false, code: 'forbidden_zone', reason: `Здесь нельзя ставить: ${zone}` } : { ok: true };
     },
     /** Препятствия для физики мяча: здания и статические объекты, как круги/коробки. */
     staticObstacles() {
       return {
-        boxes: buildings.map((b) => ({ minX: b.x - b.w / 2, maxX: b.x + b.w / 2, minZ: b.z - b.d / 2, maxZ: b.z + b.d / 2, height: 8 })),
-        circles: statics.map((s) => ({ x: s.x, z: s.z, r: s.r, height: 4 })),
+        boxes: [
+          ...BUILDINGS.map((b) => ({ x: b.x, z: b.z, hx: b.width / 2, hz: b.depth / 2, ry: b.rotationY, height: 9 })),
+          ...plazaBoxes.map((b) => ({
+            x: (b.minX + b.maxX) / 2,
+            z: (b.minZ + b.maxZ) / 2,
+            hx: (b.maxX - b.minX) / 2,
+            hz: (b.maxZ - b.minZ) / 2,
+            ry: 0,
+            height: 2,
+          })),
+        ],
+        circles: statics.map((s) => ({ x: s.x, z: s.z, r: s.r, height: 6 })),
       };
     },
     /** Описание зон для карты редактора (в координатах мира). */

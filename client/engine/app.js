@@ -229,7 +229,7 @@ export function createClient({ container, networkOnly = false }) {
     const cameraGoal = { x: 0, y: 0, z: 0 };
     /** Модель локального игрока: тот же персонаж, что видят другие (по id и цвету из сессии). */
     let avatar = null;
-    let interaction = null; // цель клавиши E: вход, дверь, ворота, NPC, предмет или мяч
+    let interaction = null; // цель клавиши E: вход, дверь, ворота, NPC, предмет или мяч (interactions/interaction-manager.js)
     const mechSync = createMechanismSync({ api: { on: emitter.on, net } });
     // Мячи и предметы показываются только в загруженных чанках (кеш клиента 10% не расширяется).
     const isLoaded = (x, z) => world.heightAt(x, z) !== null;
@@ -484,8 +484,14 @@ export function createClient({ container, networkOnly = false }) {
             colliders: worldView.collidersNear(player.x, player.z),
           });
           setNpc(interaction?.npc ?? null);
-          lastPrompt = interaction?.label ?? '';
-          hud.setEntrancePrompt(lastPrompt);
+        }
+        // Подсказка обновляется на каждый кадр: подпись ворот меняется, пока они едут.
+        if (ready) {
+          const label = interaction ? (interaction.mechanism ? interaction.mechanism.object.label : interaction.label) : '';
+          if (label !== lastPrompt) {
+            lastPrompt = label;
+            hud.setEntrancePrompt(label);
+          }
         }
       }
 

@@ -118,7 +118,7 @@ export const PROP_HOMES = Object.freeze([
   Object.freeze({ id: 'cone-1', type: 'cone', x: 392, z: 394, ry: 0 }),
   Object.freeze({ id: 'cone-2', type: 'cone', x: 395, z: 393, ry: 0 }),
   // на свободной части площади
-  Object.freeze({ id: 'crate-3', type: 'crate', x: 397, z: 430, ry: 0.7 }),
+  Object.freeze({ id: 'crate-3', type: 'crate', x: 398, z: 430, ry: 0.7 }),
   Object.freeze({ id: 'cone-3', type: 'cone', x: 436, z: 398, ry: 0 }),
   // у поля
   Object.freeze({ id: 'crate-4', type: 'crate', x: 441, z: 388, ry: 0.2 }),

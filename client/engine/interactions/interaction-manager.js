@@ -128,8 +128,10 @@ export function createInteractionManager({ net, mechSync, now = () => performanc
     if (door.object.isOpen) return go(target.href);
     const near = Math.hypot(player.x - door.x, player.z - door.z) <= door.radius;
     if (!near) return go(target.href); // издали открывать нечего: прежнее поведение входа
-    mechSync.request(door.id, true, (open) => (open ? door.object.open() : door.object.close()));
-    go(target.href);
+    if (!pendingEnter) {
+      pendingEnter = { href: target.href, door, since: now() };
+      mechSync.request(door.id, true, (open) => (open ? door.object.open() : door.object.close()));
+    }
   }
 
   return {
