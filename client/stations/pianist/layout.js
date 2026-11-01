@@ -140,7 +140,7 @@ export function buildPianistLayout() {
   colliders.push(...AUDIENCE_COLLIDERS);
   cameraBlockers.push(...AUDIENCE_COLLIDERS);
   // Shelves with sheet music and a few music books.
-  for (const [x, z] of [[1.8, 6.0], [18.2, 5.5]]) {
+  for (const { x, z } of [{ x: 1.8, z: 6.0 }, PIANIST_PLAN.practiceShelves]) {
     mesh(root, [2.25, 0.12, 0.42], [x, 1.3, z], COLORS.wood);
     mesh(root, [2.25, 0.12, 0.42], [x, 2.25, z], COLORS.wood);
     for (const y of [1.75, 2.7]) for (let i = 0; i < 6; i++) mesh(root, [0.22, 0.34, 0.28], [x - 0.8 + i * 0.29, y, z], ['#d47970', '#e1bd74', '#82aab1', '#798e78'][i % 4]);
