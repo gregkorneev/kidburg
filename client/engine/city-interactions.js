@@ -14,16 +14,18 @@ export function pickCityInteraction(player, entrances, mechanisms = [], npc = nu
     const distance = Math.hypot(player.x - target.x, player.z - target.z);
     if (distance <= target.radius) candidates.push({ kind, distance, ...extra });
   };
+  const doorHrefs = new Set(mechanisms.filter((m) => m.kind === 'door' && m.href).map((m) => m.href));
   for (const [kind, entrance] of Object.entries(entrances ?? {})) {
-    if (entrance) add(kind, entrance, { label: entrance.label, href: entrance.href });
+    if (entrance && !doorHrefs.has(entrance.href)) add(kind, entrance, { label: entrance.label, href: entrance.href });
   }
   if (npc) add('npc', npc, { npc });
   const hasYaw = Number.isFinite(player.yaw);
   const forward = hasYaw ? { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) } : null;
   for (const m of mechanisms) {
     if (m.kind === 'gate') add('mechanism', m, { label: `${m.object.label}`, mechanism: m });
+    // Дверь с адресом перехода сама является точкой входа; так работают и здания без старых статических координат.
+    else if (m.kind === 'door' && m.href) add('entrance', m, { label: `Войти в ${m.doorLabel ?? 'здание'}`, href: m.href });
     // Дверь без страницы интерьера открывается и закрывается клавишей E, если игрок смотрит в её сторону.
-    // Двери со страницей (href) — часть входа в здание: их открывает вход.
     else if (m.kind === 'door' && !m.href) {
       const dx = m.x - player.x;
       const dz = m.z - player.z;
