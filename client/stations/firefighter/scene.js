@@ -14,6 +14,7 @@ import {
 } from '../../engine/art/character.js';
 import { buildFireTruck, buildHoseStand, buildLocker, buildMannequin, buildSafeZone, buildSafetyBarriers, buildStation, buildTrainingWall, createObjectiveMarker } from './station-art.js';
 import { createScenery } from './scenery.js';
+import { BENCHES, BUSHES, CONES, FENCES, LAMPS, PLANTERS, TREES } from './yard-plan.js';
 
 export { setPersonEquipment };
 
@@ -251,6 +252,16 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     { minX: 3.1, maxX: 8.3, minZ: -6.8, maxZ: -2.0 },
     { minX: -8.7, maxX: -6.5, minZ: 1.3, maxZ: 3.2 },
     { minX: -1.0, maxX: 1.0, minZ: 6.4, maxZ: 8.4 },
+    ...TREES.map(({ x, z, s }) => ({ minX: x - 0.48 * s, maxX: x + 0.48 * s, minZ: z - 0.48 * s, maxZ: z + 0.48 * s })),
+    ...BUSHES.map(({ x, z, s }) => ({ minX: x - 0.58 * s, maxX: x + 0.58 * s, minZ: z - 0.58 * s, maxZ: z + 0.58 * s })),
+    ...LAMPS.map(({ x, z }) => ({ minX: x - 0.28, maxX: x + 0.28, minZ: z - 0.28, maxZ: z + 0.28 })),
+    ...CONES.map(({ x, z }) => ({ minX: x - 0.24, maxX: x + 0.24, minZ: z - 0.24, maxZ: z + 0.24 })),
+    ...PLANTERS.map(({ x, z }) => ({ minX: x - 0.9, maxX: x + 0.9, minZ: z - 0.38, maxZ: z + 0.38 })),
+    ...BENCHES.map(({ x, z }) => ({ minX: x - 1.2, maxX: x + 1.2, minZ: z - 0.5, maxZ: z + 0.5 })),
+    ...FENCES.map(({ x0, z0, x1, z1 }) => ({
+      minX: Math.min(x0, x1) - 0.12, maxX: Math.max(x0, x1) + 0.12,
+      minZ: Math.min(z0, z1) - 0.12, maxZ: Math.max(z0, z1) + 0.12,
+    })),
   ];
   // Высоты для камеры: здание, грузовик и учебная стена выше камеры, остальное — ниже.
   const CAMERA_BLOCKER_HEIGHTS = [4, 9, 3.6, 2.2, 1.6];

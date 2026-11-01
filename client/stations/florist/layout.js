@@ -196,6 +196,7 @@ export function buildFloristLayout() {
   // Вазоны и декоративная зелень держатся по углам и не сужают основные проходы.
   const flowerPots = [[1.15, 1.15], [18.85, 1.15], [1.15, 13.9], [18.85, 13.9]];
   for (const [x, z] of flowerPots) {
+    colliders.push({ minX: x - 0.38, maxX: x + 0.38, minY: 0, maxY: 0.7, minZ: z - 0.38, maxZ: z + 0.38 });
     furniture.cyl(0.34, 0.26, 0.58, 9, x, 0.31, z, '#c98767', { tinted: false });
     furniture.cyl(0.36, 0.36, 0.075, 9, x, 0.61, z, PALETTE.trim, { tinted: false });
     furniture.cyl(0.25, 0.28, 0.05, 9, x, 0.62, z, FLORA_COLORS.soil, { tinted: false });
