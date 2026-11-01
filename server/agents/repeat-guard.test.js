@@ -1,16 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRepeatGuard, fingerprint, similarity, splitSentences, startsWithGreeting } from './repeat-guard.js';
+import { createRepeatGuard, fingerprint, similarity, splitSentences } from './repeat-guard.js';
 
 const same = (a, b) => similarity(fingerprint(a), fingerprint(b));
 
-test('приветствие в начале ответа распознаётся, обычное начало — нет', () => {
-  for (const text of ['Привет, Аня!', 'здравствуйте', 'Здравствуй, друг', 'Добрый день!', 'Приветствую тебя на станции', 'Привет']) {
-    assert.equal(startsWithGreeting(text), true, text);
-  }
-  for (const text of ['Сначала надень экипировку.', 'Рада видеть тебя снова.', 'Это было вчера: привет всем.', '']) {
-    assert.equal(startsWithGreeting(text), false, text);
-  }
+test('короткое приветствие не блокирует новый ответ; приветствие перед старым советом не скрывает повтор', () => {
+  const advice = 'Экипировка защищает пожарного от жара и осколков.';
+  const guard = createRepeatGuard({ previous: ['Привет, Аня!', advice] });
+  assert.equal(guard.check('Привет! Смена завершена, можем обсудить профессию.', { ended: true }), 'ok');
+  assert.equal(guard.check('Здравствуйте!', { ended: true }), 'ok');
+  assert.equal(guard.check(`Привет! ${advice}`, { ended: true }), 'repeat');
 });
 
 test('сходство нечёткое: регистр, пунктуация, ё и окончания не делают повтор «новым»', () => {
@@ -22,7 +21,7 @@ test('сходство нечёткое: регистр, пунктуация, �
 });
 
 test('разные ответы с общими словами не считаются повтором', () => {
-  const guard = createRepeatGuard({ previous: ['Экипировка защищает пожарного от жара и осколков, поэтому её проверяют до смены.'], met: true });
+  const guard = createRepeatGuard({ previous: ['Экипировка защищает пожарного от жара и осколков, поэтому её проверяют до смены.'] });
   // другая мысль, часть слов общая
   assert.equal(guard.check('Пожарные работают в команде: один держит рукав, другой следит за связью.', { ended: true }), 'ok');
   assert.equal(guard.check('Перед сменой пожарный проверяет рацию и шлем, а потом докладывает старшему.', { ended: true }), 'ok');
@@ -30,19 +29,15 @@ test('разные ответы с общими словами не считаю
   assert.equal(guard.check('Экипировка, как известно, защищает пожарного от жара и осколков, поэтому её проверяют до смены!', { ended: true }), 'repeat');
 });
 
-test('повторное приветствие — повтор, но только когда игрок и агент уже разговаривали', () => {
-  const met = createRepeatGuard({ previous: [], met: true });
-  assert.equal(met.check('Привет, Аня! Рада видеть тебя на станции.', { ended: false }), 'repeat');
-  assert.equal(met.check('Привет', { ended: false }), 'wait', 'слово ещё может продолжаться («Приветствую»)');
-  assert.equal(met.check('Привет,', { ended: false }), 'repeat');
-  assert.equal(met.check('Здравствуйте', { ended: true }), 'repeat');
-
-  const first = createRepeatGuard({ previous: [], met: false });
-  assert.equal(first.check('Привет, Аня! Я Маруся, наставница учебной смены.', { ended: false }), 'ok');
+test('короткое приветствие в потоке ждёт продолжения перед выдачей', () => {
+  const guard = createRepeatGuard({ previous: [] });
+  assert.equal(guard.check('Прив', { ended: false }), 'wait');
+  assert.equal(guard.check('Привет, Аня!', { ended: false }), 'wait');
+  assert.equal(guard.check('Привет, Аня!', { ended: true }), 'ok');
 });
 
 test('решение откладывается, пока начало ответа не законченное предложение; длинное начало решается без точки', () => {
-  const guard = createRepeatGuard({ previous: [], met: false });
+  const guard = createRepeatGuard({ previous: [] });
   assert.equal(guard.check('Сегодня мы', { ended: false }), 'wait');
   assert.equal(guard.check('Сегодня мы начнём с инструктажа', { ended: false }), 'wait');
   assert.equal(guard.check('Сегодня мы начнём с инструктажа. ', { ended: false }), 'ok');
@@ -53,7 +48,7 @@ test('решение откладывается, пока начало отве�
 });
 
 test('короткие предложения (меньше трёх слов) не сравниваются', () => {
-  const guard = createRepeatGuard({ previous: ['Хорошо. Давай начнём.'], met: true });
+  const guard = createRepeatGuard({ previous: ['Хорошо. Давай начнём.'] });
   assert.equal(guard.check('Хорошо. Давай начнём. А теперь самое важное: слушай инструктаж внимательно.', { ended: true }), 'ok');
 });
 

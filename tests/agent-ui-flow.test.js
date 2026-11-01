@@ -513,7 +513,8 @@ test('Маруся: после перезагрузки страницы раз�
 
     const system = systemOf(ollama.requests.at(-1));
     assert.doesNotMatch(system, /первая встреча/, 'встреча не первая');
-    assert.match(system, /не здоровайся и не представляйся заново/);
+    assert.match(system, /не представляйся заново/);
+    assert.match(system, /можно коротко ответить на приветствие/);
     assert.match(system, /Ты уже рассказывала: Привет, я Маруся! Рада видеть тебя на станции\. Экипировка защищает пожарного от жара/);
     const sentMessages = ollama.requests.at(-1).body.messages;
     assert.ok(sentMessages.some((m) => m.role === 'user' && m.content === 'Зачем нужна экипировка?'), 'прошлые реплики на месте');

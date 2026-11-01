@@ -387,8 +387,30 @@ function metBefore(db, user) {
   });
 }
 
-test('защита от повторов: повторное приветствие не показывается, берётся неповторённый ответ', async () => {
-  const srv = await fakeOllama(answers(['Привет, Аня! Рада видеть тебя снова.', 'Продолжим с того места, где остановились.']));
+test('Маруся отвечает на приветствие после завершённой смены без ошибки повторов', async () => {
+  for (const text of ['Привет что тут надо делать', 'привте']) {
+    const response = 'Привет! Смена завершена. Можем обсудить, как пожарные учатся работать в команде.';
+    const srv = await fakeOllama(answers([response]));
+    try {
+      const { db, mk, agents } = setup();
+      const user = mk('Пожарный');
+      db.saveAgentMemory(user.id, 'marusya', {
+        turns: [{ role: 'user', text: 'Я снова здесь. Что мне делать дальше?' }, { role: 'assistant', text: 'Ты можешь повторить учебную смену.' }],
+        topics: { dialogue: { exchanges: 1, notes: ['Ты можешь повторить учебную смену.'] } },
+      });
+      const out = await collect(agents(srv.url).reply({ userId: user.id, agentId: 'marusya', text,
+        context: { situation: { key: 'completed', label: 'Завершение', text: 'Учебная смена завершена.' } } }));
+      assert.equal(out.join('').trim(), response);
+      assert.equal(srv.requests.length, 1);
+      assert.equal(db.getAgentMemory(user.id, 'marusya').topics.dialogue.exchanges, 2);
+    } finally {
+      await srv.close();
+    }
+  }
+});
+
+test('защита от повторов: приветствие перед старым советом не пропускает повтор, берётся новый ответ', async () => {
+  const srv = await fakeOllama(answers([`Привет, Аня! ${EQUIP}`, 'Продолжим с того места, где остановились.']));
   try {
     const { db, mk, agents } = setup();
     const user = mk('Аня');
@@ -404,6 +426,23 @@ test('защита от повторов: повторное приветств�
     assert.ok(!JSON.stringify(db.getAgentMemory(user.id, 'therapist').turns).includes('Рада видеть тебя снова'));
   } finally {
     await srv.close();
+  }
+});
+
+test('прямое напоминание и вопрос о следующем шаге разрешают повтор подсказки', async () => {
+  for (const text of ['Напомни, зачем нужна экипировка?', 'Повтори пожалуйста', 'Привет что тут надо делать', 'Что мне делать дальше?', 'С чего начать?']) {
+    const srv = await fakeOllama(answers([EQUIP]));
+    try {
+      const { db, mk, agents } = setup();
+      const user = mk('Аня');
+      metBefore(db, user);
+      const out = await collect(agents(srv.url).reply({ userId: user.id, agentId: 'therapist', text,
+        context: { situation: { key: 'equip', label: 'Экипировка', text: 'Игроку нужно надеть экипировку.' } } }));
+      assert.equal(out.join('').trim(), EQUIP, text);
+      assert.equal(srv.requests.length, 1, text);
+    } finally {
+      await srv.close();
+    }
   }
 });
 
@@ -513,8 +552,8 @@ test('защита от повторов: после проверки начал
     res.writeHead(200);
     call += 1;
     if (call === 1) {
-      // первая попытка: приветствие приходит кусками, но показать нельзя ни куска
-      for (const part of ['Прив', 'ет, А', 'ня! ', 'Снова ', 'здесь.']) res.write(ndjsonLine(part));
+      // первая попытка: приветствие и старый совет приходят кусками, повтор нельзя показать
+      for (const part of ['Прив', 'ет, А', 'ня! ', EQUIP]) res.write(ndjsonLine(part));
       return res.end(ndjsonLine('', true));
     }
     res.write(ndjsonLine('Сегодня говорим про '));

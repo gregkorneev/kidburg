@@ -394,7 +394,7 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
           : 'Это ваша первая встреча с этим игроком, но не представляйся: сразу отвечай по существу.',
       );
     } else {
-      facts.push('Вы с этим игроком уже разговаривали: не здоровайся и не представляйся заново, продолжай разговор.');
+      facts.push('Вы с этим игроком уже разговаривали: не представляйся заново, продолжай разговор. Если игрок поздоровался, можно коротко ответить на приветствие и перейти к его вопросу.');
       if (memory.notes.length && !inTurn) {
         facts.push(
           `Ты уже ${male ? 'рассказывал' : 'рассказывала'}: ${memory.notes.join(' ')} Не выдавай это за новое: если игрок не просит повторить, скажи что-то новое или напомни одной фразой.`,
@@ -439,9 +439,11 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     try {
       // Проверочные реплики администратора (ephemeral) не читают и не пишут память игроков.
       const memory = req.ephemeral === true ? emptyMemory() : loadMemory(req.userId, req.agentId);
+      // Напоминание по просьбе игрока может повторять прежний ответ; проверка фактов ниже остаётся включённой.
+      const reminder = /(?:^|\s)(?:напомни|повтори)(?:\s|[,.!?]|$)/iu.test(text)
+        || Boolean(situation && /(?:^|\s)(?:что(?:\s+\p{L}+){0,5}\s+(?:делать|дальше)|с\s+чего(?:\s+\p{L}+){0,3}\s+начать)(?:[^\p{L}]|$)/iu.test(text));
       const repeatGuard = createRepeatGuard({
-        previous: [...memory.notes, ...memory.turns.filter((t) => isTurn(t) && t.role === 'assistant').map((t) => t.text)],
-        met: memory.exchanges > 0 || memory.turns.length > 0,
+        previous: reminder ? [] : [...memory.notes, ...memory.turns.filter((t) => isTurn(t) && t.role === 'assistant').map((t) => t.text)],
         threshold: cfg.repeatThreshold,
         ...(situation?.avoid.length && persona.progressInUserTurn === true ? { minChars: 170, maxChars: 300 } : {}),
       });

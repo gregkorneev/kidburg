@@ -1,9 +1,6 @@
 // Защита от повторов в ответах NPC: сравнение начала нового ответа с тем, что агент уже говорил этому игроку.
 // Сравнение нечёткое (слова без регистра, пунктуации и окончаний), поэтому два разных ответа модели не обязаны
-// отличаться побуквенно, а переформулированный повтор приветствия или совета всё равно распознаётся.
-
-/** Приветствие в начале ответа: здороваться агент должен только при первой встрече. */
-const GREETING = /^(привет\p{L}*|здравствуй\p{L}*|добр(ый|ое|ого) (день|вечер|утро|утра)|приветству\p{L}*|салют|хай)$/u;
+// отличаться побуквенно, а переформулированный повтор содержательного совета всё равно распознаётся.
 
 const MIN_WORDS = 3; // короче предложения не сравниваем: «Хорошо.» может встретиться дважды без повтора
 const STEM = 5; // грубая основа: первые буквы слова убирают падежные окончания
@@ -33,22 +30,14 @@ export function splitSentences(text) {
   return (String(text).match(/[^.!?…]+[.!?…]*/gu) ?? []).map((s) => s.trim()).filter(Boolean);
 }
 
-/** Здоровается ли текст в самом начале («Привет, Аня!», «Здравствуйте!», «Добрый день»). */
-export function startsWithGreeting(text) {
-  const w = words(text);
-  if (GREETING.test(w[0] ?? '')) return true;
-  return GREETING.test(`${w[0] ?? ''} ${w[1] ?? ''}`);
-}
-
 /**
  * @param {object} deps
  * @param {string[]} deps.previous прежние реплики агента этому игроку (ответы и краткие заметки о них)
- * @param {boolean} deps.met true, если игрок и агент уже разговаривали: тогда здороваться повторно нельзя
  * @param {number} [deps.threshold] сходство предложений, начиная с которого оно считается повтором
  * @param {number} [deps.minChars] сколько символов начала ответа нужно для решения
  * @param {number} [deps.maxChars] после скольких символов решение принимается в любом случае
  */
-export function createRepeatGuard({ previous, met, threshold = 0.7, minChars = 25, maxChars = 140 }) {
+export function createRepeatGuard({ previous, threshold = 0.7, minChars = 25, maxChars = 140 }) {
   const known = [];
   for (const text of previous) {
     for (const sentence of splitSentences(text)) {
@@ -64,9 +53,6 @@ export function createRepeatGuard({ previous, met, threshold = 0.7, minChars = 2
   function check(opening, { ended = false } = {}) {
     const text = opening.trim();
     if (!text) return ended ? 'ok' : 'wait';
-    // Первое слово определено, когда за ним есть разделитель или поток закончился.
-    const firstWordKnown = ended || /[\s,.!?…:;—-]/u.test(text.slice(1));
-    if (met && firstWordKnown && startsWithGreeting(text)) return 'repeat';
     const sentences = splitSentences(text);
     // Предложение завершено, если после него что-то есть или стоит знак конца.
     const done = sentences.filter((s, i) => i < sentences.length - 1 || /[.!?…]$/u.test(s));

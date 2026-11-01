@@ -313,7 +313,7 @@ test('Маэстро: ответ, выдающий несделанное за �
     const { client } = await s.join('Гость Артём', door('pianist'));
     await enter(client, 'pianist');
     moveTo(client, npc('maestro').x, npc('maestro').z);
-    client.send(talk('maestro', 'Я уже выступил на концерте?', 'r1'));
+    client.send(talk('maestro', 'Что мне делать дальше? Я уже выступил на концерте?', 'r1'));
     const msgs = await answer(client, 'r1');
     assert.equal(msgs.at(-1).t, 'agent_done');
     assert.doesNotMatch(answerText(msgs), /выступил|аплодисмент/);
