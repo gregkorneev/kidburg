@@ -1,5 +1,9 @@
 export const ROOM = Object.freeze({ width: 20, depth: 15, height: 6 });
 
+export const MAESTRO_COLLIDER = Object.freeze({
+  minX: 5.82, maxX: 6.58, minY: 0, maxY: 1.8, minZ: 2.82, maxZ: 3.58,
+});
+
 export const PIANIST_PLAN = Object.freeze({
   spawn: Object.freeze({ x: 10, z: 4.2 }),
   maestro: Object.freeze({ x: 6.2, z: 3.2 }),

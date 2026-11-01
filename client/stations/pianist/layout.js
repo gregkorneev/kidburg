@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { AUDIENCE_CHAIRS, AUDIENCE_COLLIDERS, BETWEEN_PIANOS_CHAIRS, PIANIST_PLAN, POSTER_MOUNTS, ROOM, ROOM_COLLIDERS, STAGE_COLLIDERS } from './layout-plan.js';
+import { AUDIENCE_CHAIRS, AUDIENCE_COLLIDERS, BETWEEN_PIANOS_CHAIRS, MAESTRO_COLLIDER, PIANIST_PLAN, POSTER_MOUNTS, ROOM, ROOM_COLLIDERS, STAGE_COLLIDERS } from './layout-plan.js';
 
 const COLORS = Object.freeze({ floor: '#a9764c', plank: '#bf8b5d', trim: '#f4e6c9', cream: '#f7edd8', blue: '#b9dce7', blueDark: '#80b5c7', wood: '#9c633f', gold: '#e6ba63', red: '#c96d72', curtain: '#b65f70', glass: '#aadce9' });
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -32,7 +32,7 @@ export function buildPianistLayout() {
     parent.add(item);
     return item;
   };
-  const colliders = [...ROOM_COLLIDERS];
+  const colliders = [...ROOM_COLLIDERS, MAESTRO_COLLIDER];
   const cameraBlockers = [];
   const concertLights = [];
 

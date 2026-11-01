@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createInput } from '../../engine/input.js';
 import { createPlayer, setPlayerPosition, stepPlayer } from '../../engine/player.js';
 import { applyStylizedLook } from '../../engine/art/lighting.js';
-import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter, triggerGesture } from '../../engine/art/character.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter, triggerGesture, yawToward } from '../../engine/art/character.js';
 import { QUALITY_LABELS, QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
 import { buildPianistLayout } from './layout.js';
 import { createPiano } from './piano.js';
@@ -10,6 +10,7 @@ import { noteByKey } from './melody.js';
 import { pianistGroundHeight, pianoCollider, PIANIST_PLAN } from './layout-plan.js';
 import { getPianoSeatPose, PIANIST_PLAYING_ARM_ANGLE, PIANIST_SEATED_LEG_ANGLE } from './pianist-pose.js';
 import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
+import { turnNpcToward } from '../../engine/npc-facing.js';
 
 const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
 const radius = 1.85;
@@ -53,7 +54,7 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
   const avatar = createCharacter({ appearance: appearance ?? { outfit: '#6d9fa0', hairStyle: 'curly', hair: '#523b30' } });
   avatar.scale.setScalar(CITY_CHARACTER_SCALE); scene.add(avatar);
   const maestro = createCharacter({ name: 'Маэстро Артём', subtitle: 'преподаватель музыки', appearance: { outfit: '#e3b868', hairStyle: 'short', hair: '#533a31', skin: '#efc19c' }, outfit: '#e3b868' });
-  maestro.scale.setScalar(0.72); maestro.position.set(PIANIST_PLAN.maestro.x, 0, PIANIST_PLAN.maestro.z); maestro.rotation.y = Math.PI; addMaestroDetails(maestro); scene.add(maestro); triggerGesture(maestro, 'wave');
+  maestro.scale.setScalar(CITY_CHARACTER_SCALE); maestro.position.set(PIANIST_PLAN.maestro.x, 0, PIANIST_PLAN.maestro.z); maestro.rotation.y = Math.PI; addMaestroDetails(maestro); scene.add(maestro); triggerGesture(maestro, 'wave');
   const pianos = [
     createPiano({ position: PIANIST_PLAN.practicePiano, rotationY: PIANIST_PLAN.practicePiano.rotationY, name: 'practice-piano' }),
     createPiano({ position: { ...PIANIST_PLAN.stagePiano, y: PIANIST_PLAN.stage.height }, rotationY: Math.PI, name: 'concert-piano' }),
@@ -199,16 +200,6 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
       cameraArmDistance = approachCameraDistance(cameraArmDistance, safeCameraDistance(focus, desired, instrumentCameraBlockers, { radius: 0.2, clearance: 0.12 }), dt);
       camera.position.copy(focus).addScaledVector(ray, desiredDistance > 0 ? cameraArmDistance / desiredDistance : 0); camera.lookAt(focus);
     } else {
-      const nearbyPiano = pianos
-        .map((piano) => ({ piano, distance: Math.hypot(player.x - piano.position.x, player.z - piano.position.z) }))
-        .sort((a, b) => a.distance - b.distance)[0];
-      if (nearbyPiano?.distance < 3.5) {
-        const piano = nearbyPiano.piano;
-        const frontX = Math.sin(piano.rotationY); const frontZ = Math.cos(piano.rotationY);
-        focus.set(piano.position.x + frontX * 0.35, piano.position.y + 1.12, piano.position.z + frontZ * 0.35);
-        desired.set(piano.position.x - 3.3 + frontX * 3.0, piano.position.y + 4.0, piano.position.z + frontZ * 3.0);
-        camera.position.lerp(desired, 1 - Math.exp(-4 * dt)); camera.lookAt(focus);
-      } else {
       const forwardX = -Math.sin(player.yaw); const forwardZ = -Math.cos(player.yaw);
       const rightX = Math.cos(player.yaw); const rightZ = -Math.sin(player.yaw);
       focus.set(player.x + forwardX * 1.35, player.y + 1.22 + player.pitch * 1.1, player.z + forwardZ * 1.35);
@@ -217,10 +208,10 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
       cameraArmDistance = approachCameraDistance(cameraArmDistance, targetDistance, dt);
       ray.subVectors(desired, focus); const length = ray.length();
       camera.position.copy(focus).addScaledVector(ray, length > 0 ? cameraArmDistance / length : 0); camera.lookAt(focus);
-      }
     }
     animateCharacter(avatar, dt, elapsed, { speed: player.moving ? (player.running ? 2 : 1) : 0 });
-    animateCharacter(maestro, dt, elapsed, { talking: state?.stage === 'briefing', lookYaw: Math.sin(elapsed * 0.55) * 0.08 });
+    const noticingMaestro = turnNpcToward(maestro, maestro.position, player, dt, Math.PI);
+    animateCharacter(maestro, dt, elapsed, { talking: state?.stage === 'briefing', lookYaw: noticingMaestro ? yawToward(maestro, player.x, player.z) : Math.sin(elapsed * 0.55) * 0.08 });
     if (instrumentMode) {
       avatar.userData.body.rotation.x = 0.08;
       avatar.userData.legs.forEach(({ pivot }) => { pivot.rotation.x = PIANIST_SEATED_LEG_ANGLE; });

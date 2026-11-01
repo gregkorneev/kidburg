@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AUDIENCE_CHAIRS, AUDIENCE_COLLIDERS, BETWEEN_PIANOS_CHAIRS, pianistGroundHeight, pianoCollider, PIANIST_PLAN, POSTER_MOUNTS, ROOM, ROOM_COLLIDERS, STAGE_COLLIDERS } from './layout-plan.js';
+import { AUDIENCE_CHAIRS, AUDIENCE_COLLIDERS, BETWEEN_PIANOS_CHAIRS, MAESTRO_COLLIDER, pianistGroundHeight, pianoCollider, PIANIST_PLAN, POSTER_MOUNTS, ROOM, ROOM_COLLIDERS, STAGE_COLLIDERS } from './layout-plan.js';
 import { collides, createPlayer, stepPlayer } from '../../engine/player.js';
 import { buildPianistLayout } from './layout.js';
 import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
@@ -47,6 +47,22 @@ test('игрок может пройти по центральному прох�
   }
   assert.ok(player.z >= PIANIST_PLAN.stage.minZ);
   assert.equal(player.y, PIANIST_PLAN.stage.height);
+});
+
+test('игрок не проходит сквозь Маэстро Артёма', () => {
+  const player = createPlayer();
+  player.x = MAESTRO_COLLIDER.minX - 0.6;
+  player.z = PIANIST_PLAN.maestro.z;
+  player.yaw = -Math.PI / 2;
+  const layout = buildPianistLayout();
+  const before = player.x;
+  stepPlayer(player, { forward: true, back: false, left: false, right: false, run: false }, 0.1, {
+    heightAt: pianistGroundHeight,
+    collidersNear: () => layout.colliders,
+  });
+  assert.equal(player.x, before);
+  assert.ok(collides(layout.colliders, PIANIST_PLAN.maestro.x, 0, PIANIST_PLAN.maestro.z));
+  layout.dispose();
 });
 
 test('все музыкальные таблички закреплены на свободных участках боковых стен', () => {
