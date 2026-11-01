@@ -55,7 +55,7 @@ export function PianistUI({ state, prompt, notice, noticeType, controlsOpen, qua
       controlsOpen && h('div', { class: 'controls-body' },
         h('div', null, h('kbd', null, 'W A S D'), ' движение'), h('div', null, h('kbd', null, 'мышь'), ' осмотреться'),
         h('div', null, h('kbd', null, 'E'), ' действие / пианино'), h('div', null, h('kbd', null, 'Esc'), ' выйти из пианино'),
-        h('div', null, h('kbd', null, 'H'), ' подсказки'),
+        h('div', null, h('kbd', null, 'L'), ' в основной мир'), h('div', null, h('kbd', null, 'H'), ' подсказки'),
         h('fieldset', { class: 'quality-picker' }, h('legend', null, 'Качество графики'), h('div', { class: 'quality-options', role: 'group', 'aria-label': 'Качество графики' }, QUALITY_LEVELS.map((level) => h('button', { key: level, type: 'button', class: `quality-choice${quality === level ? ' is-selected' : ''}`, 'aria-pressed': quality === level, onClick: () => onQuality(level) }, QUALITY_LABELS[level])))),
         h('div', { class: 'sound-row' }, h('button', { type: 'button', class: 'sound-toggle', onClick: onToggleSound, 'aria-pressed': state.soundEnabled }, state.soundEnabled ? 'Звук включён' : 'Звук выключен'), h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: state.volume, 'aria-label': 'Громкость', onInput: (event) => onVolume(Number(event.currentTarget.value)) })),
       ),
