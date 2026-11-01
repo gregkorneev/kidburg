@@ -91,7 +91,7 @@ function addDesk(furniture, colliders, cameraBlockers, { x, z, width, depth }, {
     minY: 0, maxY: 1.18,
     minZ: z - depth / 2, maxZ: z + depth / 2,
   };
-  colliders.push(bounds);
+  colliders.push({ ...bounds, minX: bounds.minX - 0.2, maxX: bounds.maxX + 0.2, minZ: bounds.minZ - 0.2, maxZ: bounds.maxZ + 0.2 });
   cameraBlockers.push(bounds);
   if (label) addLabel(furniture.root, furniture.labels, label, [x, 1.9, z - depth * 0.55], 0.72, accent);
 }

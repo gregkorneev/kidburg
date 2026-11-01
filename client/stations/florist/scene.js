@@ -9,7 +9,7 @@ import { updateWind } from '../../engine/art/wind.js';
 import { buildFloristLayout } from './layout.js';
 import { bouquetStemTransform, createFlower, disposeFlower, createWrapping, disposeWrapping } from './flowers.js';
 import { FLOWERS, ORDER } from './state.js';
-import { characterYawForPlayer } from './orientation.js';
+import { characterYawForPlayer, setCameraFocus } from './orientation.js';
 import { targetDistance, targetsForState } from './targets.js';
 import { FLORIST_PLAN } from './layout-plan.js';
 import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
@@ -271,7 +271,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
     avatar.rotation.y = characterYawForPlayer(player.yaw);
     const forwardX = -Math.sin(player.yaw);
     const forwardZ = -Math.cos(player.yaw);
-    focus.set(player.x + forwardX * 0.6, player.y + 1.2 + player.pitch * 1.4, player.z + forwardZ * 0.6);
+    setCameraFocus(focus, player);
     desiredCamera.set(
       player.x - forwardX * 4.8,
       player.y + 2.65 + player.pitch * 1.2,
