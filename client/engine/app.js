@@ -1,3 +1,5 @@
+import { createPlazaSeatedNpcs } from './plaza-seated-npcs.js';
+import { createPlazaAnimals } from './plaza-animals.js';
 // Сборка клиента: сеть и состояние создаются сразу (api доступен до start()),
 // сцена, ввод и HUD — в start(). Всё, что создано, освобождается в stop().
 // Описание api для интерфейса: client/engine/API.md.
@@ -228,6 +230,8 @@ export function createClient({ container, networkOnly = false }) {
     };
     const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel, quality });
     const hud = createHud(container);
+    const animals = createPlazaAnimals({ scene });
+    const seatedNpcs = createPlazaSeatedNpcs({ scene, quality });
     const player = createPlayer();
     player.pitch = CAMERA_PITCH_DEFAULT;
     const cameraArm = createCameraArm({ distance: CAMERA_DISTANCE });
@@ -276,7 +280,7 @@ export function createClient({ container, networkOnly = false }) {
 
     runtime = { input };
     // Отладочный доступ для проверки графики: только при ?debug=1.
-    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, dynamic, remote, player, stylized, cameraArm, carry, balls, interactions, get interaction() { return interaction; }, get avatar() { return avatar; }, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
+    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, dynamic, remote, player, animals, seatedNpcs, stylized, cameraArm, carry, balls, interactions, get interaction() { return interaction; }, get avatar() { return avatar; }, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
     hud.setStatus(net.status);
     hud.setCache(state.cache);
 
@@ -506,6 +510,8 @@ export function createClient({ container, networkOnly = false }) {
       carry.update(dt);
       balls.update(dt);
       world.update(dt, now / 1000, player);
+      animals.update(dt, ready ? player : null);
+      seatedNpcs.update(dt, ready ? player : null, now / 1000);
       updateAvatarAndCamera(now / 1000, dt);
       stylized.update(player, now / 1000);
       renderer.render(scene, camera);
@@ -534,6 +540,8 @@ export function createClient({ container, networkOnly = false }) {
       balls.dispose();
       mechSync.dispose();
       dynamic.dispose();
+      animals.dispose();
+      seatedNpcs.dispose();
       world.dispose();
       scene.remove(skyline.group);
       skyline.dispose();
