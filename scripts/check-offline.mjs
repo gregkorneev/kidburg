@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 
 const RUNTIME_EXTENSIONS = new Set(['.html', '.js', '.mjs', '.css']);
 const URL_PATTERN = /\b(?:https?|wss?|file):\/\/[^\s"'`<>)]*|(?<!:)\/\/[a-z\d.-]+(?::\d+)?(?:\/[^\s"'`<>)]*)?/gi;
+const SVG_NAMESPACE_URI = 'http://www.w3.org/2000/svg';
 
 function preserveLinesAsSpaces(value) {
   return value.replace(/[^\n]/g, ' ');
@@ -69,6 +70,30 @@ function isLocalUrl(value) {
   }
 }
 
+function isSvgNamespaceReference(source, index, value) {
+  if (value !== SVG_NAMESPACE_URI) return false;
+  const before = source.slice(0, index);
+  if (/\bxmlns(?::[\w.-]+)?\s*=\s*['"`]$/.test(before)) return true;
+  if (/\b(?:createElementNS|setAttributeNS)\s*\(\s*['"`]$/.test(before)) return true;
+  if (/\bsetAttribute\s*\(\s*['"`]xmlns(?::[\w.-]+)?['"`]\s*,\s*['"`]$/.test(before)) return true;
+
+  const declarationPattern = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"`])(https?:\/\/[^'"`]+)\2/g;
+  for (const declaration of source.matchAll(declarationPattern)) {
+    const valueIndex = declaration.index + declaration[0].indexOf(declaration[3]);
+    if (valueIndex !== index || declaration[3] !== SVG_NAMESPACE_URI) continue;
+    const name = declaration[1];
+    const declarationEnd = declaration.index + declaration[0].length;
+    const references = [...source.slice(declarationEnd).matchAll(new RegExp(`\\b${name}\\b`, 'g'))];
+    return references.length > 0 && references.every((reference) => {
+      const referenceIndex = declarationEnd + reference.index;
+      const prefix = source.slice(0, referenceIndex);
+      return /(?:\b[A-Za-z_$][\w$]*\s*\.\s*)?\b(?:createElementNS|setAttributeNS)\s*\(\s*$/.test(prefix)
+        || /\b[A-Za-z_$][\w$]*\s*\.\s*setAttribute\s*\(\s*['"`]xmlns(?::[\w.-]+)?['"`]\s*,\s*$/.test(prefix);
+    });
+  }
+  return false;
+}
+
 /** Find hardcoded non-loopback URL references in shipped client source files. */
 export async function checkOffline(clientRoot) {
   const root = path.resolve(clientRoot);
@@ -78,6 +103,7 @@ export async function checkOffline(clientRoot) {
     const active = stripComments(source, path.extname(relative));
     for (const match of active.matchAll(URL_PATTERN)) {
       const url = match[0].replace(/[.,;:!?]+$/, '');
+      if (isSvgNamespaceReference(active, match.index, url)) continue;
       if (isLocalUrl(url)) continue;
       const line = active.slice(0, match.index).split('\n').length;
       violations.push({ file: relative.split(path.sep).join('/'), line, url });
