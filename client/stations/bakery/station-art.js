@@ -313,7 +313,7 @@ export function createBakeryInterior({ quality = 'medium' } = {}) {
   const diamondGeometry = new THREE.OctahedronGeometry(0.2, 0);
   const diamondMaterial = new THREE.MeshBasicMaterial({ color: PALETTE.orange });
   const diamond = new THREE.Mesh(diamondGeometry, diamondMaterial);
-  diamond.position.y = 2.0;
+  diamond.position.y = 2.6;
   markerGroup.add(ring, diamond);
   markerGroup.visible = false;
   group.add(markerGroup);
@@ -352,7 +352,7 @@ export function createBakeryInterior({ quality = 'medium' } = {}) {
         const pulse = 1 + Math.sin(elapsed * 3.1) * 0.055;
         ring.scale.setScalar(pulse);
         ringMaterial.opacity = 0.58 + Math.sin(elapsed * 3.1) * 0.17;
-        diamond.position.y = 1.9 + Math.sin(elapsed * 2.3) * 0.11;
+        diamond.position.y = 2.6 + Math.sin(elapsed * 2.3) * 0.11;
         diamond.rotation.y = elapsed * 1.4;
       }
     },

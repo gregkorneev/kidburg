@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createInput } from '../../engine/input.js';
 import { createPlayer, setPlayerPosition, stepPlayer } from '../../engine/player.js';
 import { applyStylizedLook } from '../../engine/art/lighting.js';
-import { createCharacter, animateCharacter, triggerGesture, disposeCharacter } from '../../engine/art/character.js';
+import { CITY_CHARACTER_SCALE, createCharacter, animateCharacter, triggerGesture, disposeCharacter } from '../../engine/art/character.js';
 import { stdMat } from '../../engine/art/materials.js';
 import { QUALITY_LABELS, readQuality, saveQuality } from '../../engine/art/quality.js';
 import { updateWind } from '../../engine/art/wind.js';
@@ -66,7 +66,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
   const player = createPlayer();
   setPlayerPosition(player, FLORIST_PLAN.spawn.x, FLORIST_PLAN.spawn.y, FLORIST_PLAN.spawn.z);
   const avatar = createCharacter({ appearance: appearance ?? { outfit: '#6d9fa0', hairStyle: 'curly', hair: '#523b30' } });
-  avatar.scale.setScalar(0.68);
+  avatar.scale.setScalar(CITY_CHARACTER_SCALE);
   avatar.position.set(player.x, 0, player.z);
   scene.add(avatar);
 
@@ -76,7 +76,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
     appearance: { outfit: '#f2dfc8', hairStyle: 'ponytail', hair: '#704833', skin: '#f2c9a3' },
     outfit: '#f2dfc8',
   });
-  lilia.scale.setScalar(0.72);
+  lilia.scale.setScalar(CITY_CHARACTER_SCALE);
   lilia.position.set(FLORIST_PLAN.lilia.x, FLORIST_PLAN.lilia.y, FLORIST_PLAN.lilia.z);
   addApron(lilia);
   scene.add(lilia);

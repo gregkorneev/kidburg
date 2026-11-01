@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createBakeryScene } from './scene.js';
 import { ZONES } from './layout.js';
+import { CITY_CHARACTER_SCALE } from '../../engine/art/character.js';
 import { applyBakeryAction, createInitialState } from './state.js';
 
 function makeRenderer() {
@@ -70,7 +71,8 @@ test('сцена Bakery: создаётся, принимает все прес�
   assert.equal(world.debug.player.visible, true, 'модель игрока находится в сцене');
   assert.ok(world.debug.camera.position.distanceTo(world.debug.player.position) > 1, 'камера находится позади персонажа');
   assert.ok(world.debug.camera.position.x < 3.8, 'камера не заходит за высокий стеллаж');
-  assert.equal(world.debug.player.scale.x, 0.68, 'размер игрока совпадает с цветочной локацией');
+  assert.equal(world.debug.player.scale.x, CITY_CHARACTER_SCALE);
+  assert.equal(world.debug.mentor.scale.x, CITY_CHARACTER_SCALE, 'наставник и игрок одного масштаба');
   assert.ok(world.debug.mentor.userData.nameTag.scale.x < 1.5, 'плашка наставника компактная');
   assert.ok(world.debug.mentor.userData.nameTag.position.y <= 3.3, 'плашка наставника близко к персонажу');
   assert.ok(world.debug.camera.position.y < 5.1, 'камера остаётся ниже потолка');

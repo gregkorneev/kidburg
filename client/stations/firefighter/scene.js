@@ -10,7 +10,7 @@ import { isSharedResource, stdMat } from '../../engine/art/materials.js';
 import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
 import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
 import {
-  animateCharacter, appearanceFromSeed, createCharacter, reactToEvent, resetArms, setArmReach, setCarry, setCharacterQuality, setPersonEquipment, triggerGesture, yawToward,
+  CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, reactToEvent, resetArms, setArmReach, setCarry, setCharacterQuality, setPersonEquipment, triggerGesture, yawToward,
 } from '../../engine/art/character.js';
 import { buildFireTruck, buildHoseStand, buildLocker, buildMannequin, buildSafeZone, buildSafetyBarriers, buildStation, buildTrainingWall, createObjectiveMarker } from './station-art.js';
 import { createScenery } from './scenery.js';
@@ -29,17 +29,19 @@ const NPC_NOTICE_DISTANCE = 11;
  * @param {{name?: string, outfit?: THREE.Material|string, helmet?: boolean, player?: boolean, appearance?: object}} options
  */
 export function createPerson({ name, outfit, helmet = false, appearance, id = 0, color = null } = {}) {
-  return createCharacter({
+  const person = createCharacter({
     name,
     outfit,
     helmet,
     appearance: appearance ?? appearanceFromSeed(id, color),
   });
+  person.scale.setScalar(CITY_CHARACTER_SCALE);
+  return person;
 }
 
 /** Маруся Громова: наставница пожарной части. Узнаётся по белой каске, бордовой куртке, хвосту и планшету. */
 export function createMarusya() {
-  return createCharacter({
+  const person = createCharacter({
     name: 'Маруся Громова',
     subtitle: 'Наставник',
     gear: 'mentor',
@@ -55,6 +57,8 @@ export function createMarusya() {
     },
     personality: { expression: 'happy', intensity: 0.3 },
   });
+  person.scale.setScalar(CITY_CHARACTER_SCALE);
+  return person;
 }
 
 // Игровая площадка (земля 90×90) ограничена этим расстоянием от начала локальных координат.

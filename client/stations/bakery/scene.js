@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createInput } from '../../engine/input.js';
 import { PALETTE } from '../../engine/art/palette.js';
 import { applyStylizedLook } from '../../engine/art/lighting.js';
-import { animateCharacter, createCharacter, disposeCharacter, triggerGesture } from '../../engine/art/character.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter, triggerGesture } from '../../engine/art/character.js';
 import { stdMat } from '../../engine/art/materials.js';
 import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
 import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
@@ -47,12 +47,13 @@ export function createBakeryScene({
   scene.add(interior.group);
 
   const player = createCharacter({ appearance: appearance ?? { skin: '#f4c8a2', hair: '#5b3a2b', hairStyle: 'short', outfit: PALETTE.green, pants: '#5b6770' } });
-  player.scale.setScalar(0.68);
+  player.scale.setScalar(CITY_CHARACTER_SCALE);
   player.position.set(SPAWN.x, 0, SPAWN.z);
   const mentor = createCharacter({
     name: 'Мастер-пекарь', subtitle: 'Наставник', nameScale: 0.74,
     appearance: { skin: '#e9ae83', hair: '#6b4631', hairStyle: 'bob', outfit: '#8f4a37', pants: '#5b5149' },
   });
+  mentor.scale.setScalar(CITY_CHARACTER_SCALE);
   mentor.userData.nameTag.position.y = 3.22;
   const apron = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.06), stdMat(PALETTE.trim, { roughness: 0.9 }));
   apron.position.set(0, 1.28, 0.34);
