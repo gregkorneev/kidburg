@@ -24,8 +24,8 @@ test('камера приближается к игроку перед стен�
   assert.ok(distance > blocked && distance <= 6.1);
 });
 
-test('периметр и места зрителей блокируют проход, но центральная дорожка к сцене остаётся свободной', () => {
-  assert.equal(collides(ROOM_COLLIDERS, 7.5, 0, 9.1), true);
+test('периметр блокирует выход, а бывшая зона зрителей и центральная дорожка свободны', () => {
+  assert.equal(collides(ROOM_COLLIDERS, 7.5, 0, 9.1), false);
   assert.equal(collides(ROOM_COLLIDERS, 0.15, 0, 5), true);
   assert.equal(collides(ROOM_COLLIDERS, 10.8, 0, 9.7), false);
   assert.equal(collides(ROOM_COLLIDERS, 10.8, 0, 5.8), false);
@@ -33,6 +33,7 @@ test('периметр и места зрителей блокируют про�
 
 test('интерьер создаётся без DOM и освобождает геометрию, материалы и локальные текстуры', () => {
   const layout = buildPianistLayout();
+  assert.equal(layout.root.getObjectByName('audience-seats'), undefined);
   const geometries = []; const materials = []; const textures = [];
   layout.root.traverse((node) => {
     if (!node.isMesh) return;

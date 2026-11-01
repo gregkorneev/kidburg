@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { AUDIENCE_POSITIONS, PIANIST_PLAN, ROOM, ROOM_COLLIDERS } from './layout-plan.js';
+import { PIANIST_PLAN, ROOM, ROOM_COLLIDERS } from './layout-plan.js';
 
 const COLORS = Object.freeze({ floor: '#a9764c', plank: '#bf8b5d', trim: '#f4e6c9', cream: '#f7edd8', blue: '#b9dce7', blueDark: '#80b5c7', wood: '#9c633f', gold: '#e6ba63', red: '#c96d72', curtain: '#b65f70', glass: '#aadce9' });
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -94,15 +94,6 @@ export function buildPianistLayout() {
     mesh(root, [2.25, 0.12, 0.42], [x, 2.25, z], COLORS.wood);
     for (const y of [1.75, 2.7]) for (let i = 0; i < 6; i++) mesh(root, [0.22, 0.34, 0.28], [x - 0.8 + i * 0.29, y, z], ['#d47970', '#e1bd74', '#82aab1', '#798e78'][i % 4]);
   }
-  // Audience seats face the stage, leaving clear central and side aisles.
-  const seats = new THREE.Group(); seats.name = 'audience-seats'; root.add(seats);
-  for (const { x, z } of AUDIENCE_POSITIONS) {
-    mesh(seats, [1.05, 0.18, 0.84], [x, 0.62, z], '#7f9e91');
-    mesh(seats, [1.05, 0.76, 0.15], [x, 1.0, z - 0.36], '#8eb3a5');
-    for (const dx of [-0.39, 0.39]) mesh(seats, [0.12, 0.58, 0.66], [x + dx, 0.31, z], '#886443');
-    const seatCollider = ROOM_COLLIDERS.find((box) => box.minX === x - 0.55 && box.minZ === z - 0.45);
-    cameraBlockers.push(seatCollider);
-  }
   // Small music stands beside the practice space.
   for (const x of [4.0, 17.0]) {
     mesh(root, [0.7, 0.46, 0.08], [x, 1.55, 6.2], '#76523e');
@@ -134,9 +125,8 @@ export function buildPianistLayout() {
     }
   }
   mergeStaticMeshes(root);
-  mergeStaticMeshes(seats);
   return {
-    root, colliders, cameraBlockers, seats, room: ROOM, plan: PIANIST_PLAN,
+    root, colliders, cameraBlockers, room: ROOM, plan: PIANIST_PLAN,
     setConcertMode(active) { for (const light of concertLights) light.intensity = active ? 40 : 8; },
     dispose() {
       root.removeFromParent();

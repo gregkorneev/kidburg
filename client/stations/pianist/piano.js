@@ -38,8 +38,8 @@ export function createPiano({ position = { x: 0, z: 0 }, rotationY = 0, name = '
   for (let i = 0; i < 5; i++) part(root, [0.68, 0.009, 0.008], [0, 1.83 + i * 0.015, -0.48], '#8d8171', false);
   for (const x of [-0.25, 0, 0.26]) part(root, [0.28, 0.075, 0.045], [x, 0.22, 0.78], MAT.gold);
   // A friendly padded bench and four tapered-looking supports.
-  part(root, [1.36, 0.18, 0.52], [0, 0.74, 1.05], MAT.stool);
-  for (const x of [-0.52, 0.52]) for (const z of [0.86, 1.24]) part(root, [0.1, 0.64, 0.1], [x, 0.34, z], MAT.wood);
+  part(root, [1.36, 0.18, 0.52], [0, 0.56, 1.05], MAT.stool);
+  for (const x of [-0.52, 0.52]) for (const z of [0.86, 1.24]) part(root, [0.1, 0.47, 0.1], [x, 0.235, z], MAT.wood);
   const keys = new Map();
   const whiteNotes = NOTES.filter((note) => !note.black);
   const whiteWidth = 2.16 / 8;

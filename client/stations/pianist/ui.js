@@ -34,13 +34,13 @@ function Dialog({ stage, onAccept, onRepeat }) {
   if (stage === 'briefing') return h('div', { class: 'dialog-backdrop' }, h('section', { class: 'dialog-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dialog-title' },
     h('div', { class: 'maestro-mark' }, '♪'), h('span', { class: 'eyebrow' }, 'МАЭСТРО АРТЁМ · ПРЕПОДАВАТЕЛЬ МУЗЫКИ'),
     h('h2', { id: 'dialog-title' }, 'Добро пожаловать в музыкальную школу!'),
-    h('p', null, 'Привет! Я Артём, преподаватель музыки. Сегодня ты попробуешь себя в роли пианиста. Сначала познакомимся с нотами, затем разучим мелодию и выступим перед зрителями!'),
+    h('p', null, 'Привет! Я Артём, преподаватель музыки. Сегодня ты попробуешь себя в роли пианиста. Сначала познакомимся с нотами, затем разучим мелодию и выступим на сцене!'),
     h('p', null, 'Подойди к пианино и нажми E. Играй клавишами A S D F G H J K или нажимай прямо на клавиши мышью. Esc вернёт к прогулке.'),
     h('button', { type: 'button', class: 'primary-button', onClick: onAccept }, 'Начать урок'),
   ));
   if (stage === 'completed') return h('div', { class: 'dialog-backdrop' }, h('section', { class: 'dialog-card dialog-card--complete', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dialog-title' },
     h('div', { class: 'maestro-mark applause' }, '♫'), h('span', { class: 'eyebrow' }, 'БРАВО! · КОНЦЕРТ СОСТОЯЛСЯ'),
-    h('h2', { id: 'dialog-title' }, 'Зал аплодирует тебе!'), h('p', null, 'Маэстро Артём поздравляет тебя: ты выучил ноты, сыграл мелодию и выступил перед зрителями.'),
+    h('h2', { id: 'dialog-title' }, 'Браво! Концерт удался!'), h('p', null, 'Маэстро Артём поздравляет тебя: ты выучил ноты и прекрасно сыграл на сцене.'),
     h('button', { type: 'button', class: 'primary-button', onClick: onRepeat }, 'Повторить урок'),
   ));
   return null;

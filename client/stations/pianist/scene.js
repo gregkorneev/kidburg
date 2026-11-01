@@ -8,6 +8,7 @@ import { buildPianistLayout } from './layout.js';
 import { createPiano } from './piano.js';
 import { noteByKey } from './melody.js';
 import { PIANIST_PLAN } from './layout-plan.js';
+import { getPianoSeatPose, PIANIST_PLAYING_ARM_ANGLE, PIANIST_SEATED_LEG_ANGLE } from './pianist-pose.js';
 import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
 
 const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
@@ -52,13 +53,6 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
   avatar.scale.setScalar(0.68); scene.add(avatar);
   const maestro = createCharacter({ name: 'Маэстро Артём', subtitle: 'преподаватель музыки', appearance: { outfit: '#e3b868', hairStyle: 'short', hair: '#533a31', skin: '#efc19c' }, outfit: '#e3b868' });
   maestro.scale.setScalar(0.72); maestro.position.set(PIANIST_PLAN.maestro.x, 0, PIANIST_PLAN.maestro.z); maestro.rotation.y = Math.PI; addMaestroDetails(maestro); scene.add(maestro); triggerGesture(maestro, 'wave');
-  const audience = [
-    [7.5, 9.1, '#d99b75'], [9.2, 9.1, '#718ca0'], [12.4, 9.1, '#d6b35f'], [14.1, 9.1, '#8aaf92'],
-  ].map(([x, z, outfit], index) => {
-    const person = createCharacter({ appearance: { outfit, hairStyle: index % 2 ? 'bob' : 'short' } });
-    person.scale.setScalar(0.47); person.position.set(x, 0.58, z + 0.05); person.rotation.y = 0; scene.add(person); return person;
-  });
-
   const pianos = [
     createPiano({ position: PIANIST_PLAN.practicePiano, name: 'practice-piano' }),
     createPiano({ position: { ...PIANIST_PLAN.stagePiano, y: 0.155 }, rotationY: Math.PI, name: 'concert-piano' }),
@@ -113,11 +107,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     if (instrumentMode) {
       instrumentReturn = { x: player.x, y: player.y, z: player.z, yaw: player.yaw };
       activePiano = state?.stage === 'concert' ? pianos[1] : pianos[0];
-      const front = Math.cos(activePiano.rotationY) >= 0 ? 1 : -1;
-      player.x = activePiano.position.x + 0.82;
-      player.y = activePiano.position.y;
-      player.z = activePiano.position.z + front * 1.4;
-      player.yaw = front > 0 ? 0 : Math.PI;
+      Object.assign(player, getPianoSeatPose(activePiano.position, activePiano.rotationY));
       player.moving = false;
     } else if (instrumentReturn) {
       Object.assign(player, instrumentReturn, { moving: false, running: false });
@@ -142,8 +132,6 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
   function setQuality(level) {
     if (!QUALITY_PRESETS[level]) return { level: quality, label: QUALITY_LABELS[quality] };
     quality = level; saveQuality(level); look.setQuality(level);
-    layout.seats.visible = level !== 'low';
-    for (const person of audience) person.visible = level !== 'low';
     return { level, label: QUALITY_LABELS[level] };
   }
   function notePress(noteId) {
@@ -197,7 +185,12 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
       activePiano = state.stage === 'concert' ? pianos[1] : pianos[0];
       const front = Math.cos(activePiano.rotationY) >= 0 ? 1 : -1;
       focus.set(activePiano.position.x, 1.02 + activePiano.position.y, activePiano.position.z + front * 0.18);
-      desired.set(activePiano.position.x - 2.6, 3.05 + activePiano.position.y, activePiano.position.z + front * 4.2);
+      const cameraLocalX = 4.2; const cameraLocalZ = 4.2;
+      desired.set(
+        activePiano.position.x + Math.cos(activePiano.rotationY) * cameraLocalX + Math.sin(activePiano.rotationY) * cameraLocalZ,
+        2.8 + activePiano.position.y,
+        activePiano.position.z - Math.sin(activePiano.rotationY) * cameraLocalX + Math.cos(activePiano.rotationY) * cameraLocalZ,
+      );
       camera.position.lerp(desired, 1 - Math.exp(-5 * dt)); camera.lookAt(focus);
     } else {
       const nearbyPiano = pianos
@@ -222,19 +215,21 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     }
     animateCharacter(avatar, dt, elapsed, { speed: player.moving ? (player.running ? 2 : 1) : 0 });
     animateCharacter(maestro, dt, elapsed, { talking: state?.stage === 'briefing', lookYaw: Math.sin(elapsed * 0.55) * 0.08 });
-    audience.forEach((person, index) => {
-      animateCharacter(person, dt, elapsed);
-      const clap = state?.stage === 'completed' ? Math.sin(elapsed * 13 + index) : 0;
-      person.userData.arms.forEach((arm, side) => {
-        arm.shoulder.rotation.x = state?.stage === 'completed' ? -1.0 + Math.max(0, clap) * 0.35 : 0;
-        arm.shoulder.rotation.z = (side ? -1 : 1) * (state?.stage === 'completed' ? 0.52 + Math.max(0, clap) * 0.12 : 0.08);
+    if (instrumentMode) {
+      avatar.userData.body.rotation.x = 0.08;
+      avatar.userData.legs.forEach(({ pivot }) => { pivot.rotation.x = PIANIST_SEATED_LEG_ANGLE; });
+      avatar.userData.arms.forEach((arm, side) => {
+        arm.shoulder.position.x = arm.side * (arm.side > 0 ? 0.82 : 0.68);
+        arm.shoulder.position.z = 0.14;
+        arm.shoulder.rotation.x = PIANIST_PLAYING_ARM_ANGLE;
+        arm.shoulder.rotation.z = side ? 0.85 : -0.75;
       });
-    });
-    if (instrumentMode) avatar.userData.arms.forEach((arm, side) => {
-      const front = Math.cos(activePiano.rotationY) >= 0 ? 1 : -1;
-      arm.shoulder.rotation.x = front > 0 ? -0.7 : 0.7;
-      arm.shoulder.rotation.z = side ? -0.18 : 0.18;
-    });
+    } else {
+      avatar.userData.arms.forEach((arm) => {
+        arm.shoulder.position.x = arm.side * 0.53;
+        arm.shoulder.position.z = 0;
+      });
+    }
     updatePrompt(findTarget());
     look.update(focus.set(player.x, 0, player.z), elapsed);
     renderer.render(scene, camera);
@@ -246,7 +241,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     window.removeEventListener('keydown', onKeyDown, true); renderer.domElement.removeEventListener('pointerdown', onPointerDown);
     for (const timer of keyTimers) window.clearTimeout(timer); keyTimers.clear(); input.dispose();
     pianos.forEach((piano) => piano.dispose());
-    disposeAdded(maestro); disposeCharacter(maestro); audience.forEach(disposeCharacter); disposeCharacter(avatar); layout.dispose(); look.dispose();
+    disposeAdded(maestro); disposeCharacter(maestro); disposeCharacter(avatar); layout.dispose(); look.dispose();
     renderer.dispose(); renderer.domElement.remove();
   }
   function getKeyScreenPositions() {
