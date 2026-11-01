@@ -54,6 +54,7 @@ const MAX_DT_S = 2;
 // agentId и reqId возвращаются клиенту в каждом сообщении потока, поэтому их длина ограничена.
 const MAX_ID_CHARS = 64;
 const GENERIC_AGENT_ERROR = 'Не удалось получить ответ. Попробуйте позже';
+const GAME_INSTANCES = new Set(['city', 'firefighter']);
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const clampX = (x) => clamp(x, 0, WORLD_SIZE_X - EDGE);
@@ -252,6 +253,7 @@ export function createGame({
       ballVer: new Map(),
       talkLimit: createLimiter(npcTalkPerSec),
       mirror: world && createChunkMirror(world, log),
+      instance: conn.instance,
     };
     conn.player = player;
     players.set(player.id, player);
@@ -523,11 +525,11 @@ export function createGame({
     // chat: мост появится в S3.
   }
 
-  function onConnection(ws, user) {
+  function onConnection(ws, user, instance) {
     const previous = connByUser.get(user.id);
     if (previous) dropConn(previous, CLOSE.REPLACED, 'replaced');
 
-    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null, talk: null, pingAt: 0, rttMs: null, taskControllers: new Set() };
+    const conn = { ws, user, instance, player: null, alive: true, closed: false, helloTimer: null, talk: null, pingAt: 0, rttMs: null, taskControllers: new Set() };
     conns.add(conn);
     connByUser.set(user.id, conn);
     conn.helloTimer = setTimeout(() => {
@@ -552,10 +554,12 @@ export function createGame({
       return reject(socket, 400, 'Bad Request');
     }
     if (url.pathname !== '/ws') return reject(socket, 404, 'Not Found');
+    const instance = url.searchParams.get('instance') ?? 'city';
+    if (!GAME_INSTANCES.has(instance)) return reject(socket, 400, 'Bad Request');
     const userId = tickets.consume(url.searchParams.get('ticket') ?? '');
     const user = userId === null ? null : db.getUser(userId);
     if (!user) return reject(socket, 401, 'Unauthorized');
-    wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, user));
+    wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, user, instance));
   }
 
   function animalSnapshot() {
@@ -578,7 +582,7 @@ export function createGame({
     if (tickNo % tickHz === 0) mechanisms?.sweep?.(); // двери, оставленные открытыми, закрываются сами
     const byChunk = new Map();
     for (const p of players.values()) {
-      const key = p.cx + p.cz * WORLD_CHUNKS_X;
+      const key = `${p.instance}:${p.cx + p.cz * WORLD_CHUNKS_X}`;
       const cell = byChunk.get(key);
       if (cell) cell.push(p);
       else byChunk.set(key, [p]);
@@ -590,7 +594,7 @@ export function createGame({
           const cx = p.cx + dx;
           const cz = p.cz + dz;
           if (cx < 0 || cz < 0 || cx >= WORLD_CHUNKS_X || cz >= WORLD_CHUNKS_Z) continue;
-          for (const q of byChunk.get(cx + cz * WORLD_CHUNKS_X) ?? []) if (q !== p) near.push(q);
+          for (const q of byChunk.get(`${p.instance}:${cx + cz * WORLD_CHUNKS_X}`) ?? []) if (q !== p) near.push(q);
         }
       }
       const seen = new Set(near.map((q) => q.id));

@@ -32,6 +32,7 @@ test('WebSocket без тикета, с чужим и повторным тик�
   const ticket = await getTicket(app, token);
   assert.equal(await upgradeStatus(port, `?ticket=${ticket}`), 'open');
   assert.equal(await upgradeStatus(port, `?ticket=${ticket}`), 401, 'тикет одноразовый');
+  assert.equal(await upgradeStatus(port, `?ticket=${await getTicket(app, token)}&instance=unknown`), 400, 'неизвестная локация отклоняется');
   await app.close();
 });
 
@@ -150,6 +151,36 @@ test('два клиента видят друг друга: player_join и по�
   assert.ok(Number.isInteger(seen.tick));
   assert.ok(seen.list.every((row) => row[0] !== a.user.id), 'себя в списке нет');
   await app.close();
+});
+
+test('игроки из разных локаций не видят друг друга даже в одинаковых координатах', async () => {
+  const { dbPath, cleanup } = tempDb();
+  const { app, port } = await listen({ dbPath });
+  try {
+    const cityUser = await register(app, 'Аня');
+    const stationUser = await register(app, 'Борис');
+    seedPlayerState(dbPath, 'Аня', SPAWN);
+    seedPlayerState(dbPath, 'Борис', SPAWN);
+    const city = await TestClient.connect(port, await getTicket(app, cityUser.token));
+    const station = await TestClient.connect(port, await getTicket(app, stationUser.token), { instance: 'firefighter' });
+    city.send({ t: 'hello', ticket: 'x', proto: 1 });
+    station.send({ t: 'hello', ticket: 'x', proto: 1 });
+    const cityWelcome = await city.nextOfType('welcome');
+    const stationWelcome = await station.nextOfType('welcome');
+
+    assert.deepEqual(
+      [cityWelcome.state.x, cityWelcome.state.z],
+      [stationWelcome.state.x, stationWelcome.state.z],
+    );
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.equal(city.inbox.some((m) => m.t === 'player_join' && m.id === stationUser.user.id), false);
+    assert.equal(station.inbox.some((m) => m.t === 'player_join' && m.id === cityUser.user.id), false);
+    assert.equal(city.inbox.some((m) => m.t === 'players' && m.list.some(([id]) => id === stationUser.user.id)), false);
+    assert.equal(station.inbox.some((m) => m.t === 'players' && m.list.some(([id]) => id === cityUser.user.id)), false);
+  } finally {
+    await app.close();
+    cleanup();
+  }
 });
 
 test('игрок в далёком чанке не виден; соседний чанк виден', async () => {

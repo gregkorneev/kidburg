@@ -27,7 +27,7 @@ async function startServer() {
 }
 
 /** Клиентский транспорт поверх реального сервера; запоминает созданные сокеты. */
-function makeClient(port, storage = fakeStorage()) {
+function makeClient(port, storage = fakeStorage(), instance = 'city') {
   const emitter = createEmitter();
   const http = createHttp({ baseUrl: `http://127.0.0.1:${port}` });
   const session = createSession(storage);
@@ -43,6 +43,7 @@ function makeClient(port, storage = fakeStorage()) {
     session,
     emitter,
     WebSocketImpl: TrackedSocket,
+    instance,
     location: { protocol: 'http:', host: `127.0.0.1:${port}` },
     retryMinMs: 20,
     retryMaxMs: 50,
@@ -92,6 +93,7 @@ test('подключение: тикет → сокет → hello → welcome, �
     assert.equal(msg.playerId, user.id);
     assert.equal(msg.proto, 1);
     assert.equal(c.sockets.length, 1);
+    assert.equal(new URL(c.sockets[0].url).searchParams.get('instance'), 'city');
     assert.deepEqual(c.statuses, ['connecting', 'open']);
     assert.equal(c.storage.getItem('city.token'), token);
 
@@ -99,6 +101,22 @@ test('подключение: тикет → сокет → hello → welcome, �
     assert.equal(c.net.send({ t: 'pos', x: 'bad' }), false, 'неверное сообщение не уходит');
     c.net.disconnect();
     assert.equal(c.net.send({ t: 'chat', text: 'привет' }), false, 'после disconnect отправлять некуда');
+  } finally {
+    await app.close();
+  }
+});
+
+test('соединение пожарной станции передаёт серверу свой instance', async () => {
+  const { app, port } = await startServer();
+  try {
+    const c = makeClient(port, fakeStorage(), 'firefighter');
+    const { token, user } = await c.http.join('Борис', ROOM, appearance);
+    c.session.save(token, user);
+    const welcome = waitFor(c.emitter, 'welcome');
+    c.net.connect();
+    await welcome;
+    assert.equal(new URL(c.sockets[0].url).searchParams.get('instance'), 'firefighter');
+    c.net.disconnect();
   } finally {
     await app.close();
   }

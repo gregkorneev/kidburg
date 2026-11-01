@@ -83,8 +83,8 @@ export class TestClient {
     });
   }
 
-  static async connect(port, ticket, wsOptions) {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?ticket=${ticket}`, wsOptions);
+  static async connect(port, ticket, { instance = 'city', ...wsOptions } = {}) {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?ticket=${ticket}&instance=${encodeURIComponent(instance)}`, wsOptions);
     await once(ws, 'open');
     return new TestClient(ws);
   }
@@ -128,9 +128,9 @@ export class TestClient {
 }
 
 /** Регистрирует игрока, получает тикет, подключается и проходит hello. */
-export async function joinGame(app, port, name) {
+export async function joinGame(app, port, name, { instance = 'city' } = {}) {
   const { token, user } = await register(app, name);
-  const client = await TestClient.connect(port, await getTicket(app, token));
+  const client = await TestClient.connect(port, await getTicket(app, token), { instance });
   client.send({ t: 'hello', ticket: 'x', proto: 1 });
   const welcome = await client.nextOfType('welcome');
   return { client, welcome, user, token };

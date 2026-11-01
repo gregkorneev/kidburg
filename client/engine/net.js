@@ -22,6 +22,7 @@ export function createNet({
   emitter,
   WebSocketImpl = globalThis.WebSocket,
   location = globalThis.location,
+  instance = 'city',
   retryMinMs = 1000,
   retryMaxMs = 5000,
 }) {
@@ -40,7 +41,7 @@ export function createNet({
 
   function wsUrl(ticket) {
     const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${scheme}//${location.host}/ws?ticket=${encodeURIComponent(ticket)}`;
+    return `${scheme}//${location.host}/ws?ticket=${encodeURIComponent(ticket)}&instance=${encodeURIComponent(instance)}`;
   }
 
   function detach(socket) {

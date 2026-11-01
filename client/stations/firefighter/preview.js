@@ -107,7 +107,7 @@ function onWorldAction(action, index) {
   dispatch(action, { index });
 }
 
-const client = createClient({ container: sceneRoot, networkOnly: true });
+const client = createClient({ container: sceneRoot, networkOnly: true, instance: 'firefighter' });
 const playerAppearance = createPlayerAppearance(client.api.auth.session()?.user);
 
 world = createFirefighterScene({

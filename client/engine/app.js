@@ -49,11 +49,11 @@ const CAMERA_PITCH_MAX = 0.3;
 const CAMERA_PITCH_DEFAULT = -0.2;
 
 /** @param {{container: HTMLElement}} options */
-export function createClient({ container, networkOnly = false }) {
+export function createClient({ container, networkOnly = false, instance = 'city' }) {
   const emitter = createEmitter();
   const http = createHttp();
   const session = createSession();
-  const net = createNet({ http, session, emitter });
+  const net = createNet({ http, session, emitter, instance });
 
   /** Состояние, видимое интерфейсу через api.state. */
   const state = { me: null, cache: null, npc: null, ping: null };
