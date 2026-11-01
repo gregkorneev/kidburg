@@ -336,6 +336,29 @@ test('join: имя играющего человека занято, после 
   }
 });
 
+test('второй сервер с той же базой не отзывает сессию первого', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'city-concurrent-'));
+  const dbPath = path.join(dir, 'city.db');
+  const first = await makeApp({ dbPath, roomCode: 'BCDF' });
+  let second;
+  try {
+    const { token } = (await post(first, '/api/join', { name: 'Аня', room: 'BCDF' })).json();
+    assert.equal((await first.inject({ url: '/api/me', headers: bearer(token) })).statusCode, 200);
+    second = await makeApp({ dbPath, roomCode: 'GHJK' });
+    assert.equal((await first.inject({ url: '/api/me', headers: bearer(token) })).statusCode, 200);
+    assert.equal((await post(first, '/api/ws-ticket', undefined, bearer(token))).statusCode, 200);
+    assert.equal((await second.inject({ url: '/api/me', headers: bearer(token) })).statusCode, 401);
+    const other = (await post(second, '/api/join', { name: 'Борис', room: 'GHJK' })).json();
+    assert.equal((await second.inject({ url: '/api/me', headers: bearer(other.token) })).statusCode, 200);
+    assert.equal((await first.inject({ url: '/api/me', headers: bearer(other.token) })).statusCode, 401);
+    assert.equal((await first.inject({ url: '/api/me', headers: bearer(token) })).statusCode, 200);
+  } finally {
+    await second?.close();
+    await first.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('перезапуск: токен прошлого запуска и его код больше не пускают', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'city-restart-'));
   const dbPath = path.join(dir, 'city.db');

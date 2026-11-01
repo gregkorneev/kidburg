@@ -199,7 +199,7 @@ export function openDb(file = DEFAULT_DB_FILE) {
     },
     deleteSession: (tokenHash) => void q.deleteSession.run(tokenHash),
     purgeExpiredSessions: (now = Date.now()) => q.purgeSessions.run(now).changes,
-    /** Удаляет все сессии (при старте сервера: токены прошлого запуска не должны действовать). */
+    /** Удаляет все сессии. */
     clearSessions: () => q.clearSessions.run().changes,
 
     // Позиция игрока.

@@ -40,7 +40,7 @@ export const DEFAULT_CONFIG = Object.freeze({
 /** Собирает приложение, но не запускает прослушивание порта. */
 export async function buildApp(overrides = {}) {
   const config = { ...DEFAULT_CONFIG, ...overrides };
-  // Проверяем ключ до открытия БД и очистки сессий: ошибочная конфигурация не должна менять данные.
+  // Проверяем ключ до открытия БД: ошибочная конфигурация не должна менять данные.
   const authSecrets = resolveAuthSecrets({
     passwordAuth: config.passwordAuth,
     authPepper: config.authPepper,
@@ -50,10 +50,23 @@ export async function buildApp(overrides = {}) {
   const db = config.db ?? openDb(config.dbPath);
   const world = loadWorld(config.worldDir, app.log);
   const tickets = createTicketStore({ now: config.now });
-  // Код комнаты живёт только в памяти этого запуска. Сессии прошлого запуска закрываем:
-  // токен, выданный по старому коду, после перезапуска не должен пускать в игру.
+  // Только сессии, выданные этим запуском, принимаются даже при общем файле БД.
+  const sessions = new Map();
+  const authDb = {
+    ...db,
+    createSession(hash, userId, expiresAt) {
+      db.createSession(hash, userId, expiresAt);
+      sessions.set(hash, expiresAt);
+    },
+    findSession(hash, now) {
+      return sessions.has(hash) ? db.findSession(hash, now) : null;
+    },
+    purgeExpiredSessions(now) {
+      for (const [hash, expiresAt] of sessions) if (expiresAt <= now) sessions.delete(hash);
+      return db.purgeExpiredSessions(now);
+    },
+  };
   const room = createRoom({ code: config.roomCode });
-  db.clearSessions();
   app.decorate('room', room);
   const ctx = { db, world, config, log: app.log, room };
 
@@ -82,7 +95,7 @@ export async function buildApp(overrides = {}) {
 
   let game = null;
   registerAuthRoutes(app, {
-    db,
+    db: authDb,
     tickets,
     room,
     isOnline: (userId) => game?.isOnline(userId) ?? false,
@@ -118,7 +131,7 @@ export async function buildApp(overrides = {}) {
 
   const telemetry = createTelemetry({ intervalMs: config.telemetryIntervalMs, now: config.now });
   app.decorate('telemetry', telemetry);
-  registerTelemetryRoutes(app, { db, telemetry, authSecrets, now: config.now });
+  registerTelemetryRoutes(app, { db: authDb, telemetry, authSecrets, now: config.now });
   registerAdmin(app, {
     auth: adminAuth,
     audit: createAudit({ db, now: config.now }),
