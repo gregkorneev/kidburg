@@ -8,6 +8,7 @@ register(
   'data:text/javascript,' +
     encodeURIComponent(`export async function load(url, context, next) {
       if (url.endsWith('.css')) return { format: 'module', source: '', shortCircuit: true };
+      if (url.endsWith('.png')) return { format: 'module', source: 'export default "/test-logo.png"', shortCircuit: true };
       return next(url, context);
     }`),
 );
@@ -67,6 +68,17 @@ test('компьютер сервера: поле кода заполнено, �
   assert.equal(ui.field('room').value, 'BCDF');
   assert.match(ui.root.text(), /Код для игроков по сети:\s+BCDF/);
   assert.match(ui.root.text(), /код комнаты подставлен/);
+});
+
+test('экран входа делится на панель с логотипом и панель авторизации', () => {
+  const ui = mount({ localRoom: async () => null });
+  const layout = ui.root.all().find((node) => node.className === 'auth-layout');
+  const [brand, content] = layout.children;
+  assert.equal(brand.className, 'auth-brand');
+  assert.equal(brand.children[0].tag, 'img');
+  assert.equal(brand.children[0].alt, 'Carrierium — Город профессий');
+  assert.equal(brand.children[0].src, '/test-logo.png');
+  assert.ok(content.all().some((node) => node.className === 'auth-panel'));
 });
 
 test('автозаполнение: игроку остаётся ввести имя и войти', async () => {

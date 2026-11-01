@@ -1,4 +1,5 @@
 import './auth.css';
+import logoUrl from '../../assets/branding/careerium-logo.png';
 import { mountNpcChat } from './npc-chat.js';
 
 const STATUS = {
@@ -53,6 +54,15 @@ export function mountUI(api) {
       return;
     }
 
+    const layout = element('div', 'auth-layout');
+    const brand = element('section', 'auth-brand');
+    brand.setAttribute('aria-label', 'Carrierium — Город профессий');
+    const logo = element('img', 'auth-brand__logo');
+    logo.src = logoUrl;
+    logo.alt = 'Carrierium — Город профессий';
+    brand.append(logo);
+
+    const content = element('div', 'auth-content');
     const panel = element('section', 'auth-panel');
     panel.setAttribute('aria-labelledby', 'auth-title');
     const title = element('h1', '', 'Вход в игру');
@@ -122,7 +132,9 @@ export function mountUI(api) {
       invite.append('Код для игроков по сети: ', element('strong', 'auth-invite__code', hostRoom));
       panel.append(invite);
     }
-    root.append(panel);
+    content.append(panel);
+    layout.append(brand, content);
+    root.append(layout);
   }
 
   let hostRoomAsked = false;
