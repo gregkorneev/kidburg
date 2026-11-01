@@ -59,7 +59,7 @@ function browser(port, room) {
     emitter, http, session, net, api, chat, events, waitFor,
     /** Как api.auth.join: вход по имени и коду, затем сокет. Позицию можно задать до hello. */
     async join(name, { beforeConnect } = {}) {
-      const { token, user } = await http.join(name, room);
+      const { token, user } = await http.join(name, room, { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } });
       session.save(token, user);
       await beforeConnect?.();
       const welcome = waitFor('welcome');

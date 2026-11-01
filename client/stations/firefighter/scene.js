@@ -17,6 +17,7 @@ import {
 } from '../../engine/art/character.js';
 import { buildFireTruck, buildHoseStand, buildLocker, buildMannequin, buildSafeZone, buildSafetyBarriers, buildStation, buildTrainingWall, createObjectiveMarker } from './station-art.js';
 import { createScenery } from './scenery.js';
+import { resolvePlayerAppearance } from '../../engine/player-appearance.js';
 import { createMechanismSync } from '../../engine/mechanism-sync.js';
 import { createSectionalGate } from '../../engine/mechanisms/gate.js';
 import { createCabinet, createDrawerChest } from '../../engine/mechanisms/furniture.js';
@@ -590,13 +591,13 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
     player.visible = cameraArm.length >= MIN_VISIBLE_ARM;
   }
 
-  function addRemotePlayer(id, name, equipped = false, color = null) {
+  function addRemotePlayer(id, name, equipped, appearance = null) {
     const known = remotePlayers.get(id);
     if (known) {
-      setPersonEquipment(known.model, equipped);
+      if (typeof equipped === 'boolean') setPersonEquipment(known.model, equipped);
       return known;
     }
-    const model = createPerson({ name: name || `Игрок ${id}`, id, color });
+    const model = createPerson({ name: name || `Игрок ${id}`, appearance: resolvePlayerAppearance({ id, appearance }) });
     setPersonEquipment(model, equipped);
     model.visible = false;
     scene.add(model);
@@ -839,7 +840,7 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
       showState: setTaskState,
       equipPlayer: (value) => setPersonEquipment(player, value),
       spawnRemote(id, x, z, { equipped = false, color = null, heading = Math.PI, moving = false } = {}) {
-        addRemotePlayer(id, `Игрок ${id}`, equipped, color);
+        addRemotePlayer(id, `Игрок ${id}`, equipped, { color });
         updateRemotePlayers([{ id, x, z, heading, moving }]);
       },
     },

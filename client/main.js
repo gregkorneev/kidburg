@@ -2,9 +2,10 @@
 
 import { createClient } from './engine/app.js';
 import { mountUI } from './ui/index.js';
+import { createCharacterPreview } from './engine/character-preview.js';
 
 const client = createClient({ container: document.getElementById('app') });
-const unmountUI = mountUI(client.api);
+const unmountUI = mountUI(client.api, { createPreview: createCharacterPreview });
 client.start();
 
 // ?debug=1 открывает api в консоли браузера (window.__city) для ручной проверки.

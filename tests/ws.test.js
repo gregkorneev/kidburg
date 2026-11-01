@@ -140,7 +140,7 @@ test('два клиента видят друг друга: player_join и по�
   const join = await a.client.nextOfType('player_join');
   assert.equal(join.id, b.user.id);
   assert.equal(join.name, 'Борис');
-  assert.deepEqual(join.appearance, { firefighterEquipped: false });
+  assert.deepEqual(join.appearance, { ...b.user.appearance, firefighterEquipped: false });
 
   const movedX = b.welcome.state.x + 0.2;
   const movedZ = b.welcome.state.z + 0.1;

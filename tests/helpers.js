@@ -54,7 +54,7 @@ export async function listen(overrides = {}) {
 
 /** Вход по имени и коду комнаты этого приложения: { token, user }. */
 export async function join(app, name, room = app.room.code) {
-  const res = await app.inject({ method: 'POST', url: '/api/join', payload: { name, room } });
+  const res = await app.inject({ method: 'POST', url: '/api/join', payload: { name, room, appearance: { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } } } });
   if (res.statusCode !== 200) throw new Error(`join ${name}: ${res.statusCode} ${res.body}`);
   return res.json();
 }

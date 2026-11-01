@@ -37,7 +37,7 @@ export function createHttp({ fetch: fetchImpl = globalThis.fetch?.bind(globalThi
 
   return {
     /** @returns {Promise<{token: string, user: {id: number, name: string, appearance: object}}>} */
-    join: (name, room) => request('POST', '/api/join', { body: { name, room } }),
+    join: (name, room, appearance) => request('POST', '/api/join', { body: { name, room, ...(appearance === undefined ? {} : { appearance }) } }),
     /** Код комнаты для экрана владельца сервера; чужому компьютеру сервер отвечает 404. @returns {Promise<{room: string}>} */
     localRoom: () => request('GET', '/api/local-room'),
     me: (token) => request('GET', '/api/me', { token }),
