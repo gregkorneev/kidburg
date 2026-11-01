@@ -22,6 +22,7 @@ import { BALL, FIELD, INTERACT_CODES, INTERACT_LIMITS } from '../../shared/inter
 import { reply as defaultReply } from '../agents/index.js';
 import { createChunkMirror } from './chunks.js';
 import { chooseSpawn } from './spawn.js';
+import { overlapsPlayerPath } from '../world/player-collision.js';
 import { FIREFIGHTER_TASK_ID } from '../tasks/index.js';
 
 // Коды закрытия WebSocket (диапазон 4000–4999 отдан приложению).
@@ -41,6 +42,8 @@ const taskWire = (r) => ({ ...r.state, done: r.done, feedback: r.feedback, chang
 const TASK_UNAVAILABLE = 'Сервер сейчас не может прочитать прогресс. Попробуйте позже.';
 // Границы мира чуть внутри, чтобы чанк всегда лежал в 0..11.
 const EDGE = 0.001;
+const PLAYER_RADIUS = 0.4;
+const PLAYER_HEIGHT = 1.8;
 // Расстояние проверяется за время между двумя pos: не меньше одного кадра лимита
 // (иначе пачка пакетов давала бы ложные коррекции) и не больше MAX_DT_S
 // (иначе можно «накопить» бесконечный запас скорости, простояв на месте).
@@ -390,6 +393,15 @@ export function createGame({
     if (Math.hypot(x - player.x, msg.y - player.y, z - player.z) > MAX_SPEED * SPEED_TOLERANCE * dt) {
       send(player.conn, { t: S2C.CORRECT, x: player.x, y: player.y, z: player.z });
       return;
+    }
+    const from = { x: player.x, y: player.y, z: player.z };
+    const to = { x, y: msg.y, z };
+    for (const other of players.values()) {
+      if (other === player) continue;
+      if (overlapsPlayerPath(from, to, { x: other.x, y: other.y, z: other.z, radius: PLAYER_RADIUS, height: PLAYER_HEIGHT }, PLAYER_RADIUS)) {
+        send(player.conn, { t: S2C.CORRECT, x: player.x, y: player.y, z: player.z });
+        return;
+      }
     }
     Object.assign(player, { x, y: msg.y, z, ry: msg.ry, anim: msg.anim, seq: msg.seq, lastAt: t, dirty: true });
     player.cx = chunkIndex(x, WORLD_CHUNKS_X);

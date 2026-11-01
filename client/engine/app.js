@@ -217,7 +217,7 @@ export function createClient({ container, networkOnly = false }) {
       collidersNear: (x, z) => {
         const extra = dynamic.collidersNear(x, z);
         const gates = cityGateColliders(world.mechanisms());
-        return [...world.collidersNear(x, z), ...gates, ...extra];
+        return [...world.collidersNear(x, z), ...gates, ...extra, ...remote.collidersNear(x, z)];
       },
       heightAt: (x, z) => {
         const terrain = world.heightAt(x, z);

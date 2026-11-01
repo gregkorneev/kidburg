@@ -89,6 +89,16 @@ export function createRemotePlayers({ scene, createLabel, quality = 'medium' }) 
       const p = players.get(id);
       return p ? { parent: p.group, scale: 1, forward: -1 } : null;
     },
+    /** Коллизии видимых игроков для локального движения. */
+    collidersNear(x, z) {
+      const out = [];
+      for (const p of players.values()) {
+        if (!p.group.visible || Math.hypot(p.group.position.x - x, p.group.position.z - z) > 4) continue;
+        const { x: px, y, z: pz } = p.group.position;
+        out.push({ minX: px - 0.4, maxX: px + 0.4, minY: y, maxY: y + 1.8, minZ: pz - 0.4, maxZ: pz + 0.4 });
+      }
+      return out;
+    },
     /** Поза «несёт в руках» / удар ногой для удалённого игрока. */
     setCarrying(id, value) {
       const p = players.get(id);
