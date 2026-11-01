@@ -42,6 +42,8 @@ export function createBakeryScene({
   container.appendChild(renderer.domElement);
 
   const look = applyStylizedLook({ renderer, scene, camera, fog: [24, 58], shadowExtent: 16, exposure: 1.02 });
+  look.hemi.color.set('#ffe9dd');
+  look.hemi.intensity = 1.6;
   let quality = readQuality();
   look.setQuality(quality);
   const interior = createBakeryInterior({ quality });

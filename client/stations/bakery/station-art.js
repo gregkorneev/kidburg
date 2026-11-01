@@ -4,6 +4,7 @@ import { PALETTE } from '../../engine/art/palette.js';
 import { stdMat } from '../../engine/art/materials.js';
 import { QUALITY_PRESETS } from '../../engine/art/quality.js';
 import { ROOM } from './layout.js';
+import { addPastryDisplays } from './patisserie.js';
 
 const color = (value) => Number.parseInt(value.replace('#', ''), 16);
 const C = {
@@ -35,6 +36,13 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   k.slab(1.78, 3.55, 0.32, 2.41, 0, ROOM.maxZ - 0.16, C.cream, { r: 0.05 });
   k.slab(6.6, 2.05, 0.32, 0, 3.55, ROOM.maxZ - 0.16, C.cream, { r: 0.06 });
   k.slab(width, 0.42, depth, midX, 5.24, midZ, C.pale, { r: 0.08 });
+  // Обои имеют собственную глубину и остаются за рамами окон и настенным декором.
+  k.box(16.3, 2.95, 0.02, 0, 3.56, -6.15, 0xf5d1d9);
+  for (const x of [-8.16, 8.16]) k.box(0.02, 2.05, 12.1, x, 4.06, 0, 0xf5d1d9);
+  for (let x = -7.8; x <= 7.8; x += 0.9) k.box(0.055, 2.9, 0.012, x, 3.56, -6.13, 0xffe9e5);
+  for (const x of [-8.14, 8.14]) for (let z = -5.7; z <= 5.7; z += 0.9) {
+    k.box(0.012, 2.0, 0.055, x, 4.06, z, 0xffe9e5);
+  }
   // Кремовая обшивка отделяет стены от каменного пола и закрывает стыки по периметру.
   k.box(width - 0.4, 0.22, 0.12, 0, 0.2, ROOM.minZ + 0.31, C.wood, { r: 0.035 });
   k.box(0.12, 0.22, depth - 0.5, ROOM.minX + 0.31, 0.2, 0, C.wood, { r: 0.035 });
@@ -43,11 +51,11 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   k.box(0.14, 0.1, depth - 0.85, ROOM.minX + 0.3, 1.22, 0, C.peach, { r: 0.025 });
   k.box(0.14, 0.1, depth - 0.85, ROOM.maxX - 0.3, 1.22, 0, C.peach, { r: 0.025 });
   for (const x of [-7.7, -5.3, 5.3, 7.7]) {
-    k.box(0.14, 1.05, 0.12, x, 0.72, ROOM.minZ + 0.29, C.peach, { r: 0.03 });
+    k.box(0.14, 1.05, 0.12, x, 0.72, ROOM.minZ + 0.29, C.peach, { r: 0 });
   }
   for (const x of [ROOM.minX + 0.30, ROOM.maxX - 0.30]) {
     for (const z of [-4.65, -1.65, 1.35, 4.35]) {
-      k.box(0.08, 1.72, 2.24, x, 2.15, z, C.cream, { r: 0.04 });
+      k.box(0.08, 1.72, 2.24, x, 2.15, z, C.cream, { r: 0 });
       k.box(0.12, 0.08, 2.3, x, 1.27, z, C.wood, { r: 0.025 });
     }
     k.box(0.12, 0.08, depth - 0.85, x, 3.03, 0, C.wood, { r: 0.025 });
@@ -68,21 +76,26 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
     }
     for (const dz of [-1.08, 1.08]) k.box(0.2, 1.66, 0.16, frameX, 3.72, z + dz, C.wood, { r: 0.035 });
     for (const y of [2.88, 4.56]) k.box(0.2, 0.16, 2.32, frameX, y, z, C.wood, { r: 0.035 });
-    k.box(0.42, 0.14, 2.48, frameX, 2.78, z, C.darkWood, { r: 0.04 });
-    k.box(0.48, 0.12, 2.56, frameX, 2.86, z, C.wood, { r: 0.04 });
+    k.box(0.42, 0.14, 2.48, frameX, 2.78, z, C.darkWood, { r: 0 });
+    k.box(0.48, 0.12, 2.56, frameX, 2.86, z, C.wood, { r: 0 });
     for (const dz of [-0.86, 0.86]) k.tube([
       [frameX, 2.88, z + dz], [frameX, 2.66, z + dz], [frameX - inside * 0.18, 2.58, z + dz],
     ], 0.035, C.wood);
-    k.box(0.36, 0.12, 2.38, frameX, 4.66, z, C.pale, { r: 0.04 });
+    k.box(0.36, 0.12, 2.38, frameX, 4.66, z, C.pale, { r: 0 });
+  }
+  for (const [x, z] of [[-7.94, -2.22], [7.94, -2.87]]) {
+    k.cyl(0.13, 0.1, 0.18, 8, x, 3.02, z, 0xe8b491);
+    k.sphere(0.18, x, 3.26, z, 0x86b99d, { s: [0.8, 1.1, 0.8], w: 7, h: 5 });
+    k.sphere(0.1, x, 3.35, z, 0xa8cdb3, { w: 7, h: 5 });
   }
   // Встроенный стеллаж на правой стене собран на боковых стойках и треугольных опорах.
-  for (const y of [1.55, 2.55, 3.55]) k.box(0.2, 0.12, 2.65, 8.02, y, 1.0, C.wood, { r: 0.04 });
-  for (const z of [-0.25, 2.25]) k.box(0.14, 2.2, 0.14, 8.02, 2.65, z, C.darkWood, { r: 0.03 });
+  for (const y of [1.55, 2.55, 3.55]) k.box(0.2, 0.12, 2.65, 8.02, y, 1.0, C.wood, { r: 0 });
+  for (const z of [-0.25, 2.25]) k.box(0.14, 2.2, 0.14, 8.02, 2.65, z, C.darkWood, { r: 0 });
   for (const y of [1.62, 2.62, 3.62]) for (const z of [-0.12, 2.12]) k.tube([
     [7.94, y - 0.34, z], [7.94, y - 0.1, z], [7.77, y - 0.1, z],
   ], 0.035, C.darkWood);
-  k.box(0.22, 0.18, 2.9, 8.02, 4.1, 1.0, C.pale, { r: 0.04 });
-  for (const z of [-4.5, -1.5, 1.5, 4.5]) k.box(width - 0.6, 0.12, 0.2, 0, 5.2, z, C.wood, { r: 0.04 });
+  k.box(0.22, 0.18, 2.9, 8.02, 4.1, 1.0, C.pale, { r: 0 });
+  for (const z of [-4.5, -1.5, 1.5, 4.5]) k.box(width - 0.6, 0.12, 0.2, 0, 5.2, z, C.wood, { r: 0 });
 
   // Подвесные светильники объединяют рабочие места, не занимая проходы.
   for (const [x, z] of [[-6.2, 0.5], [0, -4.3], [5, -0.4]]) {
@@ -90,6 +103,18 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
     k.cyl(0.12, 0.38, 0.28, 10, x, 4.4, z, C.green);
     k.cyl(0.29, 0.29, 0.035, 10, x, 4.25, z, C.pale);
   }
+
+  // Иллюстрированные рамки на задней стене, без плоскостей на одной глубине.
+  for (const x of [-5.3, 5.3]) {
+    k.box(1.48, 1.3, 0.12, x, 3.8, -6.05, C.wood, { r: 0.05 });
+    k.box(1.25, 1.08, 0.07, x, 3.8, -5.95, C.pale, { r: 0 });
+  }
+  // Пирожное и хлеб служат простыми иллюстрациями, читаемыми из комнаты.
+  k.cyl(0.26, 0.18, 0.32, 9, -5.3, 3.63, -5.87, 0xe99a9b);
+  k.sphere(0.25, -5.3, 3.92, -5.86, 0xfff0e5, { s: [1, 0.7, 0.3], w: 8, h: 5 });
+  k.sphere(0.08, -5.3, 4.12, -5.84, 0xc7505b, { w: 7, h: 5 });
+  k.sphere(0.27, 5.3, 3.8, -5.85, C.bread, { s: [1.65, 0.65, 0.35], w: 8, h: 5 });
+  for (const x of [5.1, 5.3, 5.5]) k.box(0.05, 0.15, 0.035, x, 3.83, -5.73, C.pale, { rot: [0, 0, -0.45] });
 
   // Входная группа: кремовые пилястры и деревянное обрамление в масштабе персонажа.
   for (const x of [-3.18, 3.18]) {
@@ -104,7 +129,7 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
     k.box(0.96, 1.38, 0.08, x, 1.67, 5.9, C.glass, { r: 0.04, tinted: false });
     k.box(0.96, 0.54, 0.09, x, 0.48, 5.89, C.peach, { r: 0.035 });
     k.box(0.96, 0.09, 0.1, x, 0.83, 5.86, C.pale, { r: 0.025 });
-    k.box(1.08, 0.12, 0.13, x, 2.44, 5.85, C.pale, { r: 0.03 });
+    k.box(1.08, 0.12, 0.13, x, 2.44, 5.85, C.pale, { r: 0 });
     const handleX = x + (x < 0 ? 0.44 : -0.44);
     k.sphere(0.065, handleX, 1.12, 5.79, C.gold, { w: 7, h: 5 });
     k.tube([[handleX, 0.94, 5.78], [handleX, 1.3, 5.78]], 0.025, C.gold);
@@ -131,13 +156,13 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   k.box(15.8, 0.1, 0.14, 0, 2.15, -6.08, C.wood, { r: 0.025 });
   for (const x of [-7.2, -4.8, 4.8, 7.2]) k.box(0.1, 0.88, 0.12, x, 1.66, -6.08, C.peach, { r: 0.025 });
   k.box(0.12, 5.6, 0.16, 0, 3.0, -6.12, C.peach);
-  k.box(16.5, 0.18, 0.2, 0, 5.45, -6.12, C.pale, { r: 0.04 });
+  k.box(16.5, 0.18, 0.2, 0, 5.45, -6.12, C.pale, { r: 0 });
 
   // Ингредиентная стойка. Рабочая зона игрока находится перед ней, у прохода.
   k.slab(2.3, 0.18, 1.25, -6.2, 0.92, 0.53, C.wood, { r: 0.06 });
-  for (const x of [-7.1, -5.3]) k.slab(0.14, 0.92, 0.14, x, 0, 0.53, C.darkWood, { r: 0.03 });
-  k.box(2.1, 0.3, 0.1, -6.2, 0.54, 1.16, C.peach, { r: 0.04 });
-  k.box(2.18, 0.08, 1.18, -6.2, 1.08, 0.53, C.pale, { r: 0.04 });
+  for (const x of [-7.1, -5.3]) k.slab(0.14, 0.92, 0.14, x, 0, 0.53, C.darkWood, { r: 0 });
+  k.box(2.1, 0.3, 0.1, -6.2, 0.54, 1.16, C.peach, { r: 0 });
+  k.box(2.18, 0.08, 1.18, -6.2, 1.08, 0.53, C.pale, { r: 0 });
   // Четыре ингредиента на виду: вода, молоко, яйца и соль.
   k.cyl(0.105, 0.14, 0.27, 10, -7.0, 1.245, 0.43, C.water, { r: 0.025 });
   k.cyl(0.14, 0.105, 0.09, 10, -7.0, 1.425, 0.43, C.water);
@@ -163,22 +188,24 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   for (const [dx, dz] of [[-0.025, 0], [0.025, 0], [0, 0.035]]) k.sphere(0.012, -5.2 + dx, 1.456, 0.43 + dz, C.chalk, { w: 5, h: 3 });
   // Низкая стойка наставника обозначает место беседы и оставляет игроку свободный подход.
   k.slab(1.75, 0.12, 0.55, -6.2, 0.92, 2.48, C.wood, { r: 0.05 });
-  for (const x of [-6.9, -5.5]) k.slab(0.12, 0.92, 0.12, x, 0, 2.48, C.darkWood, { r: 0.03 });
+  for (const x of [-6.9, -5.5]) k.slab(0.12, 0.92, 0.12, x, 0, 2.48, C.darkWood, { r: 0 });
 
   // Стол замеса и формовки.
   k.slab(3.3, 0.18, 1.25, 0, 0.95, -4.62, C.wood, { r: 0.07 });
-  for (const x of [-1.42, 1.42]) for (const z of [-5.05, -4.19]) k.slab(0.14, 0.95, 0.14, x, 0, z, C.darkWood, { r: 0.03 });
-  k.box(3.02, 0.34, 0.1, 0, 0.68, -3.99, C.peach, { r: 0.04 });
-  k.box(3.12, 0.08, 1.16, 0, 1.08, -4.62, C.pale, { r: 0.04 });
+  for (const x of [-1.42, 1.42]) for (const z of [-5.05, -4.19]) k.slab(0.14, 0.95, 0.14, x, 0, z, C.darkWood, { r: 0 });
+  k.box(3.02, 0.34, 0.1, 0, 0.68, -3.99, C.peach, { r: 0 });
+  k.box(3.12, 0.08, 1.16, 0, 1.08, -4.62, C.pale, { r: 0 });
   k.cyl(0.42, 0.42, 0.12, 12, -0.75, 1.12, -4.58, C.pale);
   k.cyl(0.31, 0.31, 0.1, 12, 0.8, 1.12, -4.58, C.gold);
-  k.box(0.85, 0.09, 0.12, 0, 1.09, -4.18, C.darkWood, { r: 0.04 }); // скалка
+  k.box(0.85, 0.09, 0.12, 0, 1.09, -4.18, C.darkWood, { r: 0 }); // скалка
 
   // Закрытая печь: цельный корпус, тёмное окно и ручки; никаких игровых опасных состояний.
   k.slab(2.4, 2.15, 1.45, 5, 0, -1.15, C.brick, { r: 0.1 });
   k.box(1.72, 1.42, 0.16, 5, 1.65, -0.43, C.wood, { r: 0.1 });
-  k.box(1.44, 1.12, 0.12, 5, 1.65, -0.31, C.chalk, { r: 0.08 });
+  k.box(1.44, 1.12, 0.12, 5, 1.65, -0.31, 0x5d3933, { r: 0.08 });
   k.box(0.1, 0.34, 0.15, 5.69, 1.6, -0.24, C.gold, { r: 0.035 });
+  k.box(0.85, 0.07, 0.12, 5, 2.28, -0.2, C.gold, { r: 0.02 });
+  for (const x of [4.68, 5.0, 5.32]) k.sphere(0.055, x, 2.34, -0.13, C.darkWood, { w: 6, h: 4 });
   k.cyl(0.065, 0.08, 0.08, 8, 5.0, 2.58, -0.25, C.brick);
   k.box(2.65, 0.16, 1.65, 5, 2.48, -1.15, C.pale, { r: 0.06 });
   k.box(2.5, 0.26, 1.55, 5, 0.18, -1.15, C.darkWood, { r: 0.06 });
@@ -192,34 +219,25 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   }
 
   // Полка охлаждения и стойка выдачи — отдельные, с широким проходом между ними.
-  for (const x of [4.15, 6.05]) k.slab(0.12, 2.5, 0.12, x, 0, 4.8, C.darkWood, { r: 0.03 });
+  for (const x of [4.15, 6.05]) k.slab(0.12, 2.5, 0.12, x, 0, 4.8, C.darkWood, { r: 0 });
   for (const y of [0.85, 1.65, 2.45]) k.box(2.05, 0.12, 0.95, 5.1, y, 4.8, C.wood, { r: 0.05 });
-  for (const [x, z] of [[4.5, 4.6], [5.1, 4.6], [5.7, 4.6], [4.7, 5.0], [5.3, 5.0]]) {
-    k.sphere(0.22, x, 2.58, z, C.bread, { s: [1.15, 0.62, 0.72], w: 7, h: 5 });
+  addPastryDisplays(k);
+  // Лотки и пакеты остаются внутри существующих границ стеллажа.
+  for (const x of [4.4, 5.8]) {
+    k.box(0.3, 0.38, 0.22, x, 1.16, 5.1, 0xe8c39d, { r: 0.025 });
+    k.box(0.18, 0.045, 0.03, x, 1.22, 4.975, C.peach);
   }
-  // Плетёные корзины, лотки и запас упакованных булочек у выдачи.
-  for (const [x, z] of [[3.7, 3.7], [6.7, 3.7]]) {
-    k.box(0.92, 0.58, 0.8, x, 0.38, z, C.wood, { r: 0.12 });
-    k.box(0.84, 0.1, 0.76, x, 0.69, z, C.darkWood, { r: 0.05 });
-    k.box(0.68, 0.06, 0.6, x, 0.73, z, C.pale, { r: 0.04 });
-    k.tube([[x - 0.3, 0.66, z], [x - 0.3, 0.92, z], [x, 1.0, z], [x + 0.3, 0.92, z], [x + 0.3, 0.66, z]], 0.035, C.darkWood);
-    for (const bx of [x - 0.2, x + 0.2]) k.sphere(0.18, bx, 0.83, z, C.pastry, { s: [1.0, 0.62, 0.9], w: 6, h: 4 });
-  }
-  for (const x of [4.55, 5.15, 5.75]) k.box(0.42, 0.1, 0.62, x, 0.95, 4.05, C.chalk, { r: 0.04 });
-  for (const x of [4.55, 5.15, 5.75]) k.sphere(0.15, x, 1.1, 4.05, C.bread, { s: [1.1, 0.65, 0.75], w: 6, h: 4 });
   k.slab(2.8, 1.05, 1.0, -3.4, 0.25, 5.7, C.wood, { r: 0.08 });
   k.box(2.55, 0.15, 0.82, -3.4, 1.37, 5.7, C.pale, { r: 0.06 });
-  for (const x of [-4.55, -2.25]) k.slab(0.13, 1.25, 0.13, x, 0, 5.7, C.darkWood, { r: 0.03 });
+  for (const x of [-4.55, -2.25]) k.slab(0.13, 1.25, 0.13, x, 0, 5.7, C.darkWood, { r: 0 });
   // Витрина прилавка с открытым фасадом, бумажные пакеты и булочки для выдачи.
   for (const x of [-4.42, -2.38]) k.box(0.08, 0.66, 0.58, x, 1.82, 5.64, C.glass, { r: 0.03, tinted: false });
   k.box(2.08, 0.06, 0.54, -3.4, 2.16, 5.64, C.glass, { r: 0.03, tinted: false });
   k.box(2.08, 0.06, 0.12, -3.4, 1.52, 5.87, C.wood, { r: 0.025 });
-  k.box(2.24, 0.1, 0.68, -3.4, 1.42, 5.64, C.wood, { r: 0.04 });
-  for (const [x, color] of [[-4.05, C.bread], [-3.4, C.pastry], [-2.75, C.bread]]) {
-    k.sphere(0.2, x, 1.62, 5.53, color, { s: [1.2, 0.65, 0.8], w: 7, h: 5 });
-  }
+  k.box(2.24, 0.1, 0.68, -3.4, 1.42, 5.64, C.wood, { r: 0 });
+
   for (const x of [-4.2, -2.6]) {
-    k.box(0.34, 0.4, 0.08, x, 1.24, 5.1, C.pale, { r: 0.04 });
+    k.box(0.34, 0.4, 0.08, x, 1.24, 5.1, C.pale, { r: 0 });
     k.box(0.36, 0.05, 0.09, x, 1.46, 5.1, C.gold, { r: 0.02 });
   }
 
@@ -240,30 +258,13 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
       k.tube([[x - 0.1, 0.57, z], [x, 0.64, z], [x + 0.1, 0.57, z]], 0.018, C.gold, { segments: 6, radial: 4 });
       k.box(0.14, 0.1, 0.025, x, 0.3, z + 0.24, C.peach, { r: 0.015 });
     }
-    k.box(0.55, 0.07, 0.14, -3.4, 1.5, 5.22, C.bread, { r: 0.03 }); // бумага для упаковки
+    k.box(0.55, 0.07, 0.14, -3.4, 1.5, 5.22, C.bread, { r: 0 }); // бумага для упаковки
     k.sphere(0.3, -0.1, 1.25, -4.55, C.pale, { s: [1.1, 0.52, 0.88], w: 8, h: 5 });
     for (const x of [-0.72, 0.0, 0.72]) k.sphere(0.12, x, 1.36, -4.55, C.pastry, { s: [1, 0.65, 0.8], w: 6, h: 4 });
     // Бумажные свёртки и подвесная утварь делают рабочее место обжитым.
     for (const x of [-1.0, 0, 1.0]) k.box(0.28, 0.38, 0.26, x, 1.42, -4.48, C.pale, { r: 0.05 });
     k.box(0.8, 0.06, 0.1, -6.1, 1.8, 0.5, C.darkWood, { r: 0.025 });
     for (const x of [-6.38, -5.82]) k.tube([[x, 1.78, 0.5], [x, 1.52, 0.5]], 0.025, C.gold);
-    // Задняя полка: ровный ряд банок и аккуратно сгруппированные булочки.
-    for (const [x, tint] of [[-2.45, C.glass], [-1.55, C.pale], [1.55, C.glass], [2.45, C.pale]]) {
-      k.cyl(0.12, 0.14, 0.27, 9, x, 3.0, -5.82, tint);
-      k.cyl(0.08, 0.1, 0.055, 9, x, 3.16, -5.82, C.gold);
-      k.box(0.13, 0.075, 0.025, x, 2.98, -5.67, C.peach, { r: 0.012 });
-    }
-    for (const x of [-0.85, -0.35, 0.35, 0.85]) k.sphere(0.14, x, 3.03, -5.83, x < 0 ? C.bread : C.pastry, { s: [1.15, 0.62, 0.72], w: 7, h: 5 });
-    // На стеллаже у печи продукты собраны по полкам: банки и корзины с хлебом.
-    for (const [z, y, tint] of [[0.28, 1.75, C.pale], [1.08, 1.75, C.glass], [1.82, 1.75, C.pale], [0.62, 2.75, C.glass], [1.48, 2.75, C.pale]]) {
-      k.cyl(0.105, 0.13, 0.25, 9, 7.83, y, z, tint);
-      k.cyl(0.07, 0.08, 0.05, 9, 7.83, y + 0.15, z, C.gold);
-      k.box(0.025, 0.07, 0.1, 7.68, y, z, C.peach, { r: 0.01 });
-    }
-    for (const z of [0.55, 1.25]) {
-      k.tube([[7.82, 3.62, z - 0.2], [7.82, 3.53, z - 0.2], [7.82, 3.53, z + 0.2], [7.82, 3.62, z + 0.2]], 0.025, C.darkWood, { segments: 8, radial: 4 });
-      k.sphere(0.14, 7.82, 3.72, z, C.bread, { s: [0.68, 0.62, 1.5], w: 7, h: 5 });
-    }
     // Две маленькие настенные эмблемы над рабочими зонами.
     k.box(0.08, 0.72, 0.82, ROOM.minX + 0.28, 3.48, -2.2, C.wood, { r: 0.06 });
     k.sphere(0.24, ROOM.minX + 0.38, 3.48, -2.2, C.pastry, { s: [0.3, 1.35, 0.72], w: 7, h: 5 });
