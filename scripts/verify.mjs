@@ -48,7 +48,7 @@ async function checkHealth() {
   const port = await freePort();
   console.log(`verify: сервер на порту ${port}`);
   const server = run(process.execPath, ['server/index.js'], {
-    env: { ...process.env, PORT: String(port), LOG_LEVEL: 'warn' },
+    env: { ...process.env, PORT: String(port), DB_PATH: ':memory:', LOG_LEVEL: 'warn' },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   server.on('exit', (code) => {
