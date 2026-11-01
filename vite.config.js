@@ -16,6 +16,7 @@ export default defineConfig({
       bakery: page('bakery-preview.html'),
       firefighterArtPreview: page('stations/firefighter/art-preview.html'),
       florist: page('florist-preview.html'),
+      radio: page('radio-preview.html'),
     } },
   },
   server: {
