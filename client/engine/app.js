@@ -83,8 +83,8 @@ export function createClient({ container, networkOnly = false }) {
 
   const auth = {
     /** Вход по имени и коду комнаты. @returns {Promise<{id: number, name: string, appearance: object}>} бросает ApiError */
-    async join(name, room) {
-      const { token, user } = await http.join(name, room);
+    async join(name, room, appearance) {
+      const { token, user } = await http.join(name, room, appearance);
       return startSession(token, user);
     },
     /**

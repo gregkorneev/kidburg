@@ -18,6 +18,7 @@ function fakeStorage() {
 }
 
 const ROOM = 'BCDF';
+const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, shoes: 0 } };
 
 async function startServer() {
   const app = await buildApp({ roomCode: ROOM, dbPath: ':memory:', logLevel: 'silent', worldDir: '/нет/такой/папки' });
@@ -68,7 +69,7 @@ test('http: ошибки сервера превращаются в ApiError с 
     const { http } = makeClient(port);
     await assert.rejects(http.join('ab', ROOM), (e) => e instanceof ApiError && e.status === 400 && e.code === 'bad_name');
     await assert.rejects(http.join('Аня', 'ZZZZ'), (e) => e.status === 403 && e.code === 'bad_room' && e.message === 'Неверный код комнаты');
-    const { user } = await http.me((await http.join('Аня', 'bcdf')).token);
+    const { user } = await http.me((await http.join('Аня', 'bcdf', appearance)).token);
     assert.equal(user.name, 'Аня');
     assert.ok((await http.ping()) >= 0);
   } finally {
@@ -82,7 +83,7 @@ test('подключение: тикет → сокет → hello → welcome, �
   const { app, port } = await startServer();
   try {
     const c = makeClient(port);
-    const { token, user } = await c.http.join('Аня', ROOM);
+    const { token, user } = await c.http.join('Аня', ROOM, appearance);
     c.session.save(token, user);
     const welcome = waitFor(c.emitter, 'welcome');
     c.net.connect();
@@ -124,7 +125,7 @@ test('обрыв соединения: новый тикет, повторный
   const { app, port } = await startServer();
   try {
     const c = makeClient(port);
-    const { token, user } = await c.http.join('Аня', ROOM);
+    const { token, user } = await c.http.join('Аня', ROOM, appearance);
     c.session.save(token, user);
     let welcomes = 0;
     c.emitter.on('welcome', () => (welcomes += 1));
@@ -149,7 +150,7 @@ test('disconnect останавливает переподключение и з
   const { app, port } = await startServer();
   try {
     const c = makeClient(port);
-    const { token, user } = await c.http.join('Аня', ROOM);
+    const { token, user } = await c.http.join('Аня', ROOM, appearance);
     c.session.save(token, user);
     const ready = waitFor(c.emitter, 'welcome');
     c.net.connect();
@@ -168,7 +169,7 @@ test('тот же пользователь в другом окне: старо�
   const { app, port } = await startServer();
   try {
     const a = makeClient(port);
-    const { token, user } = await a.http.join('Аня', ROOM);
+    const { token, user } = await a.http.join('Аня', ROOM, appearance);
     a.session.save(token, user);
     const ready = waitFor(a.emitter, 'welcome');
     a.net.connect();
@@ -188,4 +189,19 @@ test('тот же пользователь в другом окне: старо�
   } finally {
     await app.close();
   }
+});
+
+
+test('http: appearance передаётся при регистрации и не перезаписывает существующий профиль', async () => {
+  const { app, port } = await startServer();
+  try {
+    const { http } = makeClient(port);
+    await assert.rejects(http.join('Аня', ROOM), (error) => error.code === 'bad_appearance');
+    const first = await http.join('Аня', ROOM, appearance);
+    assert.deepEqual(first.user.appearance.avatar, appearance.avatar);
+    const again = await http.join('Аня', ROOM);
+    assert.deepEqual(again.user.appearance, first.user.appearance);
+    const draft = await http.join('Аня', ROOM, { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } });
+    assert.deepEqual(draft.user.appearance, first.user.appearance);
+  } finally { await app.close(); }
 });
