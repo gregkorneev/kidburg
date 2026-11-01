@@ -473,13 +473,23 @@ export function createGame({
     const text = msg.text.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
     if (!text) return agentError(conn, agentId, reqId, 'Пустая реплика');
 
+    // Ход задания NPC берётся из сохранённого состояния игрока на сервере, не из сообщения клиента.
+    let situation = null;
+    try {
+      situation = tasks?.describeForAgent?.(player.id, agentId) ?? null;
+    } catch (err) {
+      log.warn({ err, agentId, userId: player.id }, 'не удалось описать ход задания для NPC');
+    }
+
     // Внутри станции собеседники берутся из её реестра и проверяются по локальной позиции из station_pos;
     // в городе — из world.json по мировой позиции. Станционный NPC недоступен без сессии станции, городской — из неё.
     let inReach;
     if (player.station) {
       const station = STATION_NPCS.filter((n) => n.agentId === agentId && n.stationId === player.station.id);
       if (station.length === 0) return agentError(conn, agentId, reqId, 'Неизвестный собеседник');
-      inReach = station.some((n) => withinTalkRange(n, player.station.x, player.station.z));
+      // Итоговое модальное окно блокирует ходьбу: разговор после концерта доступен из любой точки своей школы.
+      const concertCompleted = agentId === 'maestro' && situation?.key === 'completed';
+      inReach = concertCompleted || station.some((n) => withinTalkRange(n, player.station.x, player.station.z));
     } else {
       const npcs = (world?.npcs ?? []).filter((n) => n.agentId === agentId);
       if (npcs.length === 0) {
@@ -493,14 +503,6 @@ export function createGame({
       return agentError(conn, agentId, reqId, 'Подойдите ближе к собеседнику');
     }
     if (conn.talk) return agentError(conn, agentId, reqId, 'Дождитесь ответа на предыдущую реплику');
-
-    // Ход задания NPC берётся из сохранённого состояния игрока на сервере, не из сообщения клиента.
-    let situation = null;
-    try {
-      situation = tasks?.describeForAgent?.(player.id, agentId) ?? null;
-    } catch (err) {
-      log.warn({ err, agentId, userId: player.id }, 'не удалось описать ход задания для NPC');
-    }
 
     const controller = new AbortController();
     const { signal } = controller;

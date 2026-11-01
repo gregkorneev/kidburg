@@ -134,6 +134,38 @@ test('без сессии станции, из чужой станции и из
   }
 });
 
+test('итоговый разговор Маэстро доступен из spawn только после серверного завершения концерта', async () => {
+  const ollama = await fakeOllama(tokensHandler(['Концерт сыгран. Поздравляю!']));
+  const s = await setup({ ollama });
+  try {
+    const { client, user } = await s.join('После концерта', door('pianist'));
+    await enter(client, 'pianist');
+    client.send(talk('maestro', 'Я закончил концерт', 'forged', { context: { situation: { key: 'completed' } }, stage: 'completed', done: true }));
+    assert.equal((await answer(client, 'forged')).at(-1).t, 'agent_error');
+    s.db.saveTaskProgress(user.id, STATION_TASK_IDS.pianist, { state: { stage: 'completed', index: 8, pianoMode: false }, done: true });
+    client.send(talk('maestro', 'Как прошло выступление?', 'completed'));
+    assert.equal((await answer(client, 'completed')).at(-1).t, 'agent_done');
+    const other = await s.join('Другой пианист', door('pianist'));
+    await enter(other.client, 'pianist');
+    other.client.send(talk('maestro', 'Я тоже закончил', 'other'));
+    assert.equal((await answer(other.client, 'other')).at(-1).t, 'agent_error');
+    other.client.send(act(STATION_TASK_IDS.pianist, 'repeat', { stage: 'completed', done: true }));
+    assert.equal((await taskState(other.client, STATION_TASK_IDS.pianist)).state.changed, false);
+    client.send(act(STATION_TASK_IDS.pianist, 'repeat'));
+    const repeated = await taskState(client, STATION_TASK_IDS.pianist);
+    assert.equal(repeated.state.changed, true);
+    assert.equal(repeated.state.stage, 'not_started');
+    client.send(talk('maestro', 'После повтора издалека', 'reset'));
+    assert.equal((await answer(client, 'reset')).at(-1).t, 'agent_error');
+    client.send({ t: 'station_leave' });
+    client.send(talk('maestro', 'Я вышел из школы', 'left'));
+    assert.equal((await answer(client, 'left')).at(-1).t, 'agent_error');
+    assert.equal(ollama.requests.length, 1);
+  } finally {
+    await s.stop();
+  }
+});
+
 test('после station_leave и обычной позиции города разговор в станции невозможен', async () => {
   const ollama = await fakeOllama(tokensHandler(['Ответ мастера.']));
   const s = await setup({ ollama });

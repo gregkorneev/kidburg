@@ -412,7 +412,9 @@ export const createPianistTask = createStationTask({
       const target = state.stage === 'concert' ? PIANIST_POINTS.stagePiano : PIANIST_POINTS.practicePiano;
       if (!near(target, position, PIANIST_POINTS.pianoRadius)) return { state, changed: false, feedback: TOO_FAR, tooFar: true };
     }
-    if ((action === 'start_briefing' || action === 'repeat') && !near(PIANIST_POINTS.maestro, position, PIANIST_POINTS.maestroRadius)) {
+    // Повтор из итогового модального окна не требует ходьбы; completed проверен по серверному сохранению.
+    const completedRepeat = action === 'repeat' && state.stage === 'completed';
+    if ((action === 'start_briefing' || action === 'repeat') && !completedRepeat && !near(PIANIST_POINTS.maestro, position, PIANIST_POINTS.maestroRadius)) {
       return { state, changed: false, feedback: TOO_FAR, tooFar: true };
     }
     const result = pianistTransition(state, command);
