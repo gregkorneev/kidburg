@@ -137,6 +137,16 @@ test('ворота: стенка за линией останавливает м
   assert.ok(ball.x > goalX - FIELD.goalDepth - 0.2, `мяч остался в рамке: ${ball.x}`);
 });
 
+test('движущийся мяч отскакивает от стоящего персонажа и не проходит сквозь него', () => {
+  const world = createBallWorld({ now: () => 0 });
+  const ball = world.get('ball-1');
+  Object.assign(ball, { x: 450, z: 376, y: BALL.radius, vx: 8, vy: 0, vz: 0, resting: false });
+  const actor = { id: 9, x: 451, y: 0, z: 376 };
+  for (let i = 0; i < 8; i++) world.step(DT, [actor]);
+  assert.ok(ball.vx < 0, `мяч отскочил назад: vx=${ball.vx}`);
+  assert.ok(ball.x <= actor.x - BALL.radius - 0.4 + 1e-6, 'мяч вытолкнут перед персонажем');
+});
+
 test('касание движущимся игроком: один импульс на кулдаун', () => {
   let t = 0;
   const world = createBallWorld({ now: () => t });

@@ -1,6 +1,7 @@
 // Наружная пожарная часть города: тот же облик, что у станции в учебной сцене (кремовые стены, красная крыша
 // с черепицей, сине-серые ворота, часовая башня). Фасад смотрит в +Z; боковая дверь на x = +7.72 — вход по клавише E.
 import { createPrefabKit } from './art/prefab-kit.js';
+import { BUILDINGS } from '../../tools/build-world/layout.js';
 
 const C = {
   cream: 0xf5e9cd, pale: 0xfff4d9, red: 0xd65a42, darkRed: 0xa94436, roof: 0xc9533e, roofTile: 0xa33f33,
@@ -136,4 +137,16 @@ export function fireStationCollisionBoxes() {
   if (edge < 12) add(edge, 12, 0.5, GATE.baseY + GATE.height, 6.5, 7.0);
   add(-12, 12, 4.75, 9.1, 6.5, 7.0);
   return boxes;
+}
+
+/** Верх гаражного пола выше террейна на толщину плиты; игрок должен стоять на его поверхности. */
+export function fireStationFloorHeight(x, z) {
+  const building = BUILDINGS.find((b) => b.id === 'fire_station');
+  const dx = x - building.x;
+  const dz = z - building.z;
+  const c = Math.cos(building.rotationY);
+  const s = Math.sin(building.rotationY);
+  const localX = c * dx - s * dz;
+  const localZ = s * dx + c * dz;
+  return Math.abs(localX) <= 11.4 && Math.abs(localZ) <= 6.95 ? 0.5 : null;
 }

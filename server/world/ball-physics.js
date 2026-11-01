@@ -180,7 +180,7 @@ export function createBallWorld({
     }
   }
 
-  function stepBall(ball, dt, allBoxes, allCircles) {
+  function stepBall(ball, dt, allBoxes, allCircles, players) {
     // Подшаги: за один шаг мяч не проходит больше ~0.8 радиуса, иначе тонкие стенки пропускаются.
     const speed = Math.hypot(ball.vx, ball.vy, ball.vz);
     const parts = Math.min(10, Math.max(1, Math.ceil((speed * dt) / (R * 0.8))));
@@ -189,12 +189,38 @@ export function createBallWorld({
       integrate(ball, h);
       for (const box of allBoxes) collideBox(ball, box);
       for (const c of allCircles) collideCircle(ball, c);
+      collidePlayers(ball, players);
     }
     limitSpeed(ball);
     const horizontal = Math.hypot(ball.vx, ball.vz);
     if (ball.y <= R + 1e-4 && ball.vy === 0 && horizontal < BALL.restSpeed) {
       ball.vx = ball.vz = 0;
       ball.resting = true;
+    }
+  }
+
+  /** Персонаж — вертикальный цилиндр; отражаем мяч от него даже когда игрок стоит. */
+  function collidePlayers(ball, players) {
+    for (const p of players) {
+      const feet = Number.isFinite(p.y) ? p.y : 0;
+      if (ball.y + R < feet || ball.y - R > feet + 1.8) continue;
+      const dx = ball.x - p.x;
+      const dz = ball.z - p.z;
+      const dist = Math.hypot(dx, dz);
+      const need = R + 0.4;
+      if (dist >= need) continue;
+      const nx = dist > 1e-8 ? dx / dist : (ball.vx || ball.vz ? -ball.vx / Math.hypot(ball.vx, ball.vz) : 1);
+      const nz = dist > 1e-8 ? dz / dist : (ball.vx || ball.vz ? -ball.vz / Math.hypot(ball.vx, ball.vz) : 0);
+      ball.x += nx * (need - dist);
+      ball.z += nz * (need - dist);
+      const vn = ball.vx * nx + ball.vz * nz;
+      if (vn < 0) {
+        const impulse = -(1 + 0.62) * vn;
+        ball.vx += impulse * nx;
+        ball.vz += impulse * nz;
+        ball.resting = false;
+        ball.lastBy = p.id;
+      }
     }
   }
 
@@ -308,7 +334,7 @@ export function createBallWorld({
       const moving = [];
       for (const ball of balls.values()) {
         if (ball.resting) continue;
-        stepBall(ball, dt, allBoxes, allCircles);
+        stepBall(ball, dt, allBoxes, allCircles, players);
         moving.push(ball);
       }
       if (moving.length) {

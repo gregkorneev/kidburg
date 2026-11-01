@@ -12,6 +12,7 @@ import { readQuality } from './art/quality.js';
 import { createChunkManager, makeLabel } from './chunks.js';
 import { createDynamicObjects } from './dynamic-objects.js';
 import { cityGateColliders } from './city-interactions.js';
+import { fireStationFloorHeight } from './fire-station.js';
 import { createInteractionManager } from './interactions/interaction-manager.js';
 import { createCarrySystem } from './interactions/carry-system.js';
 import { createBallRenderer } from './interactions/physics-renderer.js';
@@ -218,7 +219,11 @@ export function createClient({ container, networkOnly = false }) {
         const gates = cityGateColliders(world.mechanisms());
         return [...world.collidersNear(x, z), ...gates, ...extra];
       },
-      heightAt: (x, z) => world.heightAt(x, z),
+      heightAt: (x, z) => {
+        const terrain = world.heightAt(x, z);
+        const floor = fireStationFloorHeight(x, z);
+        return floor === null ? terrain : Math.max(terrain ?? floor, floor);
+      },
     };
     const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel, quality });
     const hud = createHud(container);

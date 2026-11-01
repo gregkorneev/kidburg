@@ -319,7 +319,7 @@ export function createGame({
     physicsNo += 1;
     const actors = [];
     for (const p of players.values()) {
-      if (Math.hypot(p.x - FIELD.x, p.z - FIELD.z) < FIELD.halfW + 40) actors.push({ id: p.id, x: p.x, z: p.z });
+      if (Math.hypot(p.x - FIELD.x, p.z - FIELD.z) < FIELD.halfW + 40) actors.push({ id: p.id, x: p.x, y: p.y, z: p.z });
     }
     const events = interactive.step(PHYSICS_DT, actors);
     for (const event of events) {
