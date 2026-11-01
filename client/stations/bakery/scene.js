@@ -8,6 +8,7 @@ import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/qual
 import { ROOM, SPAWN, ZONES, collidesWithFurniture, isInsideRoom } from './layout.js';
 import { activeZone, interactionPrompt, resolveInteraction } from './interactions.js';
 import { createBakeryInterior } from './station-art.js';
+import { turnNpcToward } from '../../engine/npc-facing.js';
 
 const MOUSE_SENSITIVITY = 0.0024;
 const PLAYER_RADIUS = 0.42;
@@ -154,8 +155,8 @@ export function createBakeryScene({
     cameraPitch = THREE.MathUtils.clamp(cameraPitch + lookDelta.dy * 0.0018, -0.8, 0.55);
     const speed = stepMovement(dt);
     animateCharacter(player, dt, elapsed, { speed: speed ? 1 : 0 });
+    turnNpcToward(mentor, mentor.position, player.position, dt, Math.PI);
     animateCharacter(mentor, dt, elapsed, { speed: 0 });
-    mentor.rotation.y += Math.sin(elapsed * 0.7) * 0.0008;
     updateCamera();
     interior.update(dt, elapsed);
     setPrompt(interactionPrompt(state, position()));

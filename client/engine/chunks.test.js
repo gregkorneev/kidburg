@@ -80,6 +80,17 @@ test('загрузка: рельеф, одна InstancedMesh на префаб, 
   assert.equal(manager.nearestNpc(6 * 64 + 40, 50, 6 * 64 + 32, 8), null, 'другой этаж не считается');
 });
 
+test('городской NPC поворачивается к игроку с учётом координат чанка и возвращается', () => {
+  const { manager } = makeManager();
+  manager.load(6, 6, syntheticChunk(6, 6, { npcs: [{ id: 'npc', agentId: 'npc', x: 400, y: 0, z: 400, ry: 0 }] }));
+  const npc = manager.nearestNpc(400, 0, 400, 1);
+  manager.update(1, 1, { x: 405, y: 0, z: 400 });
+  assert.ok(Math.abs(npc.mesh.rotation.y + Math.PI / 2) < 1e-9);
+  manager.update(1, 2, { x: 411, y: 0, z: 400 });
+  assert.ok(Math.abs(npc.mesh.rotation.y) < 1e-9);
+  manager.dispose();
+});
+
 test('коллайдер повернутой цветочной лавки пропускает к ее фасаду', () => {
   const { manager } = makeManager();
   const yaw = 2.37;

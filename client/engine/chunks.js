@@ -8,12 +8,11 @@ import { decode } from '../../shared/protocol.js';
 import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter, setCharacterQuality } from './art/character.js';
 import { updateWind } from './art/wind.js';
 import { getPrefabVariant, variantKey } from './prefabs.js';
+import { turnNpcToward } from './npc-facing.js';
 
 const GRID = 17; // узлов на сторону чанка
 const CELL = CHUNK_SIZE / (GRID - 1); // 4 м
 const ZONE_COLORS = { hospital: 0xcfd8dc, park: 0x5fa35a, plain: 0x7a9a58 };
-
-const NPC_LOOK_DISTANCE = 10; // м: ближе этого NPC провожает игрока взглядом
 
 function hashString(text) {
   let h = 2166136261;
@@ -318,21 +317,15 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel, quali
       }
       return best;
     },
-    /** Каждый кадр: NPC дышат, моргают и поворачивают голову к игроку, пока он рядом. */
+    /** Каждый кадр: NPC анимируются и поворачиваются к игроку поблизости. */
     update(dt, elapsed, player) {
       updateWind(elapsed);
       for (const entry of chunks.values()) {
         for (const decor of entry.decor) decor.update?.(dt, elapsed);
         for (const npc of entry.npcs) {
-          let lookYaw = 0;
-          if (player) {
-            const dx = player.x - npc.x;
-            const dz = player.z - npc.z;
-            if (Math.abs(npc.y - player.y) < 3 && dx * dx + dz * dz < NPC_LOOK_DISTANCE ** 2) {
-              lookYaw = Math.atan2(dx, dz) - (npc.ry + Math.PI);
-              lookYaw = Math.atan2(Math.sin(lookYaw), Math.cos(lookYaw));
-            }
-          }
+          const near = turnNpcToward(npc.mesh, npc, player, dt, npc.ry, 10, Math.PI);
+          const angle = near ? Math.atan2(player.x - npc.x, player.z - npc.z) - npc.mesh.rotation.y - Math.PI : 0;
+          const lookYaw = Math.atan2(Math.sin(angle), Math.cos(angle));
           animateCharacter(npc.avatar, dt, elapsed, { speed: 0, lookYaw });
         }
       }
