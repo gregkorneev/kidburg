@@ -251,6 +251,7 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
   }
   return {
     setTaskState, setUiBlocked, setInstrumentMode, setQuality,
+    setPosition({ x, z }) { if (Number.isFinite(x) && Number.isFinite(z)) { player.x = x; player.z = z; } },
     getQuality: () => quality,
     getPosition: () => ({ x: player.x, y: player.y, z: player.z, yaw: player.yaw }),
     getRenderStats: () => ({ ...renderer.info.render, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),

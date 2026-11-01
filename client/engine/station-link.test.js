@@ -38,6 +38,7 @@ function setup(position = { x: 1, z: 2 }) {
     timers,
     now: () => clock,
     getPosition: () => pos.value,
+    setPosition: (next) => { pos.value = next; },
     onChange: () => changes.push(link.ready),
   });
   return { link, client, chat, changes, pos, timers, advance: (ms) => (clock += ms), tickTimer: () => timers.fns.forEach((fn) => fn()) };
@@ -46,14 +47,15 @@ function setup(position = { x: 1, z: 2 }) {
 const stations = (client) => client.sent.filter((m) => m.t.startsWith('station_'));
 
 test('после welcome страница просит сессию станции; ready только после подтверждения сервера', () => {
-  const { link, client } = setup();
+  const { link, client, pos } = setup();
   assert.equal(link.ready, false);
   client.emit('welcome');
   assert.deepEqual(stations(client), [{ t: 'station_enter', stationId: 'bakery' }]);
   assert.equal(link.ready, false, 'пока сервер не ответил, разговора нет');
   client.emit('station_state', { stationId: 'bakery', ok: true, message: '' });
   assert.equal(link.ready, true);
-  assert.deepEqual(stations(client).at(-1), { t: 'station_pos', x: 1, z: 2 }, 'позиция уходит сразу после входа');
+  assert.deepEqual(pos.value, { x: 0, z: 4.25 }, 'после входа клиент принимает серверный spawn');
+  assert.deepEqual(stations(client).at(-1), { t: 'station_pos', x: 0, z: 4.25 }, 'синхронизированный spawn сразу уходит на сервер');
 });
 
 test('отказ сервера оставляет станцию локальной и сохраняет причину', () => {
@@ -92,7 +94,7 @@ test('позиция уходит не чаще интервала, при из�
 });
 
 test('обрыв связи и выход из сессии снимают ready; позиция в закрытый сокет не шлётся', () => {
-  const { link, client, advance, tickTimer } = setup();
+  const { link, client, pos, advance, tickTimer } = setup({ x: 6.2, z: 3.2 });
   client.emit('welcome');
   client.emit('station_state', { stationId: 'bakery', ok: true, message: '' });
   client.emit('status', { status: 'reconnecting' });
@@ -106,6 +108,8 @@ test('обрыв связи и выход из сессии снимают ready
   client.emit('welcome'); // реконнект: новая сессия станции
   assert.deepEqual(stations(client).at(-1), { t: 'station_enter', stationId: 'bakery' });
   client.emit('station_state', { stationId: 'bakery', ok: true, message: '' });
+  assert.deepEqual(pos.value, { x: 0, z: 4.25 }, 'локальная сцена возвращается на server spawn после переподключения');
+  assert.deepEqual(stations(client).at(-1), { t: 'station_pos', x: 0, z: 4.25 }, 'первой после реконнекта отправляется подтверждённая позиция');
   client.emit('auth', null);
   assert.equal(link.ready, false);
 });

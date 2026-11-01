@@ -15,6 +15,7 @@ export const POS_HEARTBEAT_MS = 1000;
  * @param {object} deps
  * @param {string} deps.stationId ключ из shared/station-npcs.js
  * @param {() => ({x: number, z: number}|null|undefined)} deps.getPosition локальная позиция игрока в станции
+ * @param {(position: {x: number, z: number}) => void} [deps.setPosition] применить подтверждённую сервером стартовую позицию
  * @param {() => void} [deps.onChange] изменился статус сессии
  * @param {{api: object, start: Function, stop: Function}} deps.client клиент сети (createClient({ networkOnly: true }))
  * @param {(api: object) => object} deps.mountChat панель разговора (mountNpcChat)
@@ -24,6 +25,7 @@ export const POS_HEARTBEAT_MS = 1000;
 export function createStationLink({
   stationId,
   getPosition,
+  setPosition = () => {},
   onChange = () => {},
   client,
   mountChat,
@@ -70,7 +72,13 @@ export function createStationLink({
     api.on('station_state', (msg) => {
       if (msg.stationId !== stationId) return;
       set({ granted: msg.ok === true, message: msg.ok ? '' : msg.message });
-      if (msg.ok) sendPosition({ force: true });
+      if (msg.ok) {
+        // Новая серверная сессия начинается на spawn. После reload локальная сцена могла остаться в старой точке;
+        // выравниваем клиента до первой station_pos, не ослабляя серверную проверку скорости.
+        setPosition(station.spawn);
+        last = null;
+        sendPosition({ force: true });
+      }
     }),
     api.on('status', ({ status }) => {
       if (status === 'open') return;

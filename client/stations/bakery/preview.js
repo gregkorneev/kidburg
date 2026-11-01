@@ -79,7 +79,7 @@ world.setState(state);
 refresh();
 
 // Разговор с пекарем: общий адаптер станции, панель и прогресс на сервере. Без входа игра идёт локально.
-link = openStationLink({ stationId: 'bakery', container: sceneRoot, getPosition: () => world?.getPosition(), onChange: refresh });
+link = openStationLink({ stationId: 'bakery', container: sceneRoot, getPosition: () => world?.getPosition(), setPosition: (p) => world?.setPosition(p), onChange: refresh });
 progress = createStationProgress({
   api: link.api,
   taskId: STATION_TASK_IDS.bakery,

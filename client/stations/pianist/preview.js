@@ -104,7 +104,7 @@ quality = scene.getQuality();
 scene.setTaskState(state); renderUI();
 
 // Разговор с Маэстро: общий адаптер станции, панель и прогресс на сервере. Без входа игра идёт локально.
-link = openStationLink({ stationId: 'pianist', container: sceneRoot, getPosition: () => scene?.getPosition(), onChange: renderUI });
+link = openStationLink({ stationId: 'pianist', container: sceneRoot, getPosition: () => scene?.getPosition(), setPosition: (p) => scene?.setPosition(p), onChange: renderUI });
 progress = createStationProgress({
   api: link.api,
   taskId: STATION_TASK_IDS.pianist,

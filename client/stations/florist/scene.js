@@ -316,6 +316,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
     setTaskState,
     setTalking,
     setUiBlocked,
+    setPosition({ x, z }) { if (Number.isFinite(x) && Number.isFinite(z)) { player.x = x; player.z = z; } },
     setQuality(level) {
       look.setQuality(level);
       setWindQuality(level);

@@ -115,7 +115,7 @@ scene = createFloristScene({
 quality = scene.getQuality();
 
 // Разговор с Лилией: общий адаптер станции, панель и прогресс на сервере. Без входа игра идёт локально.
-link = openStationLink({ stationId: 'florist', container: root, getPosition: () => scene?.getPosition(), onChange: renderUI });
+link = openStationLink({ stationId: 'florist', container: root, getPosition: () => scene?.getPosition(), setPosition: (p) => scene?.setPosition(p), onChange: renderUI });
 progress = createStationProgress({
   api: link.api,
   taskId: STATION_TASK_IDS.florist,
