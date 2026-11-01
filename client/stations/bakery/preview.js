@@ -3,7 +3,7 @@ import { readQuality } from '../../engine/art/quality.js';
 import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { applyBakeryAction, createInitialState } from './state.js';
 import { createBakeryScene } from './scene.js';
-import { mountBakeryUI } from './ui.js';
+import { bindControlsToggle, mountBakeryUI } from './ui.js';
 import './style.css';
 
 const sceneRoot = document.querySelector('#scene');
@@ -12,12 +12,20 @@ let state = createInitialState();
 let prompt = '';
 let notice = '';
 let quality = 'medium';
+let controlsOpen = true;
 let noticeTimer;
 let world;
 
 function refresh() {
-  mountBakeryUI(uiRoot, { state, prompt, notice, quality, onQuality: setQuality });
+  mountBakeryUI(uiRoot, { state, prompt, notice, quality, controlsOpen, onToggleControls: toggleControls, onQuality: setQuality });
 }
+
+function toggleControls() {
+  controlsOpen = !controlsOpen;
+  refresh();
+}
+
+const unbindControlsToggle = bindControlsToggle(window, toggleControls);
 
 function setNotice(message) {
   notice = message;
@@ -77,5 +85,6 @@ window.addEventListener('pagehide', (event) => {
   if (event.persisted) return;
   clearTimeout(noticeTimer);
   unbindCityExit();
+  unbindControlsToggle();
   world?.dispose();
 });

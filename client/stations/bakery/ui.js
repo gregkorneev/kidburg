@@ -17,7 +17,7 @@ function QualityButtons({ quality, onQuality }) {
   );
 }
 
-export function BakeryUI({ state, prompt = '', notice = '', quality = 'medium', onQuality = () => {} }) {
+export function BakeryUI({ state, prompt = '', notice = '', quality = 'medium', controlsOpen = true, onToggleControls = () => {}, onQuality = () => {} }) {
   const currentIndex = STAGES.indexOf(state.stage);
   return h('div', { class: 'bakery-ui' },
     h('header', { class: 'bakery-brand' },
@@ -36,13 +36,15 @@ export function BakeryUI({ state, prompt = '', notice = '', quality = 'medium', 
       )),
     ),
     h('aside', { class: 'controls-card' },
-      h('span', { class: 'eyebrow' }, 'УПРАВЛЕНИЕ'),
+      h('button', { class: 'controls-toggle', type: 'button', 'aria-expanded': controlsOpen, 'aria-controls': 'bakery-controls', onClick: onToggleControls },
+        h('span', { class: 'eyebrow' }, 'УПРАВЛЕНИЕ'), h('kbd', null, 'H')),
+      controlsOpen && h('div', { id: 'bakery-controls' },
       h('div', { class: 'control-row' }, h('kbd', null, 'W A S D'), h('span', null, 'движение')),
       h('div', { class: 'control-row' }, h('kbd', null, 'SHIFT'), h('span', null, 'быстрее')),
       h('div', { class: 'control-row' }, h('kbd', null, 'E'), h('span', null, 'действие')),
       h('div', { class: 'control-row' }, h('kbd', null, 'МЫШЬ'), h('span', null, 'обзор · ESC — отпустить')),
       h('div', { class: 'control-row' }, h('kbd', null, 'L'), h('span', null, 'в город')),
-      h(QualityButtons, { quality, onQuality }),
+      h(QualityButtons, { quality, onQuality })),
     ),
     h('div', { class: 'bakery-reticle', 'aria-hidden': 'true' }),
     prompt && h('div', { class: 'interaction-prompt', role: 'status', 'aria-live': 'polite' },
@@ -55,4 +57,14 @@ export function BakeryUI({ state, prompt = '', notice = '', quality = 'medium', 
 
 export function mountBakeryUI(root, props) {
   render(h(BakeryUI, props), root);
+}
+
+export function bindControlsToggle(target, onToggle) {
+  const onKeyDown = (event) => {
+    if (event.code !== 'KeyH' || event.repeat || event.ctrlKey || event.altKey || event.metaKey
+      || event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    onToggle();
+  };
+  target.addEventListener('keydown', onKeyDown);
+  return () => target.removeEventListener('keydown', onKeyDown);
 }
