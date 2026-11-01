@@ -46,12 +46,16 @@ const { mountUI } = await import('./index.js');
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-function mount({ localRoom = async () => null, join = async () => ({ name: 'Аня' }), createPreview } = {}) {
+function mount({ localRoom = async () => null, join = async () => ({ name: 'Аня' }), createPreview, savedSkin = false } = {}) {
   body.children = [];
   const calls = [];
   const noop = () => () => {};
   const api = {
-    auth: { session: () => null, localRoom, join: (...args) => { calls.push(args); return join(...args); } },
+    auth: { session: () => null, localRoom, join: (...args) => {
+      calls.push(args);
+      if (!savedSkin && args[2] === undefined) return Promise.reject(Object.assign(new Error('Создайте персонажа'), { code: 'appearance_required' }));
+      return join(...args);
+    } },
     on: noop,
     net: { status: 'closed', on: noop },
   };
@@ -90,7 +94,7 @@ test('автозаполнение: игроку остаётся ввести �
   assert.match(ui.root.text(), /Создай персонажа/);
   await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
   await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
-  assert.deepEqual(ui.calls, [['Аня', 'BCDF', { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } }]]);
+  assert.deepEqual(ui.calls, [['Аня', 'BCDF'], ['Аня', 'BCDF', { avatar: { skin: 0, clothes: 0, hair: 0, hairColor: 0, shoes: 0 } }]]);
 });
 
 test('другой компьютер: сервер кода не дал, поле пустое и код не показан', async () => {
@@ -114,7 +118,7 @@ test('игрок стёр код сам — подставленный код н
   await ui.field('room').type('');
   await ui.field('name').type('Аня');
   const form = ui.root.all().find((node) => node.tag === 'form');
-  await ui.root.all().find((node) => node.textContent === 'Уже играл? Войти').fire('click'); // неудачный вход перерисовывает форму
+  await form.fire('submit'); // неудачный вход перерисовывает форму
   assert.equal(ui.field('room').value, '');
   assert.equal(ui.field('name').value, 'Аня', 'имя сохраняется');
 });
@@ -168,7 +172,7 @@ test('ошибки не сбрасывают выбор, повтор отпра
   assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice')[13].attributes['aria-pressed'], 'true');
   await ui.root.all().find((node) => node.textContent === 'Продолжить').fire('click');
   await ui.root.all().find((node) => node.textContent === 'Войти в игру').fire('click');
-  assert.deepEqual(ui.calls[1][2], { avatar: { skin: 3, clothes: 0, hair: 0, hairColor: 1, shoes: 0 } });
+  assert.deepEqual(ui.calls[2][2], { avatar: { skin: 3, clothes: 0, hair: 0, hairColor: 1, shoes: 0 } });
   assert.match(ui.root.text(), /Сервер/);
 });
 
@@ -203,4 +207,25 @@ test('все 20 кнопок обновляют только выбранную 
     }
   }
   ui.dispose();
+});
+
+
+test('игрок со скином входит основной кнопкой без настройки и preview', async () => {
+  let previews = 0;
+  const ui = mount({ savedSkin: true, createPreview: () => { previews++; } });
+  await customize(ui);
+  assert.deepEqual(ui.calls, [['Аня', 'BCDF']]);
+  assert.equal(previews, 0);
+  assert.doesNotMatch(ui.root.text(), /Создай персонажа/);
+  assert.ok(ui.root.all().some((node) => node.className === 'auth-badge'));
+});
+
+test('неверный код и сбой сети оставляют игрока на входе без настройки скина', async () => {
+  for (const code of ['bad_room', 'network', 'name_taken']) {
+    const ui = mount({ savedSkin: true, join: async () => { throw Object.assign(new Error('error'), { code }); } });
+    await customize(ui);
+    assert.ok(ui.field('name'));
+    assert.equal(ui.field('name').value, 'Аня');
+    assert.doesNotMatch(ui.root.text(), /Создай персонажа/);
+  }
 });

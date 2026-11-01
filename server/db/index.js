@@ -40,6 +40,7 @@ export function openDb(file = DEFAULT_DB_FILE) {
     userById: handle.prepare('SELECT * FROM users WHERE id = ?'),
     userByName: handle.prepare('SELECT * FROM users WHERE name = ?'),
     updatePasswordHash: handle.prepare('UPDATE users SET pass_hash = ?, salt = ? WHERE id = ?'),
+    updateAppearance: handle.prepare('UPDATE users SET appearance = ? WHERE id = ?'),
     allUsers: handle.prepare('SELECT * FROM users'),
     insertSession: handle.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)'),
     sessionByHash: handle.prepare('SELECT user_id, expires_at FROM sessions WHERE token_hash = ? AND expires_at > ?'),
@@ -172,6 +173,10 @@ export function openDb(file = DEFAULT_DB_FILE) {
         if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return null;
         throw err;
       }
+    },
+    updateAppearance(id, appearance) {
+      q.updateAppearance.run(JSON.stringify(appearance), id);
+      return toUser(q.userById.get(id)) ?? null;
     },
     getUser: (id) => toUser(q.userById.get(id)) ?? null,
     findUserByName(name) {

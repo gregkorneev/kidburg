@@ -69,11 +69,13 @@ test('join persists avatar; repeated join and legacy keep their saved appearance
     const again = await post(app, '/api/join', { name: 'Anna', room: 'ABCD', appearance: { avatar: DEFAULT_AVATAR } });
     assert.deepEqual(again.json().user.appearance, { avatar });
     const legacy = await post(app, '/api/join', { name: 'Legacy', room: 'ABCD' });
-    assert.deepEqual(legacy.json().user.appearance, { color: 42 });
+    assert.equal(legacy.json().error, 'appearance_required');
+    const migrated = await post(app, '/api/join', { name: 'Legacy', room: 'ABCD', appearance: { avatar } });
+    assert.deepEqual(migrated.json().user.appearance, { color: 42, avatar });
     const old = await post(app, '/api/join', { name: 'OldAvatar', room: 'ABCD', appearance: { avatar } });
     assert.deepEqual(old.json().user.appearance, { avatar: oldAvatar });
     const empty = await post(app, '/api/join', { name: 'Empty', room: 'ABCD', appearance: { avatar } });
-    assert.deepEqual(empty.json().user.appearance, {});
+    assert.deepEqual(empty.json().user.appearance, { avatar });
     const db = openDb(dbPath); assert.deepEqual(db.getUser(user.id).appearance, { avatar }); assert.deepEqual(db.findUserByName('OldAvatar').appearance, { avatar: oldAvatar }); db.close();
     await app.close();
     app = await makeApp({ dbPath, roomCode: 'ABCD' });
@@ -96,6 +98,32 @@ test('password register requires avatar; login never replaces it', async () => {
       assert.equal(login.statusCode, 200); assert.deepEqual(login.json().user.appearance, { avatar });
       const me = await app.inject({ url: '/api/me', headers: { authorization: `Bearer ${login.json().token}` } });
       assert.deepEqual(me.json().user.appearance, { avatar });
+    }
+  } finally { await app.close(); }
+});
+
+
+test('join: skin is requested only when missing; probe creates neither user nor session', async () => {
+  const db = openDb(':memory:');
+  const app = await makeApp({ roomCode: 'ABCD', db });
+  try {
+    const probe = await post(app, '/api/join', { name: 'Newcomer', room: 'ABCD' });
+    assert.equal(probe.statusCode, 400);
+    assert.equal(probe.json().error, 'appearance_required');
+    assert.equal(probe.json().token, undefined);
+    assert.equal(db.findUserByName('Newcomer'), null);
+    for (const stored of [{}, { color: 42 }, { avatar: { skin: 9 } }]) {
+      const user = db.createUser({ name: 'Legacy' + Object.keys(stored).join(''), passHash: 'h', salt: 's', appearance: stored });
+      const required = await post(app, '/api/join', { name: user.name, room: 'ABCD' });
+      assert.equal(required.json().error, 'appearance_required');
+      assert.equal(required.json().token, undefined);
+      const saved = await post(app, '/api/join', { name: user.name, room: 'ABCD', appearance: { avatar } });
+      assert.equal(saved.statusCode, 200);
+      assert.equal(saved.json().user.id, user.id);
+      assert.deepEqual(saved.json().user.appearance, { ...stored, avatar });
+      const repeated = await post(app, '/api/join', { name: user.name, room: 'ABCD' });
+      assert.equal(repeated.statusCode, 200);
+      assert.deepEqual(repeated.json().user.appearance.avatar, avatar);
     }
   } finally { await app.close(); }
 });

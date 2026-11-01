@@ -214,7 +214,7 @@ test('http: appearance передаётся при регистрации и н�
   const { app, port } = await startServer();
   try {
     const { http } = makeClient(port);
-    await assert.rejects(http.join('Аня', ROOM), (error) => error.code === 'bad_appearance');
+    await assert.rejects(http.join('Аня', ROOM), (error) => error.code === 'appearance_required');
     const first = await http.join('Аня', ROOM, appearance);
     assert.deepEqual(first.user.appearance.avatar, appearance.avatar);
     const again = await http.join('Аня', ROOM);

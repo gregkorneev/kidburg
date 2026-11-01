@@ -49,6 +49,10 @@ export function mountUI(api, { createPreview } = {}) {
       roomTouched = false;
       step = 'login';
     } catch (error) {
+      if (!withAvatar && error?.code === 'appearance_required') {
+        step = 'customize';
+        return;
+      }
       message = errors[error?.code] || error?.message || 'Не удалось войти. Проверьте подключение к серверу.';
     } finally {
       busy = false;
@@ -190,30 +194,18 @@ export function mountUI(api, { createPreview } = {}) {
 
     const feedback = element('p', 'auth-message', message);
     feedback.hidden = !message;
-    const submit = element('button', 'auth-button auth-button--primary', 'Создать персонажа');
+    const submit = element('button', 'auth-button auth-button--primary', busy ? 'Подключаем…' : 'Войти');
     submit.type = 'submit';
     submit.disabled = busy;
     form.append(nameLabel, roomLabel, feedback, submit);
-    const existing = element('button', 'auth-link', busy ? 'Подключаем…' : 'Уже играл? Войти');
-    existing.type = 'button';
-    existing.disabled = busy;
-    existing.addEventListener('click', () => {
-      draftName = nameInput.value;
-      draftRoom = roomInput.value;
-      if (!nameInput.value.trim() || !roomInput.value) { message = 'Введите имя и код комнаты.'; render(); return; }
-      join(false);
-    });
-    form.append(existing);
     feedback.setAttribute('role', 'alert');
-    form.addEventListener('submit', (event) => {
+    form.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (busy) return;
       draftName = nameInput.value;
       draftRoom = roomInput.value;
       if (!draftName.trim() || !draftRoom) { message = 'Введите имя и код комнаты.'; render(); return; }
-      message = '';
-      step = 'customize';
-      render();
+      await join(false);
     });
     panel.append(title, intro, form);
     if (hostRoom) {

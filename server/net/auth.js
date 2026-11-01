@@ -1,4 +1,4 @@
-import { normalizeAvatar } from '../../shared/avatar.js';
+import { normalizeAvatar, normalizeStoredAvatar } from '../../shared/avatar.js';
 // REST-авторизация: вход по имени и коду комнаты (/api/join), /api/me, тикет для WebSocket.
 // Личность игрока задаёт только сервер: токен из /api/join -> одноразовый тикет -> сокет.
 // Токен: 32 случайных байта (base64url), в БД лежит только HMAC-SHA-256 токена.
@@ -138,11 +138,14 @@ export function registerAuthRoutes(
     let user = db.findUserByNameAnyCase(name);
     // Имя играющего человека не отдаём: иначе по имени можно было бы вытеснить его из игры.
     if (user && isOnline(user.id)) return fail(reply, 409, 'name_taken', 'Это имя сейчас занято. Выберите другое.');
-    if (!user) {
+    if (!normalizeStoredAvatar(user?.appearance?.avatar)) {
+      if (body.appearance === undefined) return fail(reply, 400, 'appearance_required', 'Создайте персонажа для входа в игру');
       const avatar = normalizeAvatar(body.appearance?.avatar);
       if (!avatar) return fail(reply, 400, 'bad_appearance', 'Выберите допустимые варианты внешности');
       // Пароля нет: в БД лежит случайный хеш, которому не соответствует ни один пароль.
-      user = db.createUser({ name, passHash: randomBytes(KEY_LEN).toString('hex'), salt: randomBytes(SALT_LEN).toString('hex'), appearance: { avatar }, now: t });
+      user = user
+        ? db.updateAppearance(user.id, { ...user.appearance, avatar })
+        : db.createUser({ name, passHash: randomBytes(KEY_LEN).toString('hex'), salt: randomBytes(SALT_LEN).toString('hex'), appearance: { avatar }, now: t });
       if (!user) return fail(reply, 409, 'name_taken', 'Это имя сейчас занято. Выберите другое.');
     }
     db.purgeExpiredSessions(t);
