@@ -56,6 +56,21 @@ test('makeSessionId: случайный допустимый идентифик�
   assert.notEqual(a, b);
 });
 
+test('ID телеметрии сохраняется при переходе между страницами в той же вкладке', () => {
+  const values = new Map();
+  const storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const first = fakeEnv();
+  first.win.sessionStorage = storage;
+  const a = startTelemetry({ loc: 'bakery', ...first });
+  a.stop();
+
+  const nextPage = fakeEnv();
+  nextPage.win.sessionStorage = storage;
+  const b = startTelemetry({ loc: 'city', ...nextPage });
+  assert.equal(b.sid, a.sid);
+  b.stop();
+});
+
 test('счётчик кадров считает среднее за окно, а не мгновенное значение', () => {
   let t = 0;
   const meter = createFrameMeter(() => t);

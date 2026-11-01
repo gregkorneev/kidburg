@@ -22,6 +22,19 @@ export function makeSessionId(cryptoImpl = globalThis.crypto) {
   return `s${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
 }
 
+function sessionIdForTab(storage) {
+  const key = 'kidburg.telemetry.sid';
+  try {
+    const existing = storage?.getItem(key);
+    if (existing && /^[A-Za-z0-9_-]{8,64}$/.test(existing)) return existing;
+    const sid = makeSessionId();
+    storage?.setItem(key, sid);
+    return sid;
+  } catch {
+    return makeSessionId();
+  }
+}
+
 /** Счётчик кадров: fps и среднее время кадра за окно между двумя снятиями. */
 export function createFrameMeter(now, getFrameCount = null) {
   let frames = 0;
@@ -82,9 +95,10 @@ export function startTelemetry({
   fetchImpl = globalThis.fetch?.bind(globalThis),
   session = createSession(),
   now = () => performance.now(),
-  sid = makeSessionId(),
+  sid = null,
 } = {}) {
   if (!win || !doc || !fetchImpl) return { markFrame() {}, stop() {}, sid: null };
+  sid ??= sessionIdForTab(win.sessionStorage);
   const meter = createFrameMeter(now, getFrameCount);
   let interval = Math.min(MAX_INTERVAL_MS, Math.max(MIN_INTERVAL_MS, intervalMs));
   let timer = null;
