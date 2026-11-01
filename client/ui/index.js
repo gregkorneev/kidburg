@@ -120,7 +120,7 @@ export function mountUI(api, { createPreview } = {}) {
             button.setAttribute('aria-pressed', String(avatar[key] === i));
             button.addEventListener('click', () => {
               avatar[key] = i;
-              for (const [index, choice] of choices.children.entries()) choice.setAttribute('aria-pressed', String(index === i));
+              for (const [index, choice] of Array.from(choices.children).entries()) choice.setAttribute('aria-pressed', String(index === i));
               preview?.setAvatar?.({ ...avatar });
             });
             choices.append(button);

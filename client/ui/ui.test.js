@@ -16,7 +16,7 @@ register(
 class Node {
   constructor(tag) {
     this.tag = tag;
-    this.children = [];
+    this.children = Object.assign(Object.create(null), { length: 0, push: Array.prototype.push, flatMap: Array.prototype.flatMap, [Symbol.iterator]: Array.prototype[Symbol.iterator] });
     this.attributes = {};
     this.listeners = {};
     this.className = '';
@@ -25,7 +25,7 @@ class Node {
     this.hidden = false;
   }
   append(...items) { for (const item of items) this.children.push(typeof item === 'string' ? Object.assign(new Node('#text'), { textContent: item }) : item); }
-  replaceChildren(...items) { this.children = []; this.append(...items); }
+  replaceChildren(...items) { this.children = Object.assign(Object.create(null), { length: 0, push: Array.prototype.push, flatMap: Array.prototype.flatMap, [Symbol.iterator]: Array.prototype[Symbol.iterator] }); this.append(...items); }
   setAttribute(name, value) { this.attributes[name] = value; }
   addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
   async fire(type, event = {}) { for (const fn of this.listeners[type] ?? []) await fn({ preventDefault() {}, ...event }); }
@@ -181,4 +181,24 @@ test('ошибки контракта показываются без потер
     await ui.root.all().find((node) => node.textContent === 'Назад').fire('click');
     assert.equal(ui.root.all().filter((node) => node.className === 'avatar-choice')[1].attributes['aria-pressed'], 'true');
   }
+});
+
+test('все 16 кнопок обновляют только выбранную категорию, оформление и preview', async () => {
+  const updates = [];
+  const ui = mount({ createPreview: () => ({ setAvatar: (value) => updates.push(value) }) });
+  await customize(ui);
+  const state = { skin: 0, clothes: 0, hair: 0, shoes: 0 };
+  const groups = ui.root.all().filter((node) => node.tag === 'fieldset');
+  for (const [groupIndex, key] of ['skin', 'clothes', 'hair', 'shoes'].entries()) {
+    const choices = groups[groupIndex].all().filter((node) => node.className === 'avatar-choice');
+    for (let value = 0; value < 4; value++) {
+      const count = updates.length;
+      await choices[value].fire('click');
+      state[key] = value;
+      assert.equal(updates.length, count + 1);
+      assert.deepEqual(updates.at(-1), state);
+      assert.deepEqual(choices.map((node) => node.attributes['aria-pressed']), choices.map((_, i) => String(i === value)));
+    }
+  }
+  ui.dispose();
 });

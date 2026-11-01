@@ -39,7 +39,8 @@
 }
 .auth-panel--customizer { width: min(520px, 100%); }
 .auth-panel--customizer .auth-intro { margin-bottom: 16px; }
-.avatar-preview { display: grid; place-items: center; min-height: 155px; overflow: hidden; border: 1px solid #cfded0; border-radius: 18px; background: radial-gradient(circle at 50% 30%, #fffdf2, #dcebdd); color: #66766c; }
+.avatar-preview { display: grid; place-items: center; height: 200px; min-width: 0; overflow: hidden; border: 1px solid #cfded0; border-radius: 18px; background: radial-gradient(circle at 50% 30%, #fffdf2, #dcebdd); color: #66766c; }
+.avatar-preview canvas { display: block; max-width: 100%; max-height: 100%; pointer-events: none; }
 .avatar-preview__placeholder { font-size: 13px; }
 .avatar-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin-top: 18px; }
 .avatar-group { min-width: 0; margin: 0; border: 0; padding: 0; }
