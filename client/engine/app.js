@@ -11,10 +11,12 @@ import { applyStylizedLook } from './art/lighting.js';
 import { readQuality } from './art/quality.js';
 import { createChunkManager, makeLabel } from './chunks.js';
 import {
+  BAKERY_ENTRANCE,
   FIRE_STATION_ENTRANCE,
   FLORIST_ENTRANCE,
   isNearFireStationEntrance,
   isNearFloristEntrance,
+  isNearBakeryEntrance,
 } from './city-entrance.js';
 import { createEmitter } from './emitter.js';
 import { createHttp } from './http.js';
@@ -218,11 +220,16 @@ export function createClient({ container, networkOnly = false }) {
     let avatar = null;
     let fireStationNearby = false;
     let floristNearby = false;
+    let bakeryNearby = false;
     const input = createInput({
       target: renderer.domElement,
       document,
       window: win,
       onInteract: () => {
+        if (bakeryNearby) {
+          win.location.assign(BAKERY_ENTRANCE.href);
+          return;
+        }
         if (floristNearby) {
           win.location.assign(FLORIST_ENTRANCE.href);
           return;
@@ -407,10 +414,12 @@ export function createClient({ container, networkOnly = false }) {
           setNpc(world.nearestNpc(player.x, player.y, player.z, TALK_DISTANCE));
           const nearEntrance = isNearFireStationEntrance(player.x, player.z);
           const nearFlorist = isNearFloristEntrance(player.x, player.z);
-          if (nearEntrance !== fireStationNearby || nearFlorist !== floristNearby) {
+          const nearBakery = isNearBakeryEntrance(player.x, player.z);
+          if (nearEntrance !== fireStationNearby || nearFlorist !== floristNearby || nearBakery !== bakeryNearby) {
             fireStationNearby = nearEntrance;
             floristNearby = nearFlorist;
-            hud.setEntrancePrompt(floristNearby ? FLORIST_ENTRANCE.label : fireStationNearby ? FIRE_STATION_ENTRANCE.label : '');
+            bakeryNearby = nearBakery;
+            hud.setEntrancePrompt(bakeryNearby ? BAKERY_ENTRANCE.label : floristNearby ? FLORIST_ENTRANCE.label : fireStationNearby ? FIRE_STATION_ENTRANCE.label : '');
           }
         }
       }

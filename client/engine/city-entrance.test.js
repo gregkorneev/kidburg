@@ -1,14 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BAKERY_ENTRANCE,
   FIRE_STATION_ENTRANCE,
   FLORIST_ENTRANCE,
   isNearFireStationEntrance,
   isNearFloristEntrance,
+  isNearBakeryEntrance,
 } from './city-entrance.js';
 
 test('fire station entrance is reachable from the west path', () => {
   assert.equal(isNearFireStationEntrance(395, 412), true);
+});
+
+test('bakery entrance is reachable from the plaza and rejects distant or invalid coordinates', () => {
+  assert.equal(isNearBakeryEntrance(436, 412), true);
+  assert.equal(isNearBakeryEntrance(416, 416), false);
+  assert.equal(isNearBakeryEntrance(BAKERY_ENTRANCE.x - BAKERY_ENTRANCE.radius, BAKERY_ENTRANCE.z), true);
+  assert.equal(isNearBakeryEntrance(Number.NaN, 412), false);
+  assert.equal(BAKERY_ENTRANCE.href, './bakery-preview.html');
 });
 
 test('entrance prompt does not appear while the player is far away', () => {

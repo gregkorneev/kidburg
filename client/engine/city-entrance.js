@@ -18,6 +18,15 @@ export const FLORIST_ENTRANCE = Object.freeze({
   label: 'Войти в цветочную лавку',
 });
 
+// Фасад пекарни обращён к площади: центр (450, 412), поворот -π/2.
+export const BAKERY_ENTRANCE = Object.freeze({
+  x: 443.05,
+  z: 412,
+  radius: 10,
+  href: './bakery-preview.html',
+  label: 'Войти в пекарню',
+});
+
 export function isNearFireStationEntrance(x, z) {
   return Number.isFinite(x) && Number.isFinite(z) &&
     Math.hypot(x - FIRE_STATION_ENTRANCE.x, z - FIRE_STATION_ENTRANCE.z) <= FIRE_STATION_ENTRANCE.radius;
@@ -26,4 +35,9 @@ export function isNearFireStationEntrance(x, z) {
 export function isNearFloristEntrance(x, z) {
   return Number.isFinite(x) && Number.isFinite(z) &&
     Math.hypot(x - FLORIST_ENTRANCE.x, z - FLORIST_ENTRANCE.z) <= FLORIST_ENTRANCE.radius;
+}
+
+export function isNearBakeryEntrance(x, z) {
+  return Number.isFinite(x) && Number.isFinite(z) &&
+    Math.hypot(x - BAKERY_ENTRANCE.x, z - BAKERY_ENTRANCE.z) <= BAKERY_ENTRANCE.radius;
 }
