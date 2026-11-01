@@ -9,6 +9,7 @@ import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-came
 import { ROOM, SPAWN, ZONES, OBSTACLES, collidesWithFurniture, isInsideRoom } from './layout.js';
 import { activeZone, interactionPrompt, resolveInteraction } from './interactions.js';
 import { createBakeryInterior } from './station-art.js';
+import { turnNpcToward } from '../../engine/npc-facing.js';
 
 const MOUSE_SENSITIVITY = 0.0024;
 const PLAYER_RADIUS = 0.42;
@@ -164,7 +165,7 @@ export function createBakeryScene({
     player.rotation.y = cameraYaw + Math.PI;
     animateCharacter(player, dt, elapsed, { speed });
     animateCharacter(mentor, dt, elapsed, { speed: 0 });
-    mentor.rotation.y += Math.sin(elapsed * 0.7) * 0.0008;
+    turnNpcToward(mentor, mentor.position, player.position, dt, Math.PI);
     updateCamera(dt);
     interior.update(dt, elapsed);
     setPrompt(interactionPrompt(state, position()));

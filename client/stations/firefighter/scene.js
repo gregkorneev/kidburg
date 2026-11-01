@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { turnNpcToward } from '../../engine/npc-facing.js';
 import { WINDOW_HIT_LIMIT } from './state.js';
 import { LOCAL_POINTS, LOCAL_WINDOWS, START, WALL, WINDOW_DEPTH } from './layout.js';
 import { SAFETY_ZONE, blockedBySafetyZone } from './safety-zone.js';
@@ -677,14 +678,11 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
   /** Маруся: поворачивается к игроку, здоровается на подходе, жестикулирует во время разговора. */
   function updateNpc(delta, elapsed) {
     const near = Math.hypot(player.position.x - npc.position.x, player.position.z - npc.position.z);
-    const noticing = near < NPC_NOTICE_DISTANCE;
+    const noticing = turnNpcToward(npc, npc.position, player.position, delta, npcRestYaw, NPC_NOTICE_DISTANCE);
     if (near < NPC_GREET_DISTANCE && !npcGreeted) {
       npcGreeted = true;
       reactToEvent(npc, 'greet');
     } else if (near > NPC_NOTICE_DISTANCE) npcGreeted = false;
-    const want = noticing ? Math.atan2(player.position.x - npc.position.x, player.position.z - npc.position.z) : npcRestYaw;
-    const turn = ((((want - npc.rotation.y) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-    npc.rotation.y += turn * Math.min(1, delta * 3.2);
     const lookYaw = noticing ? yawToward(npc, player.position.x, player.position.z) : 0;
     animateCharacter(npc, delta, elapsed, { speed: 0, talking: npcTalking, lookYaw });
   }

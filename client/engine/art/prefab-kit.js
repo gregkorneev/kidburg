@@ -233,19 +233,16 @@ export function createPrefabKit({ seed = 1, tint = 0.035 } = {}) {
 
   /** Деревянная лавка/скамейка на кованых ножках. */
   function bench(x, z, rotY, { wood = 0xb8774c, metal = 0x2f5a60, width = 2.2 } = {}) {
-    const c = Math.cos(rotY);
-    const s = Math.sin(rotY);
-    const put = (lx, ly, lz) => [x + lx * c + lz * s, ly, z - lx * s + lz * c];
-    const seat = put(0, 0.5, 0);
-    box(width, 0.1, 0.6, seat[0], seat[1], seat[2], wood, { ry: rotY, r: 0.03 });
-    const back = put(0, 0.9, -0.26);
-    box(width, 0.42, 0.08, back[0], back[1], back[2], wood, { ry: rotY, r: 0.03, rot: [-0.12, 0, 0] });
-    for (const sx of [-1, 1]) {
-      const leg = put(sx * (width / 2 - 0.12), 0.26, 0);
-      box(0.09, 0.52, 0.5, leg[0], leg[1], leg[2], metal, { ry: rotY, r: 0.03 });
-      const arm = put(sx * (width / 2 - 0.12), 0.7, -0.05);
-      box(0.09, 0.07, 0.52, arm[0], arm[1], arm[2], metal, { ry: rotY, r: 0.02 });
-    }
+    at([x, 0, z], rotY, () => {
+      box(width, 0.1, 0.6, 0, 0.5, 0, wood, { r: 0.03 });
+      box(width, 0.42, 0.08, 0, 0.75, -0.26, wood, { r: 0.03, rot: [-0.12, 0, 0] });
+      for (const sx of [-1, 1]) {
+        const side = sx * (width / 2 - 0.12);
+        box(0.09, 0.52, 0.5, side, 0.26, 0, metal, { r: 0.03 });
+        box(0.09, 0.2, 0.09, side, 0.6, -0.22, metal);
+        box(0.09, 0.07, 0.52, side, 0.7, -0.05, metal, { r: 0.02 });
+      }
+    });
   }
 
   /** Сборка: слияние, запечённое затемнение у земли, под карнизами и на нижних гранях. */

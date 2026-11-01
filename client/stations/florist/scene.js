@@ -13,6 +13,7 @@ import { characterYawForPlayer, setCameraFocus } from './orientation.js';
 import { targetDistance, targetsForState } from './targets.js';
 import { FLORIST_PLAN } from './layout-plan.js';
 import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
+import { turnNpcToward } from '../../engine/npc-facing.js';
 
 const INTERACTION_RADIUS = 1.72;
 const MOUSE_SENSITIVITY = 0.0024;
@@ -284,7 +285,8 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
 
     const elapsed = (now - started) / 1000;
     animateCharacter(avatar, dt, elapsed, { speed: player.moving ? (player.running ? 2 : 1) : 0 });
-    animateCharacter(lilia, dt, elapsed, { talking, lookYaw: Math.sin(elapsed * 0.6) * 0.08 });
+    turnNpcToward(lilia, lilia.position, player, dt, 0);
+    animateCharacter(lilia, dt, elapsed, { talking });
     updateWind(elapsed);
     const target = findTarget();
     if (!uiBlocked) updatePrompt(target);

@@ -124,6 +124,14 @@ test('сцена Bakery: создаётся, принимает все прес�
   assert.equal(world.setQuality('high'), 'high');
   world.setPosition({ x: 0, z: 5.55 });
   assert.deepEqual(world.getPosition(), { x: 0, z: 5.55 });
+  for (let i = 1; i <= 120; i++) frames.at(-1)(1000 + i * 16);
+  const mentor = world.debug.mentor;
+  let direction = Math.atan2(world.getPosition().x - mentor.position.x, world.getPosition().z - mentor.position.z);
+  assert.ok(Math.abs(mentor.rotation.y - direction) < 0.01, 'наставник смотрит на игрока справа');
+  world.setPosition({ x: -6, z: 5.5 });
+  for (let i = 1; i <= 120; i++) frames.at(-1)(3000 + i * 16);
+  direction = Math.atan2(world.getPosition().x - mentor.position.x, world.getPosition().z - mentor.position.z);
+  assert.ok(Math.abs(mentor.rotation.y - direction) < 0.01, 'наставник поворачивается к игроку спереди');
   world.dispose();
   assert.equal(renderer.disposed, true);
   assert.equal(renderer.domElement.removed, true);
