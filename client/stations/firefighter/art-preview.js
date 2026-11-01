@@ -14,7 +14,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 host.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -271,10 +271,9 @@ document.querySelectorAll('[data-view]').forEach((button) => button.addEventList
 setView('scene');
 function resize() { camera.aspect = host.clientWidth / Math.max(1, host.clientHeight); camera.updateProjectionMatrix(); renderer.setSize(host.clientWidth, host.clientHeight); }
 window.addEventListener('resize', resize); resize();
-const clock = new THREE.Clock();
 let frames = 0; let lastStats = 0;
-function animate() {
-  requestAnimationFrame(animate); const t = clock.getElapsedTime();
+function animate(timestamp) {
+  requestAnimationFrame(animate); const t = timestamp / 1000;
   const gait = motion === 'walk' ? 1 : motion === 'run' ? 1.7 : 0;
   legs.forEach((pair, i) => pair.forEach((leg) => { leg.rotation.x = gait * 0.4 * Math.sin(t * (motion === 'run' ? 8 : 5) + (i + 1) * Math.PI); }));
   animated.position.y = gait ? Math.abs(Math.sin(t * (motion === 'run' ? 8 : 5))) * 0.06 : 0;
