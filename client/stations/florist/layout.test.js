@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { buildFloristLayout } from './layout.js';
 import { FLORIST_PLAN, ROOM } from './layout-plan.js';
 import { createInitialState, ORDER } from './state.js';
-import { targetsForState } from './targets.js';
+import { targetDistance, targetsForState } from './targets.js';
+import { collides } from '../../engine/player.js';
 
 test('интерьер безопасно освобождает вывески, цветы и геометрию', () => {
   const layout = buildFloristLayout();
@@ -14,25 +15,29 @@ test('интерьер безопасно освобождает вывески,
   assert.doesNotThrow(() => layout.dispose());
 });
 
-test('точки четырёх действий доступны вокруг мебели и внутренних коллайдеров', () => {
+test('коллизии защищают мебель, вёдра и стены с отступом', () => {
   const layout = buildFloristLayout();
-  const points = [...Object.values(layout.buckets).map((bucket) => bucket.position), ...Object.values(layout.stations)];
-  const furniture = layout.colliders.filter((box) => box.minX > 0.3 && box.maxX < 13.7 && box.minZ > 0.3 && box.maxZ < 9.7);
-  for (const point of points) {
-    const blocked = furniture.some((box) => point.x >= box.minX && point.x <= box.maxX && point.z >= box.minZ && point.z <= box.maxZ);
-    assert.equal(blocked, false, `interaction target at ${point.x}, ${point.z} is inside furniture`);
+  for (const { x, z } of [...Object.values(FLORIST_PLAN.desks), ...Object.values(FLORIST_PLAN.buckets)]) {
+    assert.ok(collides(layout.colliders, x, 0, z), `нет коллизии в ${x}, ${z}`);
   }
+  for (const [x, z] of [[1, 7], [19, 7], [7, 1], [7, 14]]) {
+    assert.ok(collides(layout.colliders, x, 0, z), `нет стены в ${x}, ${z}`);
+  }
+  assert.ok(!collides(layout.colliders, FLORIST_PLAN.spawn.x, 0, FLORIST_PLAN.spawn.z));
   layout.dispose();
 });
 
-test('комната расширена, игровые зоны входят в границы и сохраняют проходы', () => {
-  assert.deepEqual(ROOM, { width: 20, depth: 15, height: 6 });
+test('к рабочему и упаковочному столам можно подойти и взаимодействовать с четырёх сторон', () => {
   const layout = buildFloristLayout();
-  const allPoints = [FLORIST_PLAN.spawn, ...Object.values(layout.stations), ...Object.values(layout.buckets).map(({ position }) => position)];
-  for (const point of allPoints) {
-    assert.ok(point.x > 0.3 && point.x < ROOM.width - 0.3);
-    assert.ok(point.z > 0.3 && point.z < ROOM.depth - 0.3);
-    assert.ok(!layout.colliders.some((box) => point.x >= box.minX && point.x <= box.maxX && point.z >= box.minZ && point.z <= box.maxZ));
+  for (const key of ['workbench', 'wrapping']) {
+    const desk = FLORIST_PLAN.desks[key];
+    const target = { desk };
+    const points = [[desk.x - desk.width / 2 - 0.6, desk.z], [desk.x + desk.width / 2 + 0.6, desk.z],
+      [desk.x, desk.z - desk.depth / 2 - 0.6], [desk.x, desk.z + desk.depth / 2 + 0.6]];
+    for (const [x, z] of points) {
+      assert.ok(!collides(layout.colliders, x, 0, z), `${key}: подход заблокирован ${x}, ${z}`);
+      assert.ok(targetDistance(target, x, z) < 1.72);
+    }
   }
   layout.dispose();
 });

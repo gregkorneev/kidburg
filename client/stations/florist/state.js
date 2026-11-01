@@ -11,6 +11,11 @@ export const RIBBONS = Object.freeze({
   blue: 'Синяя лента',
 });
 
+export function ribbonForKey(code) {
+  const match = /^(?:Digit|Numpad)([1-3])$/.exec(code);
+  return match ? Object.keys(RIBBONS)[Number(match[1]) - 1] : null;
+}
+
 export const ORDER = Object.freeze({
   stems: Object.freeze({ pink_tulip: 2, white_daisy: 2, greenery: 1 }),
   total: 5,

@@ -28,13 +28,13 @@ function OrderCard({ state, onRibbon }) {
     state.stage === 'wrapping' && !correct && h('p', { class: 'correction-hint' }, 'В букете есть ошибка. Вернитесь к рабочему столу и исправьте состав. Уберите последний стебель и замените его.'),
     state.stage === 'wrapping' && correct && h('div', { class: 'ribbon-picker', role: 'group', 'aria-label': 'Выбрать ленту' },
       h('span', { class: 'ribbon-label' }, `Лента: ${state.ribbon ? RIBBONS[state.ribbon] : 'не выбрана'}`),
-      Object.entries(RIBBONS).map(([id, label]) => h('button', {
+      Object.entries(RIBBONS).map(([id, label], index) => h('button', {
         key: id,
         type: 'button',
         class: `ribbon-choice ribbon-choice--${id}${state.ribbon === id ? ' is-selected' : ''}`,
         'aria-pressed': state.ribbon === id,
         onClick: () => onRibbon(id),
-      }, label)),
+      }, `${index + 1} · ${label}`)),
       h('small', null, 'Затем подойдите к упаковочному столу и нажмите E.'),
     ),
     state.stage === 'handoff' && h('p', { class: 'held-note held-note--success' }, 'Букет упакован. Отнесите его на стойку выдачи.'),
