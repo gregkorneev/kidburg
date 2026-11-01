@@ -1,5 +1,5 @@
 // Чанки мира: разбор MessagePack, рельеф по высотам, InstancedMesh по префабам,
-// AABB-коллайдеры и NPC. Ресурсы выгруженного чанка освобождаются (shared/chunk-format.md).
+// коллайдеры и NPC. Ресурсы выгруженного чанка освобождаются (shared/chunk-format.md).
 
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -108,14 +108,26 @@ export function makeLabel(text) {
   return new CSS2DObject(el);
 }
 
-/** AABB инстанса с учётом поворота и масштаба. */
+/** Коллайдер инстанса с AABB-границами и локальной формой для точной проверки поворота. */
 function instanceBox(collider, x, y, z, ry, scale) {
   const [w, h, d] = collider;
   const cos = Math.abs(Math.cos(ry));
   const sin = Math.abs(Math.sin(ry));
   const hx = ((cos * w + sin * d) * scale) / 2;
   const hz = ((sin * w + cos * d) * scale) / 2;
-  return { minX: x - hx, maxX: x + hx, minY: y, maxY: y + h * scale, minZ: z - hz, maxZ: z + hz };
+  return {
+    x,
+    z,
+    halfWidth: (w * scale) / 2,
+    halfDepth: (d * scale) / 2,
+    rotationY: ry,
+    minX: x - hx,
+    maxX: x + hx,
+    minY: y,
+    maxY: y + h * scale,
+    minZ: z - hz,
+    maxZ: z + hz,
+  };
 }
 
 /**

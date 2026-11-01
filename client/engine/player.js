@@ -21,6 +21,19 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export function collides(boxes, x, y, z) {
   const r = PLAYER.radius;
   for (const b of boxes) {
+    if (b.rotationY && Number.isFinite(b.halfWidth) && Number.isFinite(b.halfDepth)) {
+      if (y >= b.maxY || y + PLAYER.height <= b.minY) continue;
+      const dx = x - b.x;
+      const dz = z - b.z;
+      const cos = Math.cos(b.rotationY);
+      const sin = Math.sin(b.rotationY);
+      const localX = cos * dx - sin * dz;
+      const localZ = sin * dx + cos * dz;
+      const nearestX = Math.max(-b.halfWidth, Math.min(b.halfWidth, localX));
+      const nearestZ = Math.max(-b.halfDepth, Math.min(b.halfDepth, localZ));
+      if (Math.hypot(localX - nearestX, localZ - nearestZ) < r) return true;
+      continue;
+    }
     if (x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r && y < b.maxY && y + PLAYER.height > b.minY) {
       return true;
     }

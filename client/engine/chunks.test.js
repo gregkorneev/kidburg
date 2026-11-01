@@ -8,6 +8,7 @@ import { encode } from '@msgpack/msgpack';
 import { makeFixtures } from '../../tools/fixtures/make-fixtures.mjs';
 import { createChunkManager, heightInChunk, parseChunk } from './chunks.js';
 import { createPool } from './pool.js';
+import { collides } from './player.js';
 
 const dir = mkdtempSync(path.join(tmpdir(), 'city-client-world-'));
 makeFixtures(dir);
@@ -76,6 +77,20 @@ test('загрузка: рельеф, одна InstancedMesh на префаб, 
   assert.equal(npc.agentId, 'therapist');
   assert.equal(manager.nearestNpc(6 * 64 + 40, 0, 6 * 64 + 32 + 20, 8), null, 'дальше TALK_DISTANCE');
   assert.equal(manager.nearestNpc(6 * 64 + 40, 50, 6 * 64 + 32, 8), null, 'другой этаж не считается');
+});
+
+test('коллайдер повернутой цветочной лавки пропускает к ее фасаду', () => {
+  const { manager } = makeManager();
+  const yaw = 2.37;
+  const distance = 7.5;
+  const x = 384 + Math.sin(yaw) * distance;
+  const z = 449 + Math.cos(yaw) * distance;
+  manager.load(6, 7, syntheticChunk(6, 7, { instances: [[13, 384, 0, 449, yaw, 1]] }));
+
+  const colliders = manager.collidersNear(x, z);
+  assert.equal(collides(colliders, x, 0, z), false, 'подход перед фасадом остаётся свободным');
+  assert.equal(collides(colliders, 384, 0, 449), true, 'внутри здания остаётся коллизия');
+  manager.dispose();
 });
 
 test('выгрузка освобождает геометрии, материалы и подписи', () => {
