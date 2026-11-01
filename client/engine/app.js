@@ -16,10 +16,12 @@ import {
   FIRE_STATION_ENTRANCE,
   FLORIST_ENTRANCE,
   RADIO_STATION_ENTRANCE,
+  MUSIC_SCHOOL_ENTRANCE,
   isNearFireStationEntrance,
   isNearFloristEntrance,
   isNearBakeryEntrance,
   isNearRadioStationEntrance,
+  isNearMusicSchoolEntrance,
 } from './city-entrance.js';
 import { createEmitter } from './emitter.js';
 import { createHttp } from './http.js';
@@ -236,11 +238,16 @@ export function createClient({ container, networkOnly = false }) {
     let floristNearby = false;
     let bakeryNearby = false;
     let radioStationNearby = false;
+    let musicSchoolNearby = false;
     const input = createInput({
       target: renderer.domElement,
       document,
       window: win,
       onInteract: () => {
+        if (musicSchoolNearby) {
+          win.location.assign(MUSIC_SCHOOL_ENTRANCE.href);
+          return;
+        }
         if (radioStationNearby) {
           win.location.assign(RADIO_STATION_ENTRANCE.href);
           return;
@@ -454,12 +461,14 @@ export function createClient({ container, networkOnly = false }) {
           const nearFlorist = isNearFloristEntrance(player.x, player.z);
           const nearBakery = isNearBakeryEntrance(player.x, player.z);
           const nearRadioStation = isNearRadioStationEntrance(player.x, player.z);
-          if (nearEntrance !== fireStationNearby || nearFlorist !== floristNearby || nearBakery !== bakeryNearby || nearRadioStation !== radioStationNearby) {
+          const nearMusicSchool = isNearMusicSchoolEntrance(player.x, player.z);
+          if (nearEntrance !== fireStationNearby || nearFlorist !== floristNearby || nearBakery !== bakeryNearby || nearRadioStation !== radioStationNearby || nearMusicSchool !== musicSchoolNearby) {
             fireStationNearby = nearEntrance;
             floristNearby = nearFlorist;
             bakeryNearby = nearBakery;
             radioStationNearby = nearRadioStation;
-            hud.setEntrancePrompt(radioStationNearby ? RADIO_STATION_ENTRANCE.label : bakeryNearby ? BAKERY_ENTRANCE.label : floristNearby ? FLORIST_ENTRANCE.label : fireStationNearby ? FIRE_STATION_ENTRANCE.label : '');
+            musicSchoolNearby = nearMusicSchool;
+            hud.setEntrancePrompt(musicSchoolNearby ? MUSIC_SCHOOL_ENTRANCE.label : radioStationNearby ? RADIO_STATION_ENTRANCE.label : bakeryNearby ? BAKERY_ENTRANCE.label : floristNearby ? FLORIST_ENTRANCE.label : fireStationNearby ? FIRE_STATION_ENTRANCE.label : '');
           }
         }
       }

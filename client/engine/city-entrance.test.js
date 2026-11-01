@@ -5,10 +5,12 @@ import {
   FIRE_STATION_ENTRANCE,
   FLORIST_ENTRANCE,
   RADIO_STATION_ENTRANCE,
+  MUSIC_SCHOOL_ENTRANCE,
   isNearFireStationEntrance,
   isNearFloristEntrance,
   isNearBakeryEntrance,
   isNearRadioStationEntrance,
+  isNearMusicSchoolEntrance,
 } from './city-entrance.js';
 
 test('fire station entrance is reachable from the west path', () => {
@@ -45,4 +47,11 @@ test('radio station entrance is reachable from the south-east path', () => {
   assert.equal(isNearRadioStationEntrance(416, 416), false);
   assert.equal(isNearRadioStationEntrance(Number.NaN, 445), false);
   assert.equal(RADIO_STATION_ENTRANCE.href, '/radio-preview.html');
+});
+
+test('music school entrance is reachable from the south path', () => {
+  assert.equal(isNearMusicSchoolEntrance(416, 449), true);
+  assert.equal(isNearMusicSchoolEntrance(416, 416), false);
+  assert.equal(isNearMusicSchoolEntrance(Number.NaN, 451), false);
+  assert.equal(MUSIC_SCHOOL_ENTRANCE.href, '/musician-preview.html');
 });

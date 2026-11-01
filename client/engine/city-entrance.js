@@ -36,6 +36,15 @@ export const RADIO_STATION_ENTRANCE = Object.freeze({
   label: 'Войти в радиостанцию',
 });
 
+// Южный фасад музыкальной школы после поворота здания на π.
+export const MUSIC_SCHOOL_ENTRANCE = Object.freeze({
+  x: 416,
+  z: 450.9,
+  radius: 10,
+  href: '/musician-preview.html',
+  label: 'Войти в музыкальную школу',
+});
+
 export function isNearFireStationEntrance(x, z) {
   return Number.isFinite(x) && Number.isFinite(z) &&
     Math.hypot(x - FIRE_STATION_ENTRANCE.x, z - FIRE_STATION_ENTRANCE.z) <= FIRE_STATION_ENTRANCE.radius;
@@ -54,4 +63,9 @@ export function isNearBakeryEntrance(x, z) {
 export function isNearRadioStationEntrance(x, z) {
   return Number.isFinite(x) && Number.isFinite(z) &&
     Math.hypot(x - RADIO_STATION_ENTRANCE.x, z - RADIO_STATION_ENTRANCE.z) <= RADIO_STATION_ENTRANCE.radius;
+}
+
+export function isNearMusicSchoolEntrance(x, z) {
+  return Number.isFinite(x) && Number.isFinite(z) &&
+    Math.hypot(x - MUSIC_SCHOOL_ENTRANCE.x, z - MUSIC_SCHOOL_ENTRANCE.z) <= MUSIC_SCHOOL_ENTRANCE.radius;
 }

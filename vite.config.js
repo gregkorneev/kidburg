@@ -20,6 +20,7 @@ export default defineConfig({
       florist: page('florist-preview.html'),
       admin: page('admin/index.html'),
       radio: page('radio-preview.html'),
+      pianist: page('musician-preview.html'),
     } },
   },
   server: {
