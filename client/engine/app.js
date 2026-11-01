@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { TALK_DISTANCE } from '../../shared/constants.js';
 import { createHud } from '../hud/index.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter } from './art/character.js';
 import { applyStylizedLook } from './art/lighting.js';
 import { readQuality } from './art/quality.js';
 import { createChunkManager, makeLabel } from './chunks.js';
@@ -19,11 +20,12 @@ import { createEmitter } from './emitter.js';
 import { createHttp } from './http.js';
 import { createInput } from './input.js';
 import { createNet } from './net.js';
-import { PLAYER, createPlayer, setPlayerPosition, stepPlayer } from './player.js';
+import { createPlayer, setPlayerPosition, stepPlayer } from './player.js';
 import { createPool } from './pool.js';
 import { createRemotePlayers } from './remote.js';
 import { createSession } from './session.js';
 import { createCitySkyline } from './skyline.js';
+import { MIN_VISIBLE_ARM, createCameraArm, orbitCameraGoal } from './third-person-camera.js';
 
 const POS_INTERVAL_S = 1 / 15;
 const POS_HEARTBEAT_S = 1;
@@ -32,6 +34,12 @@ const NPC_CHECK_MS = 100;
 const PING_INTERVAL_MS = 2000;
 const MOUSE_SENSITIVITY = 0.0025;
 const MAX_PIXEL_RATIO = 1.5;
+// Вид от третьего лица: камера на орбите вокруг плеч персонажа; pitch — наклон взгляда (вниз < 0).
+const CAMERA_DISTANCE = 4.6;
+const CAMERA_FOCUS_HEIGHT = 1.45;
+const CAMERA_PITCH_MIN = -0.95;
+const CAMERA_PITCH_MAX = 0.3;
+const CAMERA_PITCH_DEFAULT = -0.2;
 
 /** @param {{container: HTMLElement}} options */
 export function createClient({ container, networkOnly = false }) {
@@ -186,7 +194,6 @@ export function createClient({ container, networkOnly = false }) {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 400);
-    camera.rotation.order = 'YXZ';
     // Свет, небо и туман общие с пожарной частью (art/lighting.js).
     // Тени: карта следует за игроком (±30 м), на «Низкой» графике выключена (art/quality.js). Измерения — docs/graphics-overhaul.
     renderer.shadowMap.enabled = true;
@@ -202,6 +209,12 @@ export function createClient({ container, networkOnly = false }) {
     const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel, quality });
     const hud = createHud(container);
     const player = createPlayer();
+    player.pitch = CAMERA_PITCH_DEFAULT;
+    const cameraArm = createCameraArm({ distance: CAMERA_DISTANCE });
+    const cameraFocus = { x: 0, y: 0, z: 0 };
+    const cameraGoal = { x: 0, y: 0, z: 0 };
+    /** Модель локального игрока: тот же персонаж, что видят другие (по id и цвету из сессии). */
+    let avatar = null;
     let fireStationNearby = false;
     let floristNearby = false;
     const input = createInput({
@@ -224,7 +237,7 @@ export function createClient({ container, networkOnly = false }) {
 
     runtime = { input };
     // Отладочный доступ для проверки графики: только при ?debug=1.
-    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, remote, player, stylized, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
+    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, remote, player, stylized, cameraArm, get avatar() { return avatar; }, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
     hud.setStatus(net.status);
     hud.setCache(state.cache);
 
@@ -243,8 +256,24 @@ export function createClient({ container, networkOnly = false }) {
       emitter.emit('npc_near', state.npc);
     }
 
+    function setAvatar(id) {
+      clearAvatar();
+      const color = session.user()?.appearance?.color;
+      avatar = createCharacter({ appearance: appearanceFromSeed(id, typeof color === 'number' ? color : null), quality });
+      avatar.scale.setScalar(CITY_CHARACTER_SCALE);
+      scene.add(avatar);
+    }
+
+    function clearAvatar() {
+      if (!avatar) return;
+      scene.remove(avatar);
+      disposeCharacter(avatar);
+      avatar = null;
+    }
+
     function resetWorld() {
       ready = false;
+      clearAvatar();
       world.clear();
       remote.clear();
       setNpc(null);
@@ -257,7 +286,9 @@ export function createClient({ container, networkOnly = false }) {
         setPlayerPosition(player, s.x, s.y, s.z);
         hud.setPlayerPosition(player.x, player.z);
         player.yaw = s.ry ?? 0;
-        player.pitch = 0;
+        player.pitch = CAMERA_PITCH_DEFAULT;
+        cameraArm.reset();
+        setAvatar(msg.playerId);
         lastSent = null;
         sinceSend = 0;
         ready = true;
@@ -315,6 +346,23 @@ export function createClient({ container, networkOnly = false }) {
     resize();
     win.addEventListener('resize', resize);
 
+    /** Персонаж стоит на позиции игрока и смотрит по его yaw; камера сзади и выше, у стен и земли плечо короче. */
+    function updateAvatarAndCamera(t, dt) {
+      if (avatar) {
+        avatar.position.set(player.x, player.y, player.z);
+        avatar.rotation.y = player.yaw + Math.PI; // модель смотрит в +Z, а игрок при yaw = 0 — в −Z
+        animateCharacter(avatar, dt, t, { speed: ready && player.moving ? (player.running ? 2 : 1) : 0 });
+      }
+      cameraFocus.x = player.x;
+      cameraFocus.y = player.y + CAMERA_FOCUS_HEIGHT;
+      cameraFocus.z = player.z;
+      orbitCameraGoal(cameraFocus, player.yaw, player.pitch, CAMERA_DISTANCE, cameraGoal);
+      const position = cameraArm.resolve(cameraFocus, cameraGoal, world.collidersNear(player.x, player.z), dt, (x, z) => world.heightAt(x, z));
+      camera.position.set(position.x, position.y, position.z);
+      camera.lookAt(cameraFocus.x, cameraFocus.y, cameraFocus.z);
+      if (avatar) avatar.visible = cameraArm.length >= MIN_VISIBLE_ARM; // камера вплотную: не показываем изнанку модели
+    }
+
     let raf = 0;
     let last = performance.now();
     let frames = 0;
@@ -329,7 +377,7 @@ export function createClient({ container, networkOnly = false }) {
 
       const look = input.consumeLook();
       player.yaw -= look.dx * MOUSE_SENSITIVITY;
-      player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch - look.dy * MOUSE_SENSITIVITY));
+      player.pitch = Math.max(CAMERA_PITCH_MIN, Math.min(CAMERA_PITCH_MAX, player.pitch - look.dy * MOUSE_SENSITIVITY));
 
       if (ready) {
         stepPlayer(player, input.keys(), dt, world);
@@ -369,8 +417,7 @@ export function createClient({ container, networkOnly = false }) {
 
       remote.update(now);
       world.update(dt, now / 1000, player);
-      camera.position.set(player.x, player.y + PLAYER.eyeHeight, player.z);
-      camera.rotation.set(player.pitch, player.yaw, 0);
+      updateAvatarAndCamera(now / 1000, dt);
       stylized.update(player, now / 1000);
       renderer.render(scene, camera);
       labels.render(scene, camera);
@@ -390,6 +437,7 @@ export function createClient({ container, networkOnly = false }) {
       win.removeEventListener('resize', resize);
       for (const off of offs) off();
       input.dispose();
+      clearAvatar();
       remote.dispose();
       world.dispose();
       scene.remove(skyline.group);

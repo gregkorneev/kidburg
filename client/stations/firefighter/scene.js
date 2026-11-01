@@ -8,6 +8,7 @@ import { PALETTE } from '../../engine/art/palette.js';
 import { applyStylizedLook } from '../../engine/art/lighting.js';
 import { isSharedResource, stdMat } from '../../engine/art/materials.js';
 import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
+import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
 import {
   animateCharacter, appearanceFromSeed, createCharacter, reactToEvent, resetArms, setArmReach, setCarry, setCharacterQuality, setPersonEquipment, triggerGesture, yawToward,
 } from '../../engine/art/character.js';
@@ -98,6 +99,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   const player = createPerson({ id: 1, outfit: PALETTE.green });
   player.userData.appearanceSeed = 1;
   player.position.set(START.x, 0, START.z);
+  player.rotation.y = Math.PI; // до welcome смотрит вдоль −Z, как и камера (cameraYaw = 0): игрок виден со спины
   scene.add(player);
   const remotePlayers = new Map();
   const npc = createMarusya();
@@ -250,6 +252,9 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     { minX: -8.7, maxX: -6.5, minZ: 1.3, maxZ: 3.2 },
     { minX: -1.0, maxX: 1.0, minZ: 6.4, maxZ: 8.4 },
   ];
+  // Высоты для камеры: здание, грузовик и учебная стена выше камеры, остальное — ниже.
+  const CAMERA_BLOCKER_HEIGHTS = [4, 9, 3.6, 2.2, 1.6];
+  const cameraBlockers = blockers.map((b, i) => ({ ...b, minY: 0, maxY: CAMERA_BLOCKER_HEIGHTS[i] ?? 2 }));
   const keys = new Set();
   const raycaster = new THREE.Raycaster();
   const centerScreen = new THREE.Vector2(0, 0);
@@ -494,6 +499,12 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   // Камера: ближе и ниже прежней, чуть уже угол обзора — здания заполняют кадр, персонаж остаётся слева от центра.
   const CAMERA_DISTANCE = 7.4;
   const CAMERA_HEIGHT = 3.05;
+  const CAMERA_FOCUS_HEIGHT = 1.5;
+  // Камера не заходит в здание, грузовик и ограждения: плечо от головы игрока до камеры сокращается у препятствий.
+  const cameraArm = createCameraArm({ distance: Math.hypot(CAMERA_DISTANCE, 1.7, CAMERA_HEIGHT - CAMERA_FOCUS_HEIGHT) });
+  const cameraFocus = { x: 0, y: CAMERA_FOCUS_HEIGHT, z: 0 };
+  const cameraGoal = { x: 0, y: CAMERA_HEIGHT, z: 0 };
+  let cameraDelta = 0;
   function updateCamera() {
     if (debugCamera) {
       camera.position.copy(debugCamera.position);
@@ -505,12 +516,14 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
       2.3 - cameraPitch * 7.5,
       player.position.z - Math.cos(cameraYaw) * 3.2,
     );
-    camera.position.set(
-      player.position.x + Math.sin(cameraYaw) * CAMERA_DISTANCE + Math.cos(cameraYaw) * 1.7,
-      CAMERA_HEIGHT,
-      player.position.z + Math.cos(cameraYaw) * CAMERA_DISTANCE - Math.sin(cameraYaw) * 1.7,
-    );
+    cameraFocus.x = player.position.x;
+    cameraFocus.z = player.position.z;
+    cameraGoal.x = player.position.x + Math.sin(cameraYaw) * CAMERA_DISTANCE + Math.cos(cameraYaw) * 1.7;
+    cameraGoal.z = player.position.z + Math.cos(cameraYaw) * CAMERA_DISTANCE - Math.sin(cameraYaw) * 1.7;
+    const position = cameraArm.resolve(cameraFocus, cameraGoal, cameraBlockers, cameraDelta);
+    camera.position.set(position.x, position.y, position.z);
     camera.lookAt(target);
+    player.visible = cameraArm.length >= MIN_VISIBLE_ARM;
   }
 
   function addRemotePlayer(id, name, equipped = false, color = null) {
@@ -666,6 +679,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     const delta = previousFrameTime === null ? 0 : Math.min((timestamp - previousFrameTime) / 1000, 0.05);
     const elapsed = timestamp / 1000;
     previousFrameTime = timestamp;
+    cameraDelta = delta;
     movePlayer(delta);
     updateHoseAim();
     const position = localPosition();
