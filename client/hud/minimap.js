@@ -1,4 +1,5 @@
 import { BUILDINGS, PLAZA } from '../../tools/build-world/layout.js';
+import { FIELD } from '../../shared/interaction-contracts.js';
 
 const ICONS = Object.freeze({
   city_hall: '🏛️',
@@ -41,6 +42,19 @@ export function createMinimap(container) {
   map.append(circle(CENTER, CENTER, 69, '#e8edcf'));
   map.append(circle(CENTER, CENTER, 48, '#f4edda'));
   map.append(circle(CENTER, CENTER, 21, '#d5e9e6'));
+  const field = document.createElementNS(SVG, 'rect');
+  const fieldTopLeft = point(FIELD.x - FIELD.halfW, FIELD.z - FIELD.halfD);
+  field.setAttribute('x', fieldTopLeft.x);
+  field.setAttribute('y', fieldTopLeft.y);
+  field.setAttribute('width', FIELD.halfW * 2 * SCALE);
+  field.setAttribute('height', FIELD.halfD * 2 * SCALE);
+  field.setAttribute('rx', '3');
+  field.setAttribute('fill', '#80b77c');
+  field.setAttribute('fill-opacity', '0.85');
+  field.setAttribute('stroke', '#fffdf6');
+  field.setAttribute('stroke-width', '1.5');
+  field.setAttribute('aria-label', 'Футбольное поле');
+  map.append(field);
 
   for (const building of BUILDINGS) {
     const { x, y } = point(building.x, building.z);

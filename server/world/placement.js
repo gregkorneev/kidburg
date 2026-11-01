@@ -134,8 +134,7 @@ export function createPlacement({ world = null } = {}) {
       if (x - radius < m || z - radius < m || x + radius > WORLD_SIZE_X - m || z + radius > WORLD_SIZE_Z - m) {
         return { ok: false, code: 'out_of_bounds', reason: 'Слишком близко к краю мира' };
       }
-      const zone = blockedBy(x, z, radius);
-      return zone ? { ok: false, code: 'forbidden_zone', reason: `Запретная зона: ${zone}` } : { ok: true };
+      return { ok: true };
     },
     /** Препятствия для физики мяча: здания и статические объекты, как круги/коробки. */
     staticObstacles() {

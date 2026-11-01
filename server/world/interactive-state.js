@@ -106,18 +106,7 @@ export function createInteractive({ db, placement, dynamic = null, now = Date.no
 
   /** Можно ли поставить prop в (x, z): правила мира, динамические объекты, другие предметы. */
   function spotOk(prop, x, z) {
-    const r = radiusOf(prop);
-    const base = placement.checkProp(x, z, r);
-    if (!base.ok) return base;
-    for (const o of dynamic?.list() ?? []) {
-      const spec = WORLD_OBJECT_TYPES[o.type];
-      if (dist(x, z, o.x, o.z) < r + spec.radius * o.scale + 0.15) return { ok: false, code: 'overlap', reason: 'Место занято объектом мира' };
-    }
-    for (const other of props.values()) {
-      if (other === prop || other.state === 'held') continue;
-      if (dist(x, z, other.x, other.z) < r + radiusOf(other) + 0.12) return { ok: false, code: 'overlap', reason: 'Рядом уже стоит другой предмет' };
-    }
-    return { ok: true };
+    return placement.checkProp(x, z, radiusOf(prop));
   }
 
   function findSpot(prop, player, probes) {

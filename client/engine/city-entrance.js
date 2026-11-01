@@ -32,7 +32,7 @@ export const RADIO_STATION_ENTRANCE = Object.freeze({ x: 444.06, z: 444.95, radi
 export const MUSIC_SCHOOL_ENTRANCE = Object.freeze({ x: 416, z: 450.9, radius: 10, href: '/musician-preview.html', label: 'Войти в музыкальную школу' });
 
 /** Входы с доступными игровыми страницами. */
-export const CITY_ENTRANCES = Object.freeze({ florist: FLORIST_ENTRANCE, fire: FIRE_STATION_ENTRANCE, bakery: BAKERY_ENTRANCE });
+export const CITY_ENTRANCES = Object.freeze({ florist: FLORIST_ENTRANCE, fire: FIRE_STATION_ENTRANCE, bakery: BAKERY_ENTRANCE, radio: RADIO_STATION_ENTRANCE, music: MUSIC_SCHOOL_ENTRANCE });
 
 export function isNearFireStationEntrance(x, z) {
   return Number.isFinite(x) && Number.isFinite(z) &&
