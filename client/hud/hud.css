@@ -13,14 +13,17 @@
 
 .city-hud {
   position: fixed;
-  top: clamp(96px, 12vw, 160px);
+  bottom: 8px;
   left: 8px;
   z-index: 10;
-  padding: 6px 10px;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: min(430px, calc(100vw - 16px));
+  padding: 5px 8px;
   border-radius: 6px;
   background: rgba(10, 16, 28, 0.6);
   color: #e8eef7;
-  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  font: 10px/1.35 ui-monospace, Menlo, Consolas, monospace;
   pointer-events: none;
   user-select: none;
 }
