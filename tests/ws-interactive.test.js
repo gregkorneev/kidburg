@@ -235,7 +235,7 @@ test('поздний игрок получает актуальное движу
 test('interact без hello и с неверной схемой отклоняется', async () => {
   const w = await boot({ Ася: { x: 372, z: 429 } });
   try {
-    const res = await w.server.app.inject({ method: 'POST', url: '/api/join', payload: { name: 'Гость', room: w.server.app.room.code } });
+    const res = await w.server.app.inject({ method: 'POST', url: '/api/join', payload: { name: 'Гость', room: w.server.app.room.code, appearance: { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } } } });
     const { token } = res.json();
     const raw = await TestClient.connect(w.server.port, await getTicket(w.server.app, token));
     raw.send({ t: 'interact', id: 'ball-1', action: 'kick', seq: 1 });

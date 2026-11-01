@@ -102,10 +102,12 @@ test('подтверждённая экипировка сразу рассыл�
     track(boris.client);
     const join = await boris.client.next((m) => m.t === 'player_join' && m.id === anna.user.id);
     assert.equal(join.appearance.firefighterEquipped, false);
+    assert.deepEqual(join.appearance.avatar, anna.user.appearance.avatar);
 
     assert.equal((await ask(anna.client, 'equip')).equipped, true);
     const changed = await boris.client.next((m) => m.t === 'player_appearance' && m.id === anna.user.id);
     assert.equal(changed.appearance.firefighterEquipped, true);
+    assert.deepEqual(changed.appearance.avatar, anna.user.appearance.avatar);
   });
 });
 

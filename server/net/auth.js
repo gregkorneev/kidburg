@@ -1,3 +1,4 @@
+import { normalizeAvatar } from '../../shared/avatar.js';
 // REST-авторизация: вход по имени и коду комнаты (/api/join), /api/me, тикет для WebSocket.
 // Личность игрока задаёт только сервер: токен из /api/join -> одноразовый тикет -> сокет.
 // Токен: 32 случайных байта (base64url), в БД лежит только HMAC-SHA-256 токена.
@@ -138,8 +139,10 @@ export function registerAuthRoutes(
     // Имя играющего человека не отдаём: иначе по имени можно было бы вытеснить его из игры.
     if (user && isOnline(user.id)) return fail(reply, 409, 'name_taken', 'Это имя сейчас занято. Выберите другое.');
     if (!user) {
+      const avatar = normalizeAvatar(body.appearance?.avatar);
+      if (!avatar) return fail(reply, 400, 'bad_appearance', 'Выберите допустимые варианты внешности');
       // Пароля нет: в БД лежит случайный хеш, которому не соответствует ни один пароль.
-      user = db.createUser({ name, passHash: randomBytes(KEY_LEN).toString('hex'), salt: randomBytes(SALT_LEN).toString('hex'), now: t });
+      user = db.createUser({ name, passHash: randomBytes(KEY_LEN).toString('hex'), salt: randomBytes(SALT_LEN).toString('hex'), appearance: { avatar }, now: t });
       if (!user) return fail(reply, 409, 'name_taken', 'Это имя сейчас занято. Выберите другое.');
     }
     db.purgeExpiredSessions(t);
@@ -187,9 +190,11 @@ function registerPasswordRoutes(app, { db, now, authSecrets, limiter }) {
       limiter.fail(key);
       return fail(reply, 400, 'bad_password', `Пароль: от ${PASSWORD_MIN} до ${PASSWORD_MAX} символов`);
     }
+    const avatar = normalizeAvatar(body.appearance?.avatar);
+    if (!avatar) return fail(reply, 400, 'bad_appearance', 'Выберите допустимые варианты внешности');
     const { passHash, salt } = await hashPassword(body.password, authSecrets.pepper);
     const t = now();
-    const user = db.createUser({ name, passHash, salt, now: t });
+    const user = db.createUser({ name, passHash, salt, appearance: { avatar }, now: t });
     if (!user) {
       limiter.fail(key);
       return fail(reply, 409, 'name_taken', 'Такое имя уже занято');

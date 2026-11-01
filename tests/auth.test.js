@@ -12,6 +12,7 @@ import { createTicketStore } from '../server/net/tickets.js';
 import { TestClient, getTicket, join, listen, makeApp, register, TEST_AUTH_PEPPER, TEST_AUTH_SESSION_SECRET } from './helpers.js';
 import { createAttemptLimiter } from '../server/net/room.js';
 
+const appearance = { avatar: { skin: 0, clothes: 0, hair: 0, shoes: 0 } };
 const post = (app, url, payload, headers) => app.inject({ method: 'POST', url, payload, headers });
 const bearer = (token) => ({ authorization: `Bearer ${token}` });
 
@@ -49,11 +50,11 @@ test('вход по паролю (passwordAuth): токен и пользова�
   const dbPath = path.join(dir, 'city.db');
   const app = await makeApp({ dbPath, passwordAuth: true });
   try {
-    const res = await post(app, '/api/register', { name: 'Аня', password: 'secret' });
+    const res = await post(app, '/api/register', { name: 'Аня', password: 'secret', appearance });
     assert.equal(res.statusCode, 201);
     const { token, user } = res.json();
     assert.equal(user.name, 'Аня');
-    assert.deepEqual(user.appearance, {});
+    assert.deepEqual(user.appearance, appearance);
     assert.equal(Buffer.from(token, 'base64url').length, 32);
 
     const raw = new Database(dbPath, { readonly: true });
@@ -88,8 +89,8 @@ test('регистрация (passwordAuth): отказы по имени, па�
   }
   assert.equal((await post(app, '/api/register')).statusCode, 400, 'пустое тело');
 
-  await post(app, '/api/register', { name: 'Normal', password: 'secret' });
-  const dup = await post(app, '/api/register', { name: 'NORMAL', password: 'other' });
+  await post(app, '/api/register', { name: 'Normal', password: 'secret', appearance });
+  const dup = await post(app, '/api/register', { name: 'NORMAL', password: 'other', appearance });
   assert.equal(dup.statusCode, 409);
   assert.equal(dup.json().error, 'name_taken');
   await app.close();
@@ -97,7 +98,7 @@ test('регистрация (passwordAuth): отказы по имени, па�
 
 test('вход (passwordAuth): верный пароль, неверный пароль, неизвестное имя', async () => {
   const app = await makeApp({ passwordAuth: true });
-  const { user } = (await post(app, '/api/register', { name: 'Борис', password: 'secret' })).json();
+  const { user } = (await post(app, '/api/register', { name: 'Борис', password: 'secret', appearance })).json();
 
   const ok = await post(app, '/api/login', { name: 'борис'.replace('б', 'Б'), password: 'secret' });
   assert.equal(ok.statusCode, 200);
@@ -119,7 +120,7 @@ test('вход (passwordAuth): верный пароль, неверный па�
 test('вход (passwordAuth): верный пароль с добавленным суффиксом длиннее лимита отклоняется', async () => {
   const app = await makeApp({ passwordAuth: true });
   const password = 'p'.repeat(PASSWORD_MAX);
-  await post(app, '/api/register', { name: 'Егор', password });
+  await post(app, '/api/register', { name: 'Егор', password, appearance });
   assert.equal((await post(app, '/api/login', { name: 'Егор', password })).statusCode, 200);
   for (const extra of ['x', 'x'.repeat(500)]) {
     const res = await post(app, '/api/login', { name: 'Егор', password: password + extra });
@@ -239,7 +240,7 @@ test('join: имя и код комнаты дают токен; в базе н�
   const dbPath = path.join(dir, 'city.db');
   const app = await makeApp({ dbPath, roomCode: 'BCDF' });
   try {
-    const res = await post(app, '/api/join', { name: '  Аня ', room: 'bcdf' });
+    const res = await post(app, '/api/join', { name: '  Аня ', room: 'bcdf', appearance });
     assert.equal(res.statusCode, 200, 'код без учёта регистра, имя без пробелов по краям');
     const { token, user } = res.json();
     assert.equal(user.name, 'Аня');
@@ -300,11 +301,11 @@ test('join: после серии неверных кодов адрес бло�
   const limiter = createAttemptLimiter({ max: 3, windowMs: 60_000, now: () => t });
   const app = await makeApp({ roomCode: 'BCDF', joinLimiter: limiter });
   for (let i = 0; i < 3; i++) assert.equal((await post(app, '/api/join', { name: 'Аня', room: 'ZZZZ' })).statusCode, 403);
-  const blocked = await post(app, '/api/join', { name: 'Аня', room: 'BCDF' });
+  const blocked = await post(app, '/api/join', { name: 'Аня', room: 'BCDF', appearance });
   assert.equal(blocked.statusCode, 429, 'даже верный код не принимается во время блокировки');
   assert.equal(blocked.json().error, 'too_many');
   t = 60_000;
-  assert.equal((await post(app, '/api/join', { name: 'Аня', room: 'BCDF' })).statusCode, 200);
+  assert.equal((await post(app, '/api/join', { name: 'Аня', room: 'BCDF', appearance })).statusCode, 200);
   await app.close();
 });
 
@@ -342,13 +343,13 @@ test('второй сервер с той же базой не отзывает 
   const first = await makeApp({ dbPath, roomCode: 'BCDF' });
   let second;
   try {
-    const { token } = (await post(first, '/api/join', { name: 'Аня', room: 'BCDF' })).json();
+    const { token } = (await post(first, '/api/join', { name: 'Аня', room: 'BCDF', appearance })).json();
     assert.equal((await first.inject({ url: '/api/me', headers: bearer(token) })).statusCode, 200);
     second = await makeApp({ dbPath, roomCode: 'GHJK' });
     assert.equal((await first.inject({ url: '/api/me', headers: bearer(token) })).statusCode, 200);
     assert.equal((await post(first, '/api/ws-ticket', undefined, bearer(token))).statusCode, 200);
     assert.equal((await second.inject({ url: '/api/me', headers: bearer(token) })).statusCode, 401);
-    const other = (await post(second, '/api/join', { name: 'Борис', room: 'GHJK' })).json();
+    const other = (await post(second, '/api/join', { name: 'Борис', room: 'GHJK', appearance })).json();
     assert.equal((await second.inject({ url: '/api/me', headers: bearer(other.token) })).statusCode, 200);
     assert.equal((await first.inject({ url: '/api/me', headers: bearer(other.token) })).statusCode, 401);
     assert.equal((await first.inject({ url: '/api/me', headers: bearer(token) })).statusCode, 200);
@@ -364,14 +365,14 @@ test('перезапуск: токен прошлого запуска и его
   const dbPath = path.join(dir, 'city.db');
   try {
     const first = await makeApp({ dbPath, roomCode: 'BCDF' });
-    const old = (await post(first, '/api/join', { name: 'Аня', room: 'BCDF' })).json();
+    const old = (await post(first, '/api/join', { name: 'Аня', room: 'BCDF', appearance })).json();
     assert.equal((await post(first, '/api/ws-ticket', undefined, bearer(old.token))).statusCode, 200);
     await first.close();
 
     const second = await makeApp({ dbPath, roomCode: 'GHJK' });
     assert.equal((await second.inject({ url: '/api/me', headers: bearer(old.token) })).statusCode, 401, 'старый токен');
     assert.equal((await post(second, '/api/ws-ticket', undefined, bearer(old.token))).statusCode, 401);
-    const stale = await post(second, '/api/join', { name: 'Аня', room: 'BCDF' });
+    const stale = await post(second, '/api/join', { name: 'Аня', room: 'BCDF', appearance });
     assert.equal(stale.statusCode, 403, 'старый код');
     const fresh = await post(second, '/api/join', { name: 'Аня', room: 'GHJK' });
     assert.equal(fresh.statusCode, 200);
