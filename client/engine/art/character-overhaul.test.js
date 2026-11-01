@@ -333,3 +333,25 @@ test('нечисловые входы кадра (первый кадр без t
   assert.ok(Object.values(person.userData.anim).every((v) => typeof v !== 'number' || Number.isFinite(v)), 'состояние анимации конечно');
   assert.ok(Number.isFinite(person.userData.body.position.y));
 });
+
+test('профиль удалённого игрока совпадает с локальным и переживает смену пожарной экипировки', async () => {
+  const { createRemotePlayers } = await import('../remote.js');
+  const { createPlayerAppearance } = await import('../player-appearance.js');
+  const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, shoes: 0 } };
+  const scene = new THREE.Scene();
+  const createLabel = () => { const label = new THREE.Object3D(); label.element = { remove() {} }; return label; };
+  const remote = createRemotePlayers({ scene, createLabel });
+  remote.join(42, 'Игрок', appearance);
+  const person = scene.children[0].children[0];
+  const look = createPlayerAppearance({ id: 42, appearance });
+  assert.deepEqual(person.userData.look, look);
+  const pants = person.userData.pelvis.material;
+  const shoes = person.userData.gearMaterials.sneaker;
+  setPersonEquipment(person, true);
+  assert.notEqual(person.userData.pelvis.material, pants);
+  setPersonEquipment(person, false);
+  assert.equal(person.userData.pelvis.material, pants);
+  assert.equal(person.userData.gearMaterials.sneaker, shoes);
+  assert.deepEqual(person.userData.look, look);
+  remote.dispose();
+});

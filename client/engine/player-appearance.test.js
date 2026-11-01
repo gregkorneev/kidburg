@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { appearanceFromSeed } from './art/character-appearance.js';
-import { createPlayerAppearance, currentPlayerAppearance } from './player-appearance.js';
+import { createPlayerAppearance, currentPlayerAppearance, resolvePlayerAppearance } from './player-appearance.js';
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -32,4 +32,31 @@ test('standalone locations read the same current-session appearance', () => {
 test('no session keeps standalone preview fallback and invalid IDs are rejected', () => {
   assert.equal(currentPlayerAppearance(memoryStorage()), null);
   assert.equal(createPlayerAppearance(null), null);
+});
+
+
+test('avatar fields give four stable and independent choices', () => {
+  const avatar = { skin: 0, clothes: 0, hair: 0, shoes: 0 };
+  const groups = { skin: ['skin'], clothes: ['top', 'outfit', 'pants', 'topAccent'], hair: ['hairStyle'], shoes: ['shoes', 'shoeColor', 'bootColor'] };
+  const pick = (look, keys) => keys.map((key) => look[key]);
+  for (const field of Object.keys(groups)) {
+    const variants = new Set();
+    for (let value = 0; value < 4; value++) {
+      const chosen = { ...avatar, [field]: value };
+      const look = resolvePlayerAppearance({ id: 42, appearance: { avatar: chosen } });
+      assert.deepEqual(look, resolvePlayerAppearance({ id: 42, appearance: chosen }));
+      assert.deepEqual(look, createPlayerAppearance({ id: 42, appearance: { avatar: chosen } }));
+      variants.add(JSON.stringify(pick(look, groups[field])));
+      for (const other of Object.keys(groups).filter((key) => key !== field)) {
+        assert.deepEqual(pick(look, groups[other]), pick(resolvePlayerAppearance({ id: 42, appearance: avatar }), groups[other]));
+      }
+    }
+    assert.equal(variants.size, 4, field);
+  }
+});
+
+test('missing or invalid avatar retains the original ID and color fallback', () => {
+  for (const appearance of [{}, { color: 0x336699 }, { avatar: { skin: 4, clothes: 0, hair: 0, shoes: 0 }, color: 0x336699 }]) {
+    assert.deepEqual(resolvePlayerAppearance({ id: 42, appearance }), appearanceFromSeed(42, appearance.color ?? null));
+  }
 });

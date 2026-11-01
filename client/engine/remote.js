@@ -2,7 +2,9 @@
 // Отображаем с задержкой INTERP_DELAY_MS, чтобы почти всегда было два снимка вокруг момента показа.
 
 import * as THREE from 'three';
-import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter, setCarry, triggerKick } from './art/character.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter, setCarry, triggerKick } from './art/character.js';
+
+import { resolvePlayerAppearance } from './player-appearance.js';
 
 const LABEL_HEIGHT = 2.15;
 const RUN_SPEED = 6; // м/с: быстрее считаем бегом, как в пожарной части
@@ -40,10 +42,6 @@ export function sampleSnapshots(snaps, time) {
   };
 }
 
-function colorOf(appearance) {
-  return typeof appearance?.color === 'number' ? appearance.color : null;
-}
-
 /**
  * @param {object} deps
  * @param {THREE.Scene} deps.scene
@@ -57,7 +55,7 @@ export function createRemotePlayers({ scene, createLabel, quality = 'medium' }) 
   function create(id, name, appearance) {
     const group = new THREE.Group();
     // Персонаж смотрит в +Z, а игрок в городе — в −Z: разворачиваем внутри группы.
-    const avatar = createCharacter({ appearance: appearanceFromSeed(id, colorOf(appearance)), quality });
+    const avatar = createCharacter({ appearance: resolvePlayerAppearance({ id, appearance }), quality });
     avatar.scale.setScalar(CITY_CHARACTER_SCALE);
     avatar.rotation.y = Math.PI;
     group.add(avatar);

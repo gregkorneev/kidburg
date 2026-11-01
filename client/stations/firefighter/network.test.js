@@ -17,7 +17,7 @@ function setup({ walkable = () => true, sendOk = true, onAuthRequired = () => {}
   const world = {
     isWalkable: walkable,
     clearRemotePlayers: () => calls.push(['clear']),
-    addRemotePlayer: (id, name, equipped) => calls.push(['add', id, name, equipped]),
+    addRemotePlayer: (id, name, equipped, appearance) => calls.push(['add', id, name, equipped, appearance]),
     setRemotePlayerEquipment: (id, equipped) => calls.push(['equipment', id, equipped]),
     removeRemotePlayer: (id) => calls.push(['remove', id]),
     updateRemotePlayers: (list) => calls.push(['update', list]),
@@ -119,17 +119,18 @@ test('игроки: join, players в локальных координатах, 
   emitter.emit('player_join', { t: 'player_join', id: 7, name: 'Аня', appearance: {} });
   emitter.emit('players', { t: 'players', tick: 1, list: [[7, ORIGIN.x + 4, 0, ORIGIN.z - 6, 0, 1]] });
   emitter.emit('player_leave', { t: 'player_leave', id: 7 });
-  assert.deepEqual(calls.filter((c) => ['add', 'remove'].includes(c[0])), [['add', 7, 'Аня', false], ['remove', 7]]);
+  assert.deepEqual(calls.filter((c) => ['add', 'remove'].includes(c[0])), [['add', 7, 'Аня', false, {}], ['remove', 7]]);
   const update = calls.find((c) => c[0] === 'update')[1][0];
   assert.deepEqual(update, { id: 7, x: 4, z: -6, heading: Math.PI, moving: true });
 });
 
 test('экипировка удалённого игрока применяется при появлении и обновляется после события', () => {
   const { emitter, calls } = setup();
-  emitter.emit('player_join', { t: 'player_join', id: 7, name: 'Аня', appearance: { firefighterEquipped: true } });
+  const appearance = { avatar: { skin: 3, clothes: 1, hair: 2, shoes: 0 }, firefighterEquipped: true };
+  emitter.emit('player_join', { t: 'player_join', id: 7, name: 'Аня', appearance });
   emitter.emit('player_appearance', { t: 'player_appearance', id: 7, appearance: { firefighterEquipped: false } });
   assert.deepEqual(calls.filter((c) => ['add', 'equipment'].includes(c[0])), [
-    ['add', 7, 'Аня', true],
+    ['add', 7, 'Аня', true, appearance],
     ['equipment', 7, false],
   ]);
 });
