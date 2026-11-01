@@ -17,7 +17,7 @@ const CAMERA_SHOULDER = 1.45;
 const CAMERA_AIM_DISTANCE = 2.1;
 
 export function createBakeryScene({
-  container, onPrompt = () => {}, onAction = () => {}, onNotice = () => {},
+  container, appearance = null, onPrompt = () => {}, onAction = () => {}, onNotice = () => {},
   rendererFactory = (options) => new THREE.WebGLRenderer(options),
   requestFrame = globalThis.requestAnimationFrame?.bind(globalThis) ?? (() => 0),
   cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis) ?? (() => {}),
@@ -41,7 +41,7 @@ export function createBakeryScene({
   const interior = createBakeryInterior({ quality });
   scene.add(interior.group);
 
-  const player = createCharacter({ name: 'Пекарь', nameScale: 0.64, appearance: { skin: '#f4c8a2', hair: '#5b3a2b', hairStyle: 'short', outfit: PALETTE.green, pants: '#5b6770' } });
+  const player = createCharacter({ name: 'Пекарь', nameScale: 0.64, appearance: appearance ?? { skin: '#f4c8a2', hair: '#5b3a2b', hairStyle: 'short', outfit: PALETTE.green, pants: '#5b6770' } });
   player.userData.nameTag.position.y = 2.98;
   player.position.set(SPAWN.x, 0, SPAWN.z);
   const mentor = createCharacter({

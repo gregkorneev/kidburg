@@ -4,6 +4,7 @@ import { mountNpcChat } from '../../ui/npc-chat.js';
 import { connectFireNetwork } from './network.js';
 import { createMarusyaChat } from './chat-flow.js';
 import { createFirefighterScene } from './scene.js';
+import { createPlayerAppearance } from '../../engine/player-appearance.js';
 import { createInitialState } from './state.js';
 import { createTaskSync } from './tasks.js';
 import { mountStationUI } from './ui.js';
@@ -104,8 +105,12 @@ function onWorldAction(action, index) {
   dispatch(action, { index });
 }
 
+const client = createClient({ container: sceneRoot, networkOnly: true });
+const playerAppearance = createPlayerAppearance(client.api.auth.session()?.user);
+
 world = createFirefighterScene({
   container: sceneRoot,
+  appearance: playerAppearance,
   onPrompt: (value) => { prompt = value; refresh(); },
   onAction: onWorldAction,
   onNotice: setNotice,
@@ -119,7 +124,6 @@ syncBlocked();
 refresh();
 
 // Вход и сеть: тот же клиент, что у основной страницы, но без второго рендерера.
-const client = createClient({ container: sceneRoot, networkOnly: true });
 chat = mountNpcChat(client.api);
 marusya = createMarusyaChat({
   chat,

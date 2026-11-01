@@ -1,5 +1,6 @@
 import { bindCityExit } from '../../engine/room-exit.js';
 import { readQuality } from '../../engine/art/quality.js';
+import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { applyBakeryAction, createInitialState } from './state.js';
 import { createBakeryScene } from './scene.js';
 import { mountBakeryUI } from './ui.js';
@@ -41,6 +42,7 @@ function onAction(action) {
 
 world = createBakeryScene({
   container: sceneRoot,
+  appearance: currentPlayerAppearance(),
   onPrompt: (value) => { prompt = value; refresh(); },
   onAction,
   onNotice: setNotice,
