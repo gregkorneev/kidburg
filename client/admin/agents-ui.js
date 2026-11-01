@@ -10,6 +10,7 @@ export const agentsStore = createStore({
   agents: [],
   schema: [],
   defaults: {},
+  services: [],
   summary: null,
   ollama: null,
   selectedId: null,
@@ -33,7 +34,7 @@ export function loadAgents({ silent = false } = {}) {
         }
         for (const id of Object.keys(drafts)) if (!data.agents.some((a) => a.id === id)) delete drafts[id];
         const selectedId = data.agents.some((a) => a.id === s.selectedId) ? s.selectedId : data.agents[0]?.id ?? null;
-        return { ...s, status: 'ready', error: '', agents: data.agents, schema: data.schema, defaults: data.defaults, summary: data.summary, ollama: data.ollama, selectedId, drafts };
+        return { ...s, status: 'ready', error: '', agents: data.agents, schema: data.schema, defaults: data.defaults, services: data.services ?? [], summary: data.summary, ollama: data.ollama, selectedId, drafts };
       });
     })
     .catch((err) => {

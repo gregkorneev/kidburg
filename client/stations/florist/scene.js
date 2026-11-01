@@ -48,7 +48,7 @@ function disposeSubtree(root) {
   });
 }
 
-export function createFloristScene({ container, appearance = null, onPrompt = () => {}, onAction = () => {} }) {
+export function createFloristScene({ container, appearance = null, onPrompt = () => {}, onAction = () => {}, canTalk = () => false }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(56, 1, 0.1, 110);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -195,7 +195,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
 
   function getTargets() {
     if (uiBlocked) return [];
-    return targetsForState(state, layout);
+    return targetsForState(state, layout, { canTalk: canTalk() });
   }
 
   function findTarget() {
@@ -316,6 +316,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
     setTaskState,
     setTalking,
     setUiBlocked,
+    setPosition({ x, z }) { if (Number.isFinite(x) && Number.isFinite(z)) { player.x = x; player.z = z; } },
     setQuality(level) {
       look.setQuality(level);
       setWindQuality(level);

@@ -6,6 +6,11 @@ import { applyBakeryAction, createInitialState } from './state.js';
 import { createBakeryScene } from './scene.js';
 import { bindControlsToggle, mountBakeryUI } from './ui.js';
 import { startTelemetry } from '../../engine/telemetry.js';
+import { openStationLink, showOfflineProgressWarning } from '../../engine/station-link-browser.js';
+import { createStationProgress } from '../../engine/station-progress.js';
+import { createStationChatFlow } from '../../engine/station-chat-flow.js';
+import { STATION_TASK_IDS } from '../../../shared/station-npcs.js';
+import { BAKER, hintForStage, planActions } from './chat-flow.js';
 import './style.css';
 
 const sceneRoot = document.querySelector('#scene');
@@ -17,8 +22,13 @@ let quality = 'medium';
 let controlsOpen = true;
 let noticeTimer;
 let world;
+let link = null; // сессия станции и связь с сервером (station-link.js); без неё станция полностью локальная
+let progress = null; // зеркало прогресса на сервере
+let flow = null; // разговор с мастером-пекарем
+let chatOpen = false;
 
 function refresh() {
+  flow?.sync();
   mountBakeryUI(uiRoot, { state, prompt, notice, quality, controlsOpen, onToggleControls: toggleControls, onQuality: setQuality });
 }
 
@@ -46,8 +56,15 @@ function onAction(action) {
   if (result.accepted) {
     state = result.state;
     world.setState(state);
+    // Сервер повторяет действие по тем же правилам и проверяет расстояние: его состояние видит наставник.
+    link?.syncPosition();
+    progress?.send({ action });
   }
   setNotice(result.feedback);
+}
+
+function openChat() {
+  if (flow?.open()) world?.setUiBlocked(true);
 }
 
 world = createBakeryScene({
@@ -56,10 +73,42 @@ world = createBakeryScene({
   onPrompt: (value) => { prompt = value; refresh(); },
   onAction,
   onNotice: setNotice,
+  talk: { enabled: () => Boolean(link?.ready) && !chatOpen, onTalk: openChat },
 });
 quality = world.getQuality();
 world.setState(state);
 refresh();
+
+// Разговор с пекарем: общий адаптер станции, панель и прогресс на сервере. Без входа игра идёт локально.
+link = openStationLink({ stationId: 'bakery', container: sceneRoot, getPosition: () => world?.getPosition(), setPosition: (p) => world?.setPosition(p), onChange: refresh });
+progress = createStationProgress({
+  api: link.api,
+  taskId: STATION_TASK_IDS.bakery,
+  project: (value) => ({ stage: value.stage, completedOrders: value.completedOrders }),
+  getLocal: () => state,
+  canSend: () => link.ready,
+  onDiverged: showOfflineProgressWarning,
+  onReject: (message) => setNotice(message),
+  adopt: (server) => {
+    state = { stage: server.stage, completedOrders: server.completedOrders };
+    world.setState(state);
+    refresh();
+  },
+});
+flow = createStationChatFlow({
+  chat: link.chat,
+  npc: BAKER,
+  getStage: () => state.stage,
+  hint: hintForStage,
+  plan: (stage, helpers) => planActions(stage, helpers, onAction),
+  isOnline: () => link.ready,
+  getNotice: () => notice,
+});
+link.chat.onOpenChange((open) => {
+  chatOpen = open;
+  world.setUiBlocked(open);
+});
+link.start();
 
 // Temporary local screenshot positions, removed after the visual capture pass.
 const captureViews = {
@@ -79,6 +128,7 @@ if (captureViews[captureView]) {
 
 const unbindCityExit = bindCityExit({
   onExit: () => navigateWithLoading(window, document, '/'),
+  isBlocked: () => chatOpen,
 });
 
 // Центральный мониторинг Control Center: FPS и ping этой страницы; кадры — по фактическим вызовам renderer.render.
@@ -99,6 +149,8 @@ window.addEventListener('pagehide', (event) => {
   clearTimeout(noticeTimer);
   unbindCityExit();
   unbindControlsToggle();
+  progress?.dispose();
+  link?.dispose();
   telemetry.stop();
   world?.dispose();
 });

@@ -37,7 +37,7 @@ function disposeAdded(root) {
   });
 }
 
-export function createPianistScene({ container, appearance = null, onPrompt = () => {}, onAction = () => {}, onNote = () => {} }) {
+export function createPianistScene({ container, appearance = null, onPrompt = () => {}, onAction = () => {}, onNote = () => {}, canTalk = () => false }) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#cde4e6');
   const camera = new THREE.PerspectiveCamera(54, 1, 0.1, 90);
@@ -89,7 +89,7 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
     for (const candidate of candidates) {
       const distance = Math.hypot(player.x - candidate.position.x, player.z - candidate.position.z);
       if (distance < bestDistance) {
-        if (candidate.kind === 'maestro' && !['not_started', 'completed'].includes(state.stage)) continue;
+        if (candidate.kind === 'maestro' && !canTalk() && !['not_started', 'completed'].includes(state.stage)) continue;
         if (candidate.kind === 'practice-piano' && !['learning', 'practice'].includes(state.stage)) continue;
         if (candidate.kind === 'stage-piano' && state.stage !== 'concert') continue;
         best = candidate; bestDistance = distance;
@@ -250,6 +250,7 @@ export function createPianistScene({ container, appearance = null, onPrompt = ()
   }
   return {
     setTaskState, setUiBlocked, setInstrumentMode, setQuality,
+    setPosition({ x, z }) { if (Number.isFinite(x) && Number.isFinite(z)) { player.x = x; player.z = z; } },
     getQuality: () => quality,
     getPosition: () => ({ x: player.x, y: player.y, z: player.z, yaw: player.yaw }),
     getRenderStats: () => ({ ...renderer.info.render, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),

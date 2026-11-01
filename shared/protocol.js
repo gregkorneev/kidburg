@@ -16,6 +16,10 @@ export const C2S = Object.freeze({
   MECH_SET: 'mech_set',
   // Игровое действие над предметом или мячом: взять, поставить, бросить, пнуть (shared/interaction-contracts.js).
   INTERACT: 'interact',
+  // Сессия внутри станции с локальными координатами (shared/station-npcs.js): вход, позиция, выход.
+  STATION_ENTER: 'station_enter',
+  STATION_POS: 'station_pos',
+  STATION_LEAVE: 'station_leave',
 });
 
 export const S2C = Object.freeze({
@@ -46,6 +50,7 @@ export const S2C = Object.freeze({
   BALL_SNAPSHOT: 'ball_snapshot',
   BALL_EVENT: 'ball_event',
   INTERACT_RESULT: 'interact_result',
+  STATION_STATE: 'station_state',
   ERROR: 'error',
 });
 
@@ -82,6 +87,9 @@ const SCHEMAS = {
   task_answer: { taskId: str, payload: (v) => v !== undefined },
   mech_set: { id: str, active: (v) => typeof v === 'boolean' },
   interact: { id: (v) => str(v) && v.length > 0 && v.length <= INTERACT_LIMITS.MAX_ID_CHARS, action: isInteractAction, seq: int },
+  station_enter: { stationId: (v) => str(v) && v.length > 0 && v.length <= 32 },
+  station_pos: { x: num, z: num },
+  station_leave: {},
   // сервер -> клиент
   welcome: { proto: int, playerId: int, name: str, state: obj, consts: obj },
   player_join: { id: int, name: str, appearance: obj },
@@ -107,6 +115,7 @@ const SCHEMAS = {
   prop_state: { prop: obj },
   ball_snapshot: { tick: int, ts: num, list: (v) => Array.isArray(v) },
   ball_event: { kind: str },
+  station_state: { stationId: (v) => v === null || str(v), ok: (v) => typeof v === 'boolean', message: str },
   interact_result: { seq: int, id: str, action: str, ok: (v) => typeof v === 'boolean', code: str, message: str },
   error: { code: (v) => Object.values(ERROR_CODES).includes(v), message: str },
 };

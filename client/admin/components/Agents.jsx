@@ -28,6 +28,34 @@ function OllamaBar({ ollama }) {
   );
 }
 
+/** ИИ-сервисы, не являющиеся собеседниками: у радио-редактора нет персоны и настроек личности, показывается только состояние. */
+function ServicesPanel({ services }) {
+  if (!services?.length) return null;
+  return (
+    <section class="card" aria-label="ИИ-сервисы" style="margin:0 0 12px">
+      <h3 style="margin:0 0 8px">ИИ-сервисы</h3>
+      {services.map((svc) => {
+        const o = svc.ollama ? OLLAMA[svc.ollama.state] ?? { tone: 'muted', text: svc.ollama.state } : null;
+        return (
+          <div key={svc.id} class="agent-card" style="cursor:default">
+            <span class="agent-card__head"><strong>{svc.name}</strong><span class="agent-card__id">{svc.id}</span></span>
+            <span class="agent-card__role">{svc.description}</span>
+            <span class="agent-card__tags">
+              <Pill tone={svc.placed ? 'ok' : 'warn'} dot>{svc.placed ? `Работает в станции: ${svc.station}` : 'Не подключён'}</Pill>
+              {o ? <Pill tone={o.tone} dot>{o.text}</Pill> : null}
+              <Pill tone={svc.mode === 'ollama' ? 'ok' : 'info'}>
+                {svc.mode === 'ollama' ? 'Сценарии готовит Ollama' : 'Сейчас: локальный учебный сценарий (без Ollama)'}
+              </Pill>
+              {svc.usesSharedOllama ? <Pill tone="muted">Общая очередь Ollama</Pill> : null}
+            </span>
+            <span class="meta">Это не собеседник: игрок не выбирает тему, поэтому настроек личности здесь нет.</span>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 function PlacementPill({ placement }) {
   if (placement.status === 'placed') {
     const where = [placement.city ? 'Город' : null, placement.station].filter(Boolean).join(', ');
@@ -379,6 +407,7 @@ export function Agents() {
   return (
     <div class="agents-page">
       <OllamaBar ollama={state.ollama} />
+      <ServicesPanel services={state.services} />
       <p class="meta" style="margin:8px 0 12px">
         {state.summary ? `Агентов настроено: ${state.summary.configured}, размещено в мире: ${state.summary.placed}, активных: ${state.summary.active}.` : ''}
         {' '}Не размещённые в мире персонажи не считаются активными NPC.

@@ -30,7 +30,7 @@ function LessonCard({ state, onListen }) {
   );
 }
 
-function Dialog({ stage, onAccept, onRepeat }) {
+function Dialog({ stage, onAccept, onRepeat, onTalk }) {
   if (stage === 'briefing') return h('div', { class: 'dialog-backdrop' }, h('section', { class: 'dialog-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dialog-title' },
     h('div', { class: 'maestro-mark' }, '♪'), h('span', { class: 'eyebrow' }, 'МАЭСТРО АРТЁМ · ПРЕПОДАВАТЕЛЬ МУЗЫКИ'),
     h('h2', { id: 'dialog-title' }, 'Добро пожаловать в музыкальную школу!'),
@@ -42,11 +42,13 @@ function Dialog({ stage, onAccept, onRepeat }) {
     h('div', { class: 'maestro-mark applause' }, '♫'), h('span', { class: 'eyebrow' }, 'БРАВО! · КОНЦЕРТ СОСТОЯЛСЯ'),
     h('h2', { id: 'dialog-title' }, 'Браво! Концерт удался!'), h('p', null, 'Маэстро Артём поздравляет тебя: ты выучил ноты и прекрасно сыграл на сцене.'),
     h('button', { type: 'button', class: 'primary-button', onClick: onRepeat }, 'Повторить урок'),
+    // Разговор с Маэстро доступен и после концерта (нужно, когда станцию открыли заново с сохранённым прогрессом)
+    onTalk && h('button', { type: 'button', class: 'secondary-button', onClick: onTalk }, 'Поговорить с Маэстро'),
   ));
   return null;
 }
 
-export function PianistUI({ state, prompt, notice, noticeType, controlsOpen, quality, onQuality, onAccept, onRepeat, onListen, onToggleSound, onVolume, onToggleControls }) {
+export function PianistUI({ state, prompt, notice, noticeType, controlsOpen, quality, online = false, chatOpen = false, onTalk, onQuality, onAccept, onRepeat, onListen, onToggleSound, onVolume, onToggleControls }) {
   return h('div', { class: 'pianist-ui' },
     h('header', { class: 'brand-card' }, h('div', { class: 'brand-icon', 'aria-hidden': 'true' }, '♫'), h('div', null, h('strong', null, 'МУЗЫКАЛЬНАЯ ШКОЛА'), h('span', null, 'Пианист · урок Маэстро Артёма'))),
     h(LessonCard, { state, onListen }),
@@ -64,8 +66,8 @@ export function PianistUI({ state, prompt, notice, noticeType, controlsOpen, qua
     notice && h('div', { class: `toast toast--${noticeType}`, role: 'status', 'aria-live': 'polite' }, notice),
     state.stage === 'not_started' && !prompt && h('div', { class: 'welcome-hint' }, 'Подойди к Маэстро Артёму и нажми E, чтобы познакомиться.'),
     state.pianoMode && h('div', { class: 'piano-mode-badge' }, 'Игра на пианино · Esc — закончить'),
-    h(Dialog, { stage: state.stage, onAccept, onRepeat }),
-    h('footer', { class: 'footer-note' }, 'Локальный игровой прототип · прогресс сохранён до перезагрузки страницы'),
+    chatOpen ? null : h(Dialog, { stage: state.stage, onAccept, onRepeat, onTalk: online ? onTalk : null }),
+    h('footer', { class: 'footer-note' }, online ? 'Прогресс урока сохраняется на сервере' : 'Локальный игровой прототип · прогресс сохранён до перезагрузки страницы'),
   );
 }
 

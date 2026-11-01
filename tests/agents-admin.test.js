@@ -153,11 +153,25 @@ test('API: список агентов различает размещённых
 
     const list = (await call('GET', '/api/admin/agents')).json();
     const ids = list.agents.map((a) => a.id);
-    assert.deepEqual(ids, ['marusya', 'nurse', 'therapist']);
+    assert.deepEqual(ids, ['baker', 'lilia', 'maestro', 'marusya', 'nurse', 'therapist']);
     const marusya = list.agents.find((a) => a.id === 'marusya');
     assert.equal(marusya.placement.status, 'placed');
     assert.equal(marusya.placement.station, 'Пожарная часть');
     assert.equal(list.agents.find((a) => a.id === 'nurse').placement.status, 'not_placed', 'неразмещённый не выдаётся за активного');
+    assert.equal(list.agents.find((a) => a.id === 'therapist').placement.status, 'not_placed', 'файл персоны не означает размещение');
+    for (const [id, label] of [['baker', 'Пекарня'], ['lilia', 'Цветочная лавка'], ['maestro', 'Музыкальная школа']]) {
+      const row = list.agents.find((a) => a.id === id);
+      assert.equal(row.placement.status, 'placed', `${id} стоит в своей станции`);
+      assert.equal(row.placement.station, label);
+      assert.equal(row.placement.passableWithoutAi, true);
+    }
+    // Радио — ИИ-сервис, а не персона: отдельная секция без фиктивной персоны radio_host.
+    assert.equal(list.agents.some((a) => a.id.startsWith('radio')), false);
+    const radio = list.services.find((svc) => svc.id === 'radio_editor');
+    assert.equal(radio.placed, true);
+    assert.equal(radio.kind, 'script_editor');
+    assert.equal(radio.offlineFallback, true);
+    assert.equal(radio.mode, 'ollama');
     assert.ok(list.schema.length >= 10);
     assert.equal(list.ollama.state, 'ready');
 
@@ -235,8 +249,8 @@ test('API: модель не настроена — понятное состо�
     const admin = await adminLogin(app);
     const overview = (await adminRequest(app, admin, 'GET', '/api/admin/overview')).json();
     assert.equal(overview.ollama.state, 'not_configured');
-    assert.equal(overview.agents.configured, 3);
-    assert.equal(overview.agents.active, 1);
+    assert.equal(overview.agents.configured, 6);
+    assert.equal(overview.agents.active, 4);
   } finally {
     await app.close();
   }

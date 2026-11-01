@@ -5,6 +5,13 @@
 
 ## Заметки
 
+- **ИИ-наставники станций (2026-11-01; локальная работа, без коммита; ветка `local/ai-agents-all-stations`).**
+  - **Затронутый контракт:** `shared/protocol.js` и новый `shared/station-npcs.js`.
+  - **Что меняется:** сообщения клиент → сервер `station_enter {stationId}`, `station_pos {x, z}`, `station_leave {}`; сервер → клиент `station_state {stationId (строка|null), ok, message}`. Новые задания `bakery_station_v1`, `florist_station_v1`, `pianist_station_v1` через существующие `task_answer/task_state`; в `context` обработчика заданий добавлено серверное поле `station: {id, x, z}|null`. `npc_talk` внутри станции принимает только NPC из реестра `STATION_NPCS` после серверно подтверждённой сессии; `stationId`, позиция, этап и `context` от клиента не используются как факты. Существующие сообщения и `proto` не менялись.
+  - **Зачем:** диалоговые наставники (`baker`, `lilia`, `maestro`) в станциях с локальными координатами на общей Ollama, с прогрессом, который подтверждает сервер.
+  - **Затрагивает:** роли 2 (`server/net`, `shared`), 3 (`server/agents`: три персоны, `gender`), 4 (`server/tasks`) и клиентские папки станций.
+  - **Статус:** не закоммичено. Подробности: `docs/ai-agents-all-stations/`.
+
 - **Radio MVP (дата: 2026-11-01; инициатор: Codex, роль 2; ветка `station/radio`).**
   - **Затронутый контракт:** `shared/agent-api.md` — публичный `generateRadioScript()` и асинхронный task handler через `task_answer/task_state`.
   - **Что меняется:** готовые сценарии Weather и Science, локальные fallback-сценарии, отдельный `radio_station_v1` progress; новый тип сетевого сообщения не добавляется.

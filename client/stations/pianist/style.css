@@ -62,6 +62,8 @@ kbd { display: inline-grid; min-width: 24px; height: 22px; place-items: center; 
 .maestro-mark.applause { background: #d9eadb; color: #668d69; }
 .primary-button { width: 100%; margin-top: 14px; padding: 13px 18px; border: 0; border-radius: 13px; background: #8baa91; color: #fffdf7; font-size: 14px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 0 #718f78; }
 .primary-button:hover { background: #7ea185; }
+.secondary-button { width: 100%; margin-top: 10px; padding: 11px 18px; border: 2px solid #8baa91; border-radius: 13px; background: transparent; color: #4f6f57; font-size: 14px; font-weight: 800; cursor: pointer; }
+.secondary-button:hover { background: rgba(139,170,145,.14); }
 @media (max-width: 1050px) {
   .lesson-card { width: 350px; }
   .controls-card { bottom: 16px; left: 16px; width: 190px; }

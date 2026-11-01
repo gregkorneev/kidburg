@@ -325,8 +325,8 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
       const cut = (s) => s.slice(0, cfg.storedMessageChars);
       const turns = [
         ...memory.turns,
-        { role: 'user', text: cut(text) },
-        { role: 'assistant', text: cut(answer) },
+        { role: 'user', text: cut(text), ...(situation ? { stage: situation.key } : {}) },
+        { role: 'assistant', text: cut(answer), ...(situation ? { stage: situation.key } : {}) },
       ].slice(-cfg.historyMessages);
       const note = firstSentence(answer, cfg.noteChars);
       const notes = (note ? [...memory.notes, note] : memory.notes).slice(-cfg.notesKept);
@@ -352,21 +352,40 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     const text = normalizeText(s.text, cfg.situationChars);
     const key = clean(s.key, 40);
     if (!text || !key) return null;
-    return { key, label: clean(s.label, 40) || key, text };
+    // avoid — серверные шаблоны утверждений о ходе задания, которые на этом этапе были бы ложью.
+    const avoid = [];
+    for (const source of Array.isArray(s.avoid) ? s.avoid.slice(0, 64) : []) {
+      if (typeof source !== 'string' || source.length > 512) continue;
+      try {
+        avoid.push(new RegExp(source, 'iu'));
+      } catch {
+        // повреждённый шаблон просто не применяется
+      }
+    }
+    return { key, label: clean(s.label, 40) || key, text, avoid };
   }
 
-  const RETRY_NOTE =
-    'Твой прошлый вариант ответа повторял то, что ты уже говорила этому игроку. Ответь иначе: без приветствия, другими словами и скажи что-то новое по теме вопроса.';
+  // Персона мужского рода помечается `"gender": "m"`; без поля формы остаются женскими (как у Маруси).
+  const retryNote = (male, reason) =>
+    reason === 'claim'
+      ? `Твой прошлый вариант ответа ${male ? 'утверждал' : 'утверждала'} то, чего нет в сведениях о ходе урока. Ответь иначе: хвали только за то, что указано в «Уже сделано», и прямо скажи, что из «Ещё НЕ сделано» впереди.`
+      : `Твой прошлый вариант ответа повторял то, что ты уже ${male ? 'говорил' : 'говорила'} этому игроку. Ответь иначе: без приветствия, другими словами и скажи что-то новое по теме вопроса.`;
 
   function buildMessages(persona, req, text, situation, memory, retry = false, eff = applySettings(persona)) {
     const context = req.context ?? {};
+    const male = persona.gender === 'm';
     const facts = [];
     const player = clean(context.playerName, 32);
     if (player) facts.push(`Собеседника зовут ${player}.`);
     const district = clean(context.district, 40);
     if (district) facts.push(`Разговор идёт в районе «${district}».`);
+    // У станционных наставников ход задания также повторяется в реплике игрока; в историю попадают
+    // только реплики текущего этапа и нет заметок о прошлых ответах:
+    // в них могли быть утверждения о прежнем ходе задания. От повторов защищает проверка повтора в reply().
+    const inTurn = persona.progressInUserTurn === true && Boolean(situation) && eff.reactToTaskProgress;
     if (situation && eff.reactToTaskProgress) {
       facts.push(`Ход задания игрока (подтверждён сервером, других сведений об успехах игрока нет): ${situation.text}`);
+      if (inTurn) facts.push('Утверждения игрока в вопросе могут быть ошибочными. Сверяй их с подтверждённым ходом задания и не считай их доказательством действий.');
     }
     if (memory.exchanges === 0 && memory.turns.length === 0) {
       facts.push(
@@ -376,9 +395,9 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
       );
     } else {
       facts.push('Вы с этим игроком уже разговаривали: не здоровайся и не представляйся заново, продолжай разговор.');
-      if (memory.notes.length) {
+      if (memory.notes.length && !inTurn) {
         facts.push(
-          `Ты уже рассказывала: ${memory.notes.join(' ')} Не выдавай это за новое: если игрок не просит повторить, скажи что-то новое или напомни одной фразой.`,
+          `Ты уже ${male ? 'рассказывал' : 'рассказывала'}: ${memory.notes.join(' ')} Не выдавай это за новое: если игрок не просит повторить, скажи что-то новое или напомни одной фразой.`,
         );
       }
       if (situation && eff.reactToTaskProgress && memory.lastSituation && memory.lastSituation.key !== situation.key) {
@@ -387,14 +406,14 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
         );
       }
     }
-    if (retry) facts.push(RETRY_NOTE);
+    if (retry) facts.push(retryNote(male, retry));
     const system = [getSystemRules(), 'Твой персонаж:', personaPrompt(persona, eff), facts.join(' ')]
       .filter(Boolean)
       .join('\n\n');
     return [
       { role: 'system', content: system },
-      ...pickContext(memory.turns, cfg),
-      { role: 'user', content: text },
+      ...pickContext(inTurn ? memory.turns.filter((t) => t?.stage === situation.key) : memory.turns, cfg),
+      { role: 'user', content: inTurn ? `Достоверные сведения о ходе урока: ${situation.text}\n\nВопрос игрока: ${text}` : text },
     ];
   }
 
@@ -411,32 +430,51 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     // Настройки читаются один раз на запрос: идущая генерация не меняется на полуслове.
     const eff = applySettings(persona, req.settingsOverride ?? settingsOf(req.agentId));
     if (!eff.enabled) throw new OllamaError('disabled', 'Этот наставник сейчас недоступен. Загляните позже.');
+    const situation = readSituation(req.context);
+    // Потеря серверного состояния не должна незаметно отключать защиту от ложных достижений.
+    if (persona.progressInUserTurn === true && req.ephemeral !== true && (!situation || !situation.avoid.length)) {
+      throw new OllamaError('context_unavailable', 'Не удалось прочитать ход задания. Попробуйте поговорить позже.');
+    }
     const release = await slots.acquire({ signal: req.signal, onQueue: req.onQueue });
     try {
-      const situation = readSituation(req.context);
       // Проверочные реплики администратора (ephemeral) не читают и не пишут память игроков.
       const memory = req.ephemeral === true ? emptyMemory() : loadMemory(req.userId, req.agentId);
-      const guard = createRepeatGuard({
+      const repeatGuard = createRepeatGuard({
         previous: [...memory.notes, ...memory.turns.filter((t) => isTurn(t) && t.role === 'assistant').map((t) => t.text)],
         met: memory.exchanges > 0 || memory.turns.length > 0,
         threshold: cfg.repeatThreshold,
+        ...(situation?.avoid.length && persona.progressInUserTurn === true ? { minChars: 170, maxChars: 300 } : {}),
       });
+      // Станционный ответ проверяется целиком до выдачи: совпадение с шаблоном вызывает перегенерацию.
+      let contradicted = false;
+      const guard = situation?.avoid.length && persona.progressInUserTurn === true && eff.reactToTaskProgress
+        ? {
+            bufferAll: true,
+            check(opening, options) {
+              const verdict = repeatGuard.check(opening, options);
+              if (verdict !== 'ok') return verdict;
+              if (!situation.avoid.some((pattern) => pattern.test(opening))) return 'ok';
+              contradicted = true;
+              return 'repeat';
+            },
+          }
+        : repeatGuard;
 
-      // Начало ответа держится, пока не проверено, что это не повтор сказанного раньше; затем текст идёт потоком.
-      // Повтор не показывается игроку: ответ генерируется заново (ограниченное число раз), иначе — ошибка.
+      // Ответы с проверкой фактов буферизуются целиком; остальные проходят прежнюю проверку начала.
       for (let attempt = 0; attempt <= cfg.repeatRetries; attempt++) {
-        const messages = buildMessages(persona, req, text, situation, memory, attempt > 0, eff);
+        const messages = buildMessages(persona, req, text, situation, memory, attempt > 0 ? (contradicted ? 'claim' : 'repeat') : false, eff);
         const temperature = Math.min(1, (eff.temperature ?? cfg.temperature) + 0.15 * attempt);
         const outcome = yield* generate(req, messages, temperature, guard, eff.numPredict ?? cfg.numPredict);
         if (req.signal?.aborted) return;
         if (outcome.repeated) {
-          log?.info?.({ agentId: req.agentId, attempt }, 'ответ повторяет сказанное раньше, генерация заново');
+          log?.info?.({ agentId: req.agentId, attempt, contradicted }, 'ответ повторяет сказанное или противоречит ходу задания, генерация заново');
           continue;
         }
         if (!outcome.answer.trim()) throw new OllamaError('empty', 'Модель вернула пустой ответ');
         if (req.ephemeral !== true) saveTurns(req.userId, req.agentId, text, outcome.answer.trim(), situation);
         return;
       }
+      if (contradicted) throw new OllamaError('repeat', 'Наставник не смог ответить точно. Попробуйте спросить иначе или повторите вопрос.');
       throw new OllamaError('repeat', 'Собеседник повторился и не придумал нового ответа. Попробуйте спросить иначе или повторите вопрос.');
     } finally {
       release();
@@ -550,6 +588,13 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
         continue;
       }
       held += token;
+      if (guard.bufferAll) {
+        if (held.length >= cfg.maxReplyChars) {
+          held = held.slice(0, cfg.maxReplyChars);
+          break;
+        }
+        continue;
+      }
       const verdict = guard.check(held.trimStart(), { ended: false });
       if (verdict === 'wait') continue;
       if (verdict === 'repeat') return { answer: '', repeated: true };

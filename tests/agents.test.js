@@ -262,6 +262,24 @@ test('reply: без OLLAMA_MODEL, с неизвестным агентом и с
   await rejectsWith(collect(brain.reply({ userId: user.id, agentId: 'therapist', text: '   ' })), 'empty');
 });
 
+test('станционный наставник не отвечает без серверного состояния, проверка админа остаётся доступной', async () => {
+  const srv = await fakeOllama(tokensHandler(['Я помогу тебе разобраться с хлебом.']));
+  try {
+    const { db, mk, agents } = setup();
+    const user = mk('Без прогресса');
+    const brain = agents(srv.url);
+    for (const situation of [undefined, { key: 'bad', text: '' }, { key: 'bad', text: 'Нет проверочных шаблонов', avoid: [] }]) {
+      await rejectsWith(collect(brain.reply({ userId: user.id, agentId: 'baker', text: 'Я всё сделал?', context: { situation } })), 'context_unavailable');
+    }
+    assert.equal(srv.requests.length, 0);
+    assert.equal(db.getAgentMemory(user.id, 'baker'), null);
+    const adminReply = await collect(brain.reply({ userId: 0, agentId: 'baker', text: 'Расскажи о профессии', ephemeral: true }));
+    assert.ok(adminReply.join('').includes('хлебом'));
+  } finally {
+    await srv.close();
+  }
+});
+
 test('reply: модель берётся из OLLAMA_MODEL, но не вшита в код', () => {
   assert.equal(resolveAgentConfig({}, {}).model, '');
   assert.equal(resolveAgentConfig({}, { OLLAMA_MODEL: 'qwen3:8b' }).model, 'qwen3:8b');
