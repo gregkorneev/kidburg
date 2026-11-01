@@ -9,7 +9,7 @@ import { applyStylizedLook } from '../../engine/art/lighting.js';
 import { isSharedResource, stdMat } from '../../engine/art/materials.js';
 import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
 import {
-  animateCharacter, appearanceFromSeed, createCharacter, resetArms, setArmReach, setPersonEquipment, triggerGesture, yawToward,
+  animateCharacter, appearanceFromSeed, createCharacter, reactToEvent, resetArms, setArmReach, setCarry, setCharacterQuality, setPersonEquipment, triggerGesture, yawToward,
 } from '../../engine/art/character.js';
 import { buildFireTruck, buildHoseStand, buildLocker, buildMannequin, buildSafeZone, buildSafetyBarriers, buildStation, buildTrainingWall, createObjectiveMarker } from './station-art.js';
 import { createScenery } from './scenery.js';
@@ -45,7 +45,13 @@ export function createMarusya() {
     helmet: true,
     holding: 'clipboard',
     nameScale: 1.12,
-    appearance: { skin: '#f4c8a2', hair: '#5b3a2b', hairStyle: 'ponytail', outfit: '#9c3a31', pants: '#2f3e4a' },
+    // Индивидуальная внешность Маруси задана явно: лицо, причёска и характер не зависят от id.
+    appearance: {
+      seed: 4107, skin: '#f4c8a2', hair: '#5b3a2b', hairStyle: 'ponytail', outfit: '#9c3a31', pants: '#2f3e4a',
+      build: 'standard', faceShape: 'oval', eyeShape: 'round', eyeSize: 1.02, eyeColor: '#4f7d4a', browStyle: 'arched', noseStyle: 'button', mouthStyle: 'small',
+      earHeight: 1, accessory: 'none', shoes: 'boot', bootColor: '#6b4a38',
+    },
+    personality: { expression: 'happy', intensity: 0.3 },
   });
 }
 
@@ -77,6 +83,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
 
   const look = applyStylizedLook({ renderer, scene, camera, fog: [46, 135], shadowExtent: 26, exposure: 1.02 });
   let quality = readQuality();
+  setCharacterQuality(quality);
   let detail = look.setQuality(quality).detail;
   const scenery = createScenery({ detail });
   scene.add(scenery.group);
@@ -259,6 +266,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   let lastSafetyNotice = -Infinity;
   let prompt = '';
   let previousStage = '';
+  let previousStageForReaction = '';
   let frameId = 0;
   let npcTalking = false;
   let npcGreeted = false;
@@ -320,6 +328,10 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     if (stage !== previousStage && stage !== 'fire_drill') stopHose();
     previousStage = stage;
     setPersonEquipment(player, state?.equipped);
+    setCarry(player, state?.carryingMannequin);
+    // Реакция наставницы на подтверждённый сервером прогресс: только внешний вид, логику не затрагивает.
+    if (previousStageForReaction && stage !== previousStageForReaction) reactToEvent(npc, stage === 'completed' ? 'task_complete' : 'task_success');
+    previousStageForReaction = stage;
     // Состояние окон приходит с сервера (task_state): огонь гаснет и уменьшается по числу подтверждённых попаданий.
     windows.forEach(({ flames }, index) => {
       const hits = state?.windows?.[index] ?? 0;
@@ -638,7 +650,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     const noticing = near < NPC_NOTICE_DISTANCE;
     if (near < NPC_GREET_DISTANCE && !npcGreeted) {
       npcGreeted = true;
-      triggerGesture(npc, 'wave');
+      reactToEvent(npc, 'greet');
     } else if (near > NPC_NOTICE_DISTANCE) npcGreeted = false;
     const want = noticing ? Math.atan2(player.position.x - npc.position.x, player.position.z - npc.position.z) : npcRestYaw;
     const turn = ((((want - npc.rotation.y) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -648,7 +660,8 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   }
 
   let previousFrameTime = null;
-  function animate(timestamp) {
+  // Первый вызов — animate() без аргументов: без значения по умолчанию delta становилась NaN и портила поворот Маруси.
+  function animate(timestamp = performance.now()) {
     frameId = requestAnimationFrame(animate);
     const delta = previousFrameTime === null ? 0 : Math.min((timestamp - previousFrameTime) / 1000, 0.05);
     const elapsed = timestamp / 1000;
@@ -711,7 +724,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     /** Маруся «говорит»: открыт разговор с ней. Кивок и жест приветствия — при открытии. */
     setNpcTalking(value) {
       const next = Boolean(value);
-      if (next && !npcTalking) triggerGesture(npc, 'nod');
+      if (next && !npcTalking) reactToEvent(npc, 'talk_start');
       npcTalking = next;
     },
     getQuality: () => quality,
@@ -719,6 +732,7 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
     setQuality(level) {
       if (!QUALITY_PRESETS[level]) return quality;
       quality = level;
+      setCharacterQuality(level);
       detail = look.setQuality(level).detail;
       scenery.setDetail(detail);
       saveQuality(level);

@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CHUNK_SIZE, WORLD_CHUNKS_X, WORLD_CHUNKS_Z } from '../../shared/constants.js';
 import { decode } from '../../shared/protocol.js';
-import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter } from './art/character.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter, setCharacterQuality } from './art/character.js';
 import { updateWind } from './art/wind.js';
 import { getPrefabVariant, variantKey } from './prefabs.js';
 
@@ -202,7 +202,7 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel, quali
     const npcs = chunk.npcs.map((n) => {
       const name = n.name ?? n.agentId;
       // Внешность выводится из agentId: один и тот же NPC выглядит одинаково у всех.
-      const avatar = createCharacter({ appearance: appearanceFromSeed(hashString(String(n.agentId ?? name))), holding: 'clipboard' });
+      const avatar = createCharacter({ appearance: appearanceFromSeed(hashString(String(n.agentId ?? name))), holding: 'clipboard', quality: currentQuality });
       avatar.scale.setScalar(CITY_CHARACTER_SCALE);
       avatar.rotation.y = Math.PI; // персонаж смотрит в +Z, направление NPC считается как у игрока (−Z)
       const mesh = new THREE.Group();
@@ -315,6 +315,7 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel, quali
     /** Меняет уровень графики: декор (струи, растения) подстраивает число частиц и экземпляров. */
     setQuality(level) {
       currentQuality = level;
+      setCharacterQuality(level);
       for (const entry of chunks.values()) for (const decor of entry.decor) decor.setQuality?.(level);
     },
     dispose() {

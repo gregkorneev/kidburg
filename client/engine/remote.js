@@ -48,15 +48,16 @@ function colorOf(appearance) {
  * @param {object} deps
  * @param {THREE.Scene} deps.scene
  * @param {(text: string) => THREE.Object3D & {element: HTMLElement}} deps.createLabel
+ * @param {'low'|'medium'|'high'} [deps.quality] детализация новых персонажей
  */
-export function createRemotePlayers({ scene, createLabel }) {
+export function createRemotePlayers({ scene, createLabel, quality = 'medium' }) {
   /** @type {Map<number, {group: THREE.Group, avatar: THREE.Group, label: any, snaps: object[], name: string, last: object | null, lastNow: number | null}>} */
   const players = new Map();
 
   function create(id, name, appearance) {
     const group = new THREE.Group();
     // Персонаж смотрит в +Z, а игрок в городе — в −Z: разворачиваем внутри группы.
-    const avatar = createCharacter({ appearance: appearanceFromSeed(id, colorOf(appearance)) });
+    const avatar = createCharacter({ appearance: appearanceFromSeed(id, colorOf(appearance)), quality });
     avatar.scale.setScalar(CITY_CHARACTER_SCALE);
     avatar.rotation.y = Math.PI;
     group.add(avatar);
@@ -119,9 +120,11 @@ export function createRemotePlayers({ scene, createLabel }) {
           const velocity = Math.hypot(s.x - p.last.x, s.z - p.last.z) / dt;
           speed = velocity > RUN_SPEED ? 2 : velocity > 0.3 ? 1 : 0;
         }
+        // Угловая скорость поворота для крена и разворота плеч считается из тех же снимков, без новых полей протокола.
+        const turn = p.last && dt > 0 ? lerpAngle(0, s.ry - p.last.ry, 1) / dt : 0;
         p.last = s;
         p.lastNow = now;
-        animateCharacter(p.avatar, dt, now / 1000, { speed });
+        animateCharacter(p.avatar, dt, now / 1000, { speed, turn });
       }
     },
     clear() {

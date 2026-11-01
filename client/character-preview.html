@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Персонажи — предпросмотр</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;background:#d6e8e0;color:#23463b;font:14px system-ui,sans-serif} #view{position:fixed;inset:0} canvas{display:block;width:100%;height:100%}
+    .panel{position:fixed;z-index:1;background:#fffaf0eb;border-radius:14px;padding:10px 12px;box-shadow:0 6px 24px #355b4c24;max-width:62vw}
+    #bar{left:10px;top:10px} #stats{left:10px;bottom:10px;font:12px ui-monospace,monospace;white-space:pre}
+    body.clean .panel{display:none}
+    button{border:0;border-radius:9px;background:#e3eee5;color:#285344;padding:6px 9px;font:600 12px system-ui;cursor:pointer;margin:2px} button.on{background:#dc624b;color:#fff}
+    .row{margin:2px 0}
+  </style>
+</head>
+<body>
+  <main id="view" aria-label="Предпросмотр персонажей"></main>
+  <div class="panel" id="bar"></div>
+  <div class="panel" id="stats"></div>
+  <script type="module" src="/engine/art/character-preview.js"></script>
+</body>
+</html>

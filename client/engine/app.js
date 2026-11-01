@@ -199,7 +199,7 @@ export function createClient({ container, networkOnly = false }) {
 
     const pool = createPool();
     const world = createChunkManager({ scene, pool, quality });
-    const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel });
+    const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel, quality });
     const hud = createHud(container);
     const player = createPlayer();
     let fireStationNearby = false;
@@ -255,6 +255,7 @@ export function createClient({ container, networkOnly = false }) {
         resetWorld(); // сервер начинает зеркало кеша и список игроков заново
         const s = msg.state;
         setPlayerPosition(player, s.x, s.y, s.z);
+        hud.setPlayerPosition(player.x, player.z);
         player.yaw = s.ry ?? 0;
         player.pitch = 0;
         lastSent = null;
@@ -275,6 +276,7 @@ export function createClient({ container, networkOnly = false }) {
       emitter.on('players', (msg) => remote.snapshot(msg.list, performance.now())),
       emitter.on('correct', (msg) => {
         setPlayerPosition(player, msg.x, msg.y, msg.z);
+        hud.setPlayerPosition(player.x, player.z);
         lastSent = null;
       }),
       emitter.on('auth', (info) => {
@@ -331,6 +333,7 @@ export function createClient({ container, networkOnly = false }) {
 
       if (ready) {
         stepPlayer(player, input.keys(), dt, world);
+        hud.setPlayerPosition(player.x, player.z);
 
         sinceSend += dt;
         if (sinceSend >= POS_INTERVAL_S) {
