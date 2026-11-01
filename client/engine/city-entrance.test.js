@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FIRE_STATION_ENTRANCE, isNearFireStationEntrance } from './city-entrance.js';
+import {
+  FIRE_STATION_ENTRANCE,
+  FLORIST_ENTRANCE,
+  isNearFireStationEntrance,
+  isNearFloristEntrance,
+} from './city-entrance.js';
 
 test('fire station entrance is reachable from the west path', () => {
   assert.equal(isNearFireStationEntrance(395, 412), true);
@@ -14,4 +19,11 @@ test('entrance is usable at its threshold and rejects invalid coordinates', () =
   assert.equal(isNearFireStationEntrance(FIRE_STATION_ENTRANCE.x + FIRE_STATION_ENTRANCE.radius, FIRE_STATION_ENTRANCE.z), true);
   assert.equal(isNearFireStationEntrance(Number.NaN, 0), false);
   assert.equal(FIRE_STATION_ENTRANCE.href, '/firefighter-preview.html');
+});
+
+test('florist entrance is reachable from the south-west path', () => {
+  assert.equal(isNearFloristEntrance(394, 442), true);
+  assert.equal(isNearFloristEntrance(410, 416), false);
+  assert.equal(isNearFloristEntrance(FLORIST_ENTRANCE.x + FLORIST_ENTRANCE.radius, FLORIST_ENTRANCE.z), true);
+  assert.equal(FLORIST_ENTRANCE.href, '/florist-preview.html');
 });
