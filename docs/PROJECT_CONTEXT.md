@@ -197,6 +197,8 @@ HUD показывает: «Чанки: X из 144 (Y%), лимит 14». При
 
 **`task_answer` / `task_state` (станция «Пожарный», `taskId: 'firefighter_station_v1'`).** Клиент отправляет только намерение: `payload: {action}`, где `action` — `start`, `accept_briefing`, `equip`, `window_hit`, `pickup_mannequin`, `deliver_mannequin`, `report` или `resume` (только прочитать состояние). Для `window_hit` читается ещё `index` — номер окна учебной стены, целое 0..3 (сервер проверяет его и сверяет направление взгляда с этим окном). Остальные поля payload сервер не читает: владелец прогресса — `userId` соединения, позиция и взгляд (`ry` из принятого `pos`) — серверные, `state`/`done`/`progress` из клиента не принимаются. Ответ `task_state.state` — `{stage, equipped, windows, carryingMannequin, mannequinDelivered, done, feedback, changed}`, где `windows` — массив из 4 целых 0..12 (число попаданий по каждому окну, 12 — потушено); записи прежнего формата с `fireHits` сервер при чтении переводит в `windows`; `changed: true` только если переход записан в SQLite. При сбое базы приходит `{error: 'storage', feedback}` (при сбое записи — с прежним состоянием), прогресс не меняется. `task_state` присылается и сразу после `welcome` (восстановление после входа и переподключения). Мировые координаты точек станции и преобразование из локальных координат preview — `client/stations/firefighter/layout.js`.
 
+**`task_answer` / `task_state` (Radio, `taskId: 'radio_station_v1'`).** Действия: `open`, `select_category` (`weather|science`), `generate_script`, `start_broadcast`, `complete_broadcast`, `new_broadcast`. Сценарий готовится асинхронно; сетевой слой ожидает task handler, а клиент получает один итоговый `task_state` без потоковых токенов и без нового типа сообщения. Временный этап генерации не сохраняется; устойчивые этапы: `idle`, `choose_topic`, `ready`, `on_air`, `completed`. `task_progress` хранит категорию, сценарий, последние 5 завершённых `recentTopicIds`/заголовков и `completedBroadcasts`. `complete_broadcast` идемпотентен. При отключении соединения `AbortSignal` останавливает генерацию и поздний `task_state` не отправляется. Science берёт только локальный факт из `content/radio/science-facts.js`; модель может только адаптировать его для чтения вслух. При ошибке Ollama используется исходный факт или локальный вымышленный weather script.
+
 ### 4.4. HTTP API
 
 | Метод и путь | Назначение |
@@ -252,12 +254,12 @@ export function registerAgents(app, ctx) {}
 ### 4.8. Интерфейс задач (`server/tasks`, черновик)
 
 ```js
-/** @returns {Promise<{state:object, done:boolean, feedback?:string}>} */
-export async function handle(userId, taskId, payload) {}
+/** @returns {object|Promise<object>} */
+export function handle(userId, taskId, payload, context) {}
 export function registerTasks(app, ctx) {}
 ```
 
-Результат сервер отправляет клиенту как `task_state` и сохраняет в `task_progress`. Обработчики лежат в `app.taskHandlers` (`taskIds`, `has`, `getState(userId, taskId)`, `handle(userId, taskId, payload, {position, yaw})`); `server/net/game.js` вызывает их синхронно, подставляя `userId` и позицию соединения.
+Результат сервер отправляет клиенту как `task_state` и сохраняет в `task_progress`. Обработчики лежат в `app.taskHandlers` (`taskIds`, `has`, `getState(userId, taskId)`, `handle(userId, taskId, payload, {position, yaw, signal})`); `server/net/game.js` ожидает как синхронный результат, так и Promise, подставляя авторизованный `userId`, позицию соединения и сигнал отмены.
 
 ### 4.9. Интерфейс клиента для UI (`api`, делает роль 1, использует роль 4)
 

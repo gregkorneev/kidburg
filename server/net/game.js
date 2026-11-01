@@ -83,7 +83,7 @@ function reject(socket, status, text) {
  * @param {ReturnType<import('./tickets.js').createTicketStore>} deps.tickets
  * @param {ReturnType<import('./world.js').loadWorld>} [deps.world] без мира чанки не передаются
  * @param {{taskIds: readonly string[], has(id: string): boolean, getState(userId: number, id: string): object,
- *   handle(userId: number, id: string, payload: unknown, context: object): object, forget?(userId: number): void}} [deps.tasks]
+ *   handle(userId: number, id: string, payload: unknown, context: object): object|Promise<object>, forget?(userId: number): void}} [deps.tasks]
  *   задания; прогресс принадлежит userId соединения, позиция берётся у сервера
  * @param {typeof defaultReply} [deps.reply] мозг агента (shared/agent-api.md); подменяется в тестах
  * @param {number} [deps.npcTalkMaxChars] предел длины реплики игрока NPC
@@ -146,6 +146,8 @@ export function createGame({
     conn.closed = true;
     clearTimeout(conn.helloTimer);
     conn.talk?.controller.abort(); // клиент ушёл: генерация NPC больше не нужна
+    for (const controller of conn.taskControllers) controller.abort();
+    conn.taskControllers.clear();
     conns.delete(conn);
     if (connByUser.get(conn.user.id) === conn) connByUser.delete(conn.user.id);
     if (conn.player) removePlayer(conn.player);
@@ -228,7 +230,7 @@ export function createGame({
     }
   }
 
-  function handleTask(player, msg) {
+  async function handleTask(player, msg) {
     const t = now();
     if (!player.taskLimit.hit(t)) {
       if (player.taskLimit.shouldNotify(t)) sendError(player.conn, ERROR_CODES.RATE_LIMIT, 'Слишком много task_answer');
@@ -236,15 +238,22 @@ export function createGame({
     }
     if (!tasks?.has(msg.taskId)) return sendError(player.conn, ERROR_CODES.BAD_MSG, 'Неизвестное задание');
     // Владелец — игрок соединения, позиция и взгляд — последние принятые сервером. Из payload берёт только action.
-    const context = { position: { x: player.x, y: player.y, z: player.z }, yaw: player.ry };
+    const conn = player.conn;
+    const controller = new AbortController();
+    conn.taskControllers.add(controller);
+    const context = { position: { x: player.x, y: player.y, z: player.z }, yaw: player.ry, signal: controller.signal };
     let state;
     try {
-      state = taskWire(tasks.handle(player.id, msg.taskId, msg.payload, context));
+      state = taskWire(await tasks.handle(player.id, msg.taskId, msg.payload, context));
     } catch (err) {
+      if (controller.signal.aborted || conn.closed) return;
       log.error({ err, userId: player.id, taskId: msg.taskId }, 'ошибка обработчика задания');
       state = { error: 'storage', feedback: TASK_UNAVAILABLE };
+    } finally {
+      conn.taskControllers.delete(controller);
     }
-    send(player.conn, { t: S2C.TASK_STATE, taskId: msg.taskId, state });
+    if (controller.signal.aborted || conn.closed || conn.player !== player || conn.ws.readyState !== WebSocket.OPEN) return;
+    send(conn, { t: S2C.TASK_STATE, taskId: msg.taskId, state });
     if (msg.taskId === FIREFIGHTER_TASK_ID && msg.payload?.action === 'equip' && state.changed && state.equipped) {
       const appearance = { ...player.appearance, firefighterEquipped: true };
       player.appearance = appearance;
@@ -375,7 +384,9 @@ export function createGame({
     }
     if (msg.t === C2S.POS) return handlePos(conn.player, msg);
     if (msg.t === C2S.HELLO) return sendError(conn, ERROR_CODES.BAD_MSG, 'hello уже было');
-    if (msg.t === C2S.TASK_ANSWER) return handleTask(conn.player, msg);
+    if (msg.t === C2S.TASK_ANSWER) {
+      return void handleTask(conn.player, msg).catch((err) => log.error({ err }, 'сбой обработки task_answer'));
+    }
     if (msg.t === C2S.NPC_TALK) {
       return void handleNpcTalk(conn.player, msg).catch((err) => log.error({ err }, 'сбой моста npc_talk'));
     }
@@ -386,7 +397,7 @@ export function createGame({
     const previous = connByUser.get(user.id);
     if (previous) dropConn(previous, CLOSE.REPLACED, 'replaced');
 
-    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null, talk: null };
+    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null, talk: null, taskControllers: new Set() };
     conns.add(conn);
     connByUser.set(user.id, conn);
     conn.helloTimer = setTimeout(() => {
