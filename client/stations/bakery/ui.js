@@ -21,7 +21,7 @@ export function BakeryUI({ state, prompt = '', notice = '', quality = 'medium', 
   const currentIndex = STAGES.indexOf(state.stage);
   return h('div', { class: 'bakery-ui' },
     h('header', { class: 'bakery-brand' },
-      h('span', { class: 'bakery-mark', 'aria-hidden': 'true' }, 'П'),
+      h('span', { class: 'bakery-mark', 'aria-hidden': 'true' }, '🥖'),
       h('span', null, h('strong', null, 'ПЕКАРНЯ'), h('small', null, 'Учебная смена')),
     ),
     h('section', { class: 'objective-card', 'aria-live': 'polite' },
