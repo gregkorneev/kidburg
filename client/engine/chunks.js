@@ -190,6 +190,31 @@ export function createChunkManager({ scene, pool, createLabel = makeLabel, quali
         scl.setScalar(scale);
         mesh.setMatrixAt(i, matrix.compose(pos, quat, scl));
         if (prefab.collider) colliders.push(instanceBox(prefab.collider, x, y, z, ry, scale));
+        if (prefab.colliders) {
+          const cos = Math.cos(ry);
+          const sin = Math.sin(ry);
+          for (const box of prefab.colliders()) {
+            const cx = box.minX + (box.maxX - box.minX) / 2;
+            const cz = box.minZ + (box.maxZ - box.minZ) / 2;
+            const halfWidth = (box.maxX - box.minX) * scale / 2;
+            const halfDepth = (box.maxZ - box.minZ) * scale / 2;
+            const worldX = x + (cx * cos + cz * sin) * scale;
+            const worldZ = z + (-cx * sin + cz * cos) * scale;
+            const extentX = Math.abs(cos) * halfWidth + Math.abs(sin) * halfDepth;
+            const extentZ = Math.abs(sin) * halfWidth + Math.abs(cos) * halfDepth;
+            colliders.push({
+              ...box,
+              x: worldX,
+              z: worldZ,
+              minX: worldX - extentX,
+              maxX: worldX + extentX,
+              minY: y + box.minY * scale,
+              maxY: y + box.maxY * scale,
+              minZ: worldZ - extentZ,
+              maxZ: worldZ + extentZ,
+            });
+          }
+        }
         if (prefab.decorate) {
           decor.push(prefab.decorate({ group, instance: { x: x - group.position.x, y, z: z - group.position.z, ry, scale }, quality: currentQuality }));
         }

@@ -290,3 +290,18 @@ export function occupiedCircles() {
     ...ROCKS.map((b) => [b.x, b.z, 0.6 * b.s, 'rock']),
   ];
 }
+
+export function plazaCollisionBoxes() {
+  return [
+    ...occupiedCircles(),
+    ...TREES.map((tree) => [tree.x, tree.z, 0.45 * tree.s, 'tree']),
+    ...BUSHES.map((bush) => [bush.x, bush.z, 0.55 * bush.s, 'bush']),
+  ].map(([x, z, radius]) => ({
+    minX: x - radius,
+    maxX: x + radius,
+    minY: 0,
+    maxY: 2,
+    minZ: z - radius,
+    maxZ: z + radius,
+  }));
+}

@@ -9,6 +9,7 @@ import { makeFixtures } from '../../tools/fixtures/make-fixtures.mjs';
 import { createChunkManager, heightInChunk, parseChunk } from './chunks.js';
 import { createPool } from './pool.js';
 import { collides } from './player.js';
+import { BENCHES } from './plaza-plan.js';
 
 const dir = mkdtempSync(path.join(tmpdir(), 'city-client-world-'));
 makeFixtures(dir);
@@ -91,6 +92,15 @@ test('коллайдер повернутой цветочной лавки пр
   assert.equal(collides(colliders, x, 0, z), false, 'подход перед фасадом остаётся свободным');
   assert.equal(collides(colliders, 384, 0, 449), true, 'внутри здания остаётся коллизия');
   manager.dispose();
+});
+
+test('коллайдеры площади блокируют скамьи, но оставляют фонтанный центр свободным', () => {
+  const { manager } = makeManager();
+  manager.load(6, 6, syntheticChunk(6, 6, { instances: [[20, 416, 0, 416, 0, 1]] }));
+  const colliders = manager.collidersNear(416, 416);
+  const bench = BENCHES[0];
+  assert.equal(collides(colliders, 416, 0, 416), false);
+  assert.equal(collides(colliders, 416 + bench.x, 0, 416 + bench.z), true);
 });
 
 test('выгрузка освобождает геометрии, материалы и подписи', () => {

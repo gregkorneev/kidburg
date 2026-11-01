@@ -16,6 +16,7 @@ import { MUSIC_SCHOOL_SIGNS, buildMusicSchoolGeometry } from './music-school.js'
 import { CITY_HALL_SIGNS, buildCityHallGeometry } from './procedural-city.js';
 import { RADIO_STATION_SIGNS, buildRadioStationGeometry } from './radio-station.js';
 import { PATHS } from '../../tools/build-world/layout.js';
+import { plazaCollisionBoxes } from './plaza-plan.js';
 
 const box = (w, h, d) => () => new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0);
 
@@ -31,7 +32,7 @@ const PREFABS = {
   13: { name: 'flower_shop', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildFlowerShopGeometry, decorate: createSignDecor(FLOWER_SHOP_SIGNS) },
   14: { name: 'music_school', color: 0xffffff, vertexColors: true, collider: [22, 9, 14], build: buildMusicSchoolGeometry, decorate: createSignDecor(MUSIC_SCHOOL_SIGNS) },
   15: { name: 'radio_station', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildRadioStationGeometry, decorate: createSignDecor(RADIO_STATION_SIGNS) },
-  20: { name: 'city_plaza', color: 0xffffff, vertexColors: true, collider: null, build: buildCityPlazaGeometry, decorate: decoratePlaza },
+  20: { name: 'city_plaza', color: 0xffffff, vertexColors: true, collider: null, colliders: plazaCollisionBoxes, build: buildCityPlazaGeometry, decorate: decoratePlaza },
   // Все дорожки в мире имеют один ID; размеры берутся из PATHS по положению инстанса (city-paths.js).
   21: {
     name: 'city_path', color: 0xe8d4a3, vertexColors: true, collider: null,
