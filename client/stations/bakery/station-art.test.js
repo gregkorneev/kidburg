@@ -31,7 +31,7 @@ test('интерьер: качество переключает детали, п
   interior.setStage('product_shaped');
   assert.equal(interior.group.getObjectByName('bakery-product-dough').visible, true);
   interior.setQuality('low');
-  assert.equal(interior.group.getObjectByName('bakery-product-dough').visible, false);
+  assert.equal(interior.group.getObjectByName('bakery-product-dough').visible, true, 'тесто видно и на низком качестве');
   interior.setStage('product_baked');
   assert.equal(interior.group.getObjectByName('bakery-product-loaf').visible, true);
   interior.setQuality('high');
@@ -41,4 +41,37 @@ test('интерьер: качество переключает детали, п
   interior.dispose();
   assert.equal(parent.children.length, 0);
   assert.ok(disposed.includes('static'));
+});
+
+// Лучи из комнаты проверяют порядок реальной геометрии, а не только исходные координаты.
+test('окна: стекло отделено от подложки и находится глубже переплёта', () => {
+  const geometry = buildBakeryInteriorGeometry({ detail: false });
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  for (const [side, z] of [[-1, -3], [1, -3.65]]) {
+    const depths = (y, dz) => {
+      const ray = new THREE.Raycaster(new THREE.Vector3(side * 7, y, z + dz), new THREE.Vector3(side, 0, 0));
+      return ray.intersectObject(mesh).map((hit) => hit.distance).sort((a, b) => a - b);
+    };
+    const pane = depths(3.36, 0.48);
+    const frame = depths(3.36, 0);
+    const crossing = depths(3.73, 0.02);
+    assert.ok(crossing[1] - crossing[0] > 0.1, 'перекладины не имеют совпадающих передних граней');
+    assert.ok(frame[0] + 0.03 < pane[0], 'переплёт выступает перед стеклом');
+    assert.ok(pane[1] - pane[0] > 0.04, 'стекло имеет толщину');
+    assert.ok(pane[2] - pane[1] > 0.02, 'стекло отделено от подложки');
+  }
+  geometry.dispose();
+  mesh.material.dispose();
+});
+
+test('дорожка: внутри соединений нет вертикальных граней и швов', () => {
+  const geometry = buildBakeryInteriorGeometry({ detail: false });
+  const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geometry, material);
+  for (const [x, z] of [[-1.8, 0.5], [1.2, 0], [-1.8, 3.8]]) {
+    const ray = new THREE.Raycaster(new THREE.Vector3(x, 0.014, z), new THREE.Vector3(1, 0, 0), 0, 0.6);
+    assert.equal(ray.intersectObject(mesh).length, 0, `шов у ${x}, ${z}`);
+  }
+  geometry.dispose();
+  material.dispose();
 });

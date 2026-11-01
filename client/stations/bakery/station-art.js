@@ -58,9 +58,11 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
     { wallX: 8.15, paneX: 8.02, inside: -1, z: -3.65 },
   ]) {
     k.box(0.12, 1.52, 2.18, wallX, 3.72, z, C.peach, { r: 0.05 });
-    const frameX = wallX + inside * 0.09;
-    for (const dz of [-0.96, 0, 0.96]) k.box(0.16, 1.42, 0.11, frameX, 3.72, z + dz, C.darkWood, { r: 0.025 });
-    for (const y of [3.0, 3.72, 4.44]) k.box(0.16, 0.12, 2.02, frameX, y, z, C.darkWood, { r: 0.025 });
+    const frameX = wallX + inside * 0.11;
+    for (const dz of [-0.96, 0, 0.96]) k.box(0.2, 1.42, 0.11, frameX, 3.72, z + dz, C.darkWood, { r: 0.025 });
+    for (const y of [3.0, 3.72, 4.44]) for (const dz of [-0.48, 0.48]) {
+      k.box(0.2, 0.12, 0.85, frameX, y, z + dz, C.darkWood, { r: 0.025 });
+    }
     for (const dz of [-0.48, 0.48]) for (const y of [3.36, 4.08]) {
       k.box(0.055, 0.57, 0.74, paneX, y, z + dz, C.windowGlass, { r: 0.03, tinted: false });
     }
@@ -81,6 +83,13 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   ], 0.035, C.darkWood);
   k.box(0.22, 0.18, 2.9, 8.02, 4.1, 1.0, C.pale, { r: 0.04 });
   for (const z of [-4.5, -1.5, 1.5, 4.5]) k.box(width - 0.6, 0.12, 0.2, 0, 5.2, z, C.wood, { r: 0.04 });
+
+  // Подвесные светильники объединяют рабочие места, не занимая проходы.
+  for (const [x, z] of [[-6.2, 0.5], [0, -4.3], [5, -0.4]]) {
+    k.cyl(0.025, 0.025, 0.62, 6, x, 4.83, z, C.darkWood);
+    k.cyl(0.12, 0.38, 0.28, 10, x, 4.4, z, C.green);
+    k.cyl(0.29, 0.29, 0.035, 10, x, 4.25, z, C.pale);
+  }
 
   // Входная группа: кремовые пилястры и деревянное обрамление в масштабе персонажа.
   for (const x of [-3.18, 3.18]) {
@@ -215,12 +224,12 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   }
 
   // Плиточная дорожка связывает вход, ингредиенты, формовку, печь и выдачу.
-  k.flatShape([[-1.4, -3.3], [1.4, -3.3], [1.4, 5.6], [-1.4, 5.6]], 0.005, 0.018, C.tile);
-  k.flatShape([[-4.8, -0.2], [-1.4, -0.2], [-1.4, 1.2], [-4.8, 1.2]], 0.005, 0.018, C.tile);
-  k.flatShape([[-3.8, 3.3], [-1.4, 3.3], [-1.4, 4.5], [-3.8, 4.5]], 0.005, 0.018, C.tile);
-  k.flatShape([[1.4, -3.3], [2.3, -3.3], [2.3, -0.2], [6.8, -0.2], [6.8, 0.65], [1.4, 0.65]], 0.005, 0.018, C.tile);
-  k.flatShape([[6.2, 0.65], [6.8, 0.65], [6.8, 3.4], [6.2, 3.4]], 0.005, 0.018, C.tile);
-  k.flatShape([[3.2, 3.4], [6.8, 3.4], [6.8, 4.0], [3.2, 4.0]], 0.005, 0.018, C.tile);
+  k.flatShape([
+    [-1.4, -3.3], [2.3, -3.3], [2.3, -0.2], [6.8, -0.2],
+    [6.8, 4.0], [3.2, 4.0], [3.2, 3.4], [6.2, 3.4], [6.2, 0.65],
+    [1.4, 0.65], [1.4, 5.6], [-1.4, 5.6], [-1.4, 4.5], [-3.8, 4.5],
+    [-3.8, 3.3], [-1.4, 3.3], [-1.4, 1.2], [-4.8, 1.2], [-4.8, -0.2], [-1.4, -0.2],
+  ], 0.005, 0.018, C.tile);
   }
 
   if (detail) {
@@ -314,7 +323,7 @@ export function createBakeryInterior({ quality = 'medium' } = {}) {
   const setQuality = (level) => {
     currentQuality = QUALITY_PRESETS[level] ? level : 'medium';
     detail.visible = currentQuality !== 'low';
-    dough.visible = currentQuality !== 'low' && currentStage === 'product_shaped';
+    dough.visible = currentStage === 'product_shaped';
     loaf.visible = currentStage === 'product_baked' || currentStage === 'product_ready';
     markerGroup.visible = Boolean(markerGroup.userData.target);
     return currentQuality;
@@ -322,7 +331,7 @@ export function createBakeryInterior({ quality = 'medium' } = {}) {
   setQuality(currentQuality);
   const setStage = (stage) => {
     currentStage = stage;
-    dough.visible = currentQuality !== 'low' && stage === 'product_shaped';
+    dough.visible = stage === 'product_shaped';
     loaf.visible = stage === 'product_baked' || stage === 'product_ready';
     if (stage === 'product_ready') loaf.position.set(-2.75, 1.55, 5.53);
     else loaf.position.set(5.05, 1.55, 4.78);
