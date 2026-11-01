@@ -8,7 +8,12 @@ import { TALK_DISTANCE } from '../../shared/constants.js';
 import { createHud } from '../hud/index.js';
 import { applyStylizedLook } from './art/lighting.js';
 import { createChunkManager, makeLabel } from './chunks.js';
-import { FIRE_STATION_ENTRANCE, isNearFireStationEntrance } from './city-entrance.js';
+import {
+  FIRE_STATION_ENTRANCE,
+  FLORIST_ENTRANCE,
+  isNearFireStationEntrance,
+  isNearFloristEntrance,
+} from './city-entrance.js';
 import { createEmitter } from './emitter.js';
 import { createHttp } from './http.js';
 import { createInput } from './input.js';
@@ -192,11 +197,16 @@ export function createClient({ container, networkOnly = false }) {
     const hud = createHud(container);
     const player = createPlayer();
     let fireStationNearby = false;
+    let floristNearby = false;
     const input = createInput({
       target: renderer.domElement,
       document,
       window: win,
       onInteract: () => {
+        if (floristNearby) {
+          win.location.assign(FLORIST_ENTRANCE.href);
+          return;
+        }
         if (fireStationNearby) {
           win.location.assign(FIRE_STATION_ENTRANCE.href);
           return;
@@ -339,9 +349,11 @@ export function createClient({ container, networkOnly = false }) {
           npcClock = 0;
           setNpc(world.nearestNpc(player.x, player.y, player.z, TALK_DISTANCE));
           const nearEntrance = isNearFireStationEntrance(player.x, player.z);
-          if (nearEntrance !== fireStationNearby) {
+          const nearFlorist = isNearFloristEntrance(player.x, player.z);
+          if (nearEntrance !== fireStationNearby || nearFlorist !== floristNearby) {
             fireStationNearby = nearEntrance;
-            hud.setEntrancePrompt(nearEntrance ? FIRE_STATION_ENTRANCE.label : '');
+            floristNearby = nearFlorist;
+            hud.setEntrancePrompt(floristNearby ? FLORIST_ENTRANCE.label : fireStationNearby ? FIRE_STATION_ENTRANCE.label : '');
           }
         }
       }
