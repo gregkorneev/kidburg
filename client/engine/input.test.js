@@ -43,6 +43,35 @@ test('WASD и Shift: нажатия, отпускание и потеря фок
   assert.deepEqual(input.keys(), { forward: false, back: false, left: false, right: false, run: false });
 });
 
+test('двойное нажатие W включает бег до отпускания, Shift работает независимо', () => {
+  const { input, key } = setup();
+  key('keydown', 'KeyW');
+  assert.equal(input.keys().run, false);
+  key('keyup', 'KeyW');
+  key('keydown', 'KeyW');
+  assert.equal(input.keys().run, true);
+  key('keyup', 'KeyW');
+  assert.equal(input.keys().run, false);
+
+  key('keydown', 'ShiftLeft');
+  key('keydown', 'KeyW');
+  key('keyup', 'KeyW');
+  assert.equal(input.keys().run, true, 'Shift продолжает работать после отпускания W');
+  key('keyup', 'ShiftLeft');
+  assert.equal(input.keys().run, false);
+});
+
+test('повтор удерживаемой W и потеря фокуса не включают двойной тап', () => {
+  const { input, key, win } = setup();
+  key('keydown', 'KeyW');
+  key('keydown', 'KeyW', { repeat: true });
+  assert.equal(input.keys().run, false);
+  key('keyup', 'KeyW');
+  win.dispatchEvent(new Event('blur'));
+  key('keydown', 'KeyW');
+  assert.equal(input.keys().run, false);
+});
+
 test('pointer lock: клик ставит захват, мышь поворачивает только при захвате', () => {
   const { input, target, doc, lockRequests } = setup();
   doc.dispatchEvent(Object.assign(new Event('mousemove'), { movementX: 5, movementY: 3 }));

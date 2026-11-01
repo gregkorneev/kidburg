@@ -13,6 +13,7 @@ const MOVE_KEYS = {
   ShiftLeft: 'run',
   ShiftRight: 'run',
 };
+const DOUBLE_TAP_MS = 350;
 
 const isTyping = (target) => !!target?.closest?.('input, textarea, select, [contenteditable="true"]');
 
@@ -30,6 +31,8 @@ export function createInput({ target, document, window, onInteract, onChat }) {
   let uiOpen = false;
   let lookX = 0;
   let lookY = 0;
+  let lastWDownAt = null;
+  let doubleTapRun = false;
 
   const requestLock = () => {
     if (uiOpen || locked) return;
@@ -41,6 +44,11 @@ export function createInput({ target, document, window, onInteract, onChat }) {
     if (isTyping(e.target) || uiOpen) return;
     const action = MOVE_KEYS[e.code];
     if (action) {
+      if (e.code === 'KeyW' && !e.repeat) {
+        const now = performance.now();
+        if (lastWDownAt !== null && now - lastWDownAt <= DOUBLE_TAP_MS) doubleTapRun = true;
+        lastWDownAt = now;
+      }
       pressed.add(action);
       return;
     }
@@ -51,8 +59,13 @@ export function createInput({ target, document, window, onInteract, onChat }) {
   const onKeyUp = (e) => {
     const action = MOVE_KEYS[e.code];
     if (action) pressed.delete(action);
+    if (e.code === 'KeyW') doubleTapRun = false;
   };
-  const onBlur = () => pressed.clear();
+  const onBlur = () => {
+    pressed.clear();
+    lastWDownAt = null;
+    doubleTapRun = false;
+  };
   const onMouseMove = (e) => {
     if (!locked || uiOpen) return;
     lookX += e.movementX || 0;
@@ -60,7 +73,7 @@ export function createInput({ target, document, window, onInteract, onChat }) {
   };
   const onLockChange = () => {
     locked = document.pointerLockElement === target;
-    if (!locked) pressed.clear();
+    if (!locked) onBlur();
   };
 
   window.addEventListener('keydown', onKeyDown);
@@ -80,7 +93,7 @@ export function createInput({ target, document, window, onInteract, onChat }) {
       back: pressed.has('back'),
       left: pressed.has('left'),
       right: pressed.has('right'),
-      run: pressed.has('run'),
+      run: pressed.has('run') || doubleTapRun,
     }),
     /** Накопленный поворот мыши в пикселях с прошлого вызова. */
     consumeLook() {
@@ -96,7 +109,7 @@ export function createInput({ target, document, window, onInteract, onChat }) {
     /** UI открыл панель: останавливаем игрока и освобождаем мышь. */
     unlockPointer() {
       uiOpen = true;
-      pressed.clear();
+      onBlur();
       lookX = lookY = 0;
       if (document.pointerLockElement) document.exitPointerLock();
     },
