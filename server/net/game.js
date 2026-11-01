@@ -23,6 +23,8 @@ import { reply as defaultReply } from '../agents/index.js';
 import { createChunkMirror } from './chunks.js';
 import { chooseSpawn } from './spawn.js';
 import { overlapsPlayerPath } from '../world/player-collision.js';
+import { AnimalNpc, ANIMAL_SPECS } from '../../client/engine/plaza-animal-simulation.js';
+import { PLAZA } from '../../tools/build-world/layout.js';
 import { FIREFIGHTER_TASK_ID } from '../tasks/index.js';
 
 // Коды закрытия WebSocket (диапазон 4000–4999 отдан приложению).
@@ -126,6 +128,7 @@ export function createGame({
   const connByUser = new Map();
   /** Игроки, прошедшие hello. */
   const players = new Map();
+  const animals = ANIMAL_SPECS.map((spec) => new AnimalNpc(spec));
   let tickNo = 0;
   let physicsNo = 0; // счётчик шагов физики мячей: клиент отбрасывает снимки старше уже применённых
 
@@ -262,6 +265,7 @@ export function createGame({
       state: { x, y: player.y, z, ry: player.ry, progress },
       consts: CLIENT_CONSTS,
     });
+    send(conn, animalSnapshot());
     streamChunks(player);
     sendTaskStates(player);
     if (mechanisms) send(player.conn, { t: S2C.MECH_SNAPSHOT, list: mechanisms.snapshot() });
@@ -554,8 +558,23 @@ export function createGame({
     wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, user));
   }
 
+  function animalSnapshot() {
+    return { t: S2C.ANIMALS, tick: tickNo, list: animals.map(({ x, z, direction, speed, mode }) => ({ x, z, direction, speed, mode })) };
+  }
+
   function tick() {
     tickNo += 1;
+    for (const animal of animals) {
+      let closest = null, distance = Infinity;
+      for (const player of players.values()) {
+        const d = Math.hypot(player.x - PLAZA.x - animal.x, player.z - PLAZA.z - animal.z);
+        if (d < distance) { closest = player; distance = d; }
+      }
+      const steps = Math.ceil(1 / tickHz / 0.05);
+      for (let i = 0; i < steps; i++) animal.update(1 / tickHz / steps, closest);
+    }
+    const animalState = animalSnapshot();
+    for (const p of players.values()) if (p.conn.ws.bufferedAmount < MAX_BUFFERED) send(p.conn, animalState);
     if (tickNo % tickHz === 0) mechanisms?.sweep?.(); // двери, оставленные открытыми, закрываются сами
     const byChunk = new Map();
     for (const p of players.values()) {

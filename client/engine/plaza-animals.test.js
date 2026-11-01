@@ -10,8 +10,14 @@ test('four independent animals and disposal', () => {
   assert.equal(scene.children.length, 4);
   let disposed = 0; const v = manager.animals[0].visual;
   v.geometries[0].addEventListener('dispose', () => disposed++);
-  manager.update(0.05, null);
-  assert.notEqual(manager.animals[0].npc.x, manager.animals[1].npc.x);
+  assert.ok(manager.animals.every(({ visual }) => !visual.group.visible));
+  const rows = ANIMAL_SPECS.map((spec, i) => ({ x: i, z: i + 1, direction: 0.5, speed: 1, mode: 'wander' }));
+  manager.snapshot(rows);
+  manager.update(0.05);
+  assert.equal(manager.animals[1].visual.group.position.x, PLAZA.x + 1);
+  assert.ok(manager.animals.every(({ visual }) => visual.group.visible));
+  manager.clear();
+  assert.ok(manager.animals.every(({ visual }) => !visual.group.visible));
   manager.dispose(); assert.equal(scene.children.length, 0); assert.equal(disposed, 1);
 });
 test('wander moves toward a target and clamps dt', () => {
