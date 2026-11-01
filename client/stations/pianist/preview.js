@@ -1,4 +1,5 @@
 import { createPianistScene } from './scene.js';
+import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { createInitialState, transitionTask } from './state.js';
 import { MELODY } from './melody.js';
 import { noteById } from './melody.js';
@@ -52,6 +53,7 @@ function commit(action) {
 
 scene = createPianistScene({
   container: sceneRoot,
+  appearance: currentPlayerAppearance(),
   onPrompt: (value) => { if (prompt !== value) { prompt = value; renderUI(); } },
   onNote: (noteId) => { audio.setEnabled(state.soundEnabled); audio.setVolume(state.volume); audio.play(noteId); },
   onAction: (event) => {

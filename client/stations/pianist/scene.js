@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createInput } from '../../engine/input.js';
 import { createPlayer, setPlayerPosition, stepPlayer } from '../../engine/player.js';
 import { applyStylizedLook } from '../../engine/art/lighting.js';
-import { animateCharacter, createCharacter, disposeCharacter, triggerGesture } from '../../engine/art/character.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter, triggerGesture } from '../../engine/art/character.js';
 import { QUALITY_LABELS, QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
 import { buildPianistLayout } from './layout.js';
 import { createPiano } from './piano.js';
@@ -36,7 +36,7 @@ function disposeAdded(root) {
   });
 }
 
-export function createPianistScene({ container, onPrompt = () => {}, onAction = () => {}, onNote = () => {} }) {
+export function createPianistScene({ container, appearance = null, onPrompt = () => {}, onAction = () => {}, onNote = () => {} }) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#cde4e6');
   const camera = new THREE.PerspectiveCamera(54, 1, 0.1, 90);
@@ -50,8 +50,8 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
   const player = createPlayer();
   setPlayerPosition(player, PIANIST_PLAN.spawn.x, 0, PIANIST_PLAN.spawn.z);
   player.yaw = Math.PI;
-  const avatar = createCharacter({ appearance: { outfit: '#6d9fa0', hairStyle: 'curly', hair: '#523b30' } });
-  avatar.scale.setScalar(0.68); scene.add(avatar);
+  const avatar = createCharacter({ appearance: appearance ?? { outfit: '#6d9fa0', hairStyle: 'curly', hair: '#523b30' } });
+  avatar.scale.setScalar(CITY_CHARACTER_SCALE); scene.add(avatar);
   const maestro = createCharacter({ name: 'Маэстро Артём', subtitle: 'преподаватель музыки', appearance: { outfit: '#e3b868', hairStyle: 'short', hair: '#533a31', skin: '#efc19c' }, outfit: '#e3b868' });
   maestro.scale.setScalar(0.72); maestro.position.set(PIANIST_PLAN.maestro.x, 0, PIANIST_PLAN.maestro.z); maestro.rotation.y = Math.PI; addMaestroDetails(maestro); scene.add(maestro); triggerGesture(maestro, 'wave');
   const pianos = [
