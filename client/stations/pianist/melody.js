@@ -16,7 +16,5 @@ export const NOTES = Object.freeze([
 
 export const LESSON = Object.freeze(['C4', 'D4', 'E4', 'G4']);
 export const MELODY = Object.freeze(['C4', 'D4', 'E4', 'G4', 'G4', 'E4', 'D4', 'C4']);
-export const RHYTHM_BPM = 90;
-export const RHYTHM_TOLERANCE_MS = 230;
 export const noteById = (id) => NOTES.find((note) => note.id === id);
 export const noteByKey = (code) => NOTES.find((note) => note.key === code);

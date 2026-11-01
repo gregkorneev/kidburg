@@ -40,23 +40,6 @@ export function createPianoAudio({ AudioContextClass = globalThis.AudioContext ?
       }
       return true;
     },
-    tick() {
-      if (!enabled) return false;
-      const ctx = activate();
-      if (!ctx) return false;
-      const now = ctx.currentTime;
-      const oscillator = ctx.createOscillator();
-      const envelope = ctx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(1240, now);
-      envelope.gain.setValueAtTime(0.0001, now);
-      envelope.gain.linearRampToValueAtTime(0.045, now + 0.004);
-      envelope.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
-      oscillator.connect(envelope).connect(master);
-      oscillator.start(now);
-      oscillator.stop(now + 0.06);
-      return true;
-    },
     setVolume(value) {
       volume = Math.min(1, Math.max(0, Number(value) || 0));
       if (master && context) master.gain.setTargetAtTime(volume, context.currentTime, 0.03);

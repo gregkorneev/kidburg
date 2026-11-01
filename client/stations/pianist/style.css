@@ -30,9 +30,7 @@ button, input { font: inherit; }
 .score-note { display: grid; flex: 1; min-width: 0; height: 26px; place-items: center; border-radius: 8px; background: #f0eee7; color: #889095; font-size: 10px; }
 .score-note.is-done { background: #dceadd; color: #557961; }
 .score-note.is-next { outline: 2px solid #d7a85c; background: #fff6da; color: #75562e; }
-.metronome { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #67777b; font-size: 11px; }
-.metronome span { width: 8px; height: 8px; border-radius: 50%; background: #bf5f68; animation: tick .666s ease-in-out infinite alternate; }
-@keyframes tick { from { transform: scale(.72); opacity: .55; } to { transform: scale(1.45); opacity: 1; } }
+.tempo-hint { margin: 9px 0 0; color: #68777c; font-size: 11px; }
 .keyboard-map { display: flex; gap: 4px; margin-top: 12px; }
 .keyboard-map > span { display: grid; flex: 1; min-width: 0; gap: 3px; place-items: center; padding: 5px 1px; border-radius: 8px; background: #fff; color: #66777c; font-size: 9px; transition: .16s ease; }
 .keyboard-map > span.is-target { transform: translateY(-2px); background: #f5e4bb; color: #815a2c; box-shadow: 0 3px 0 #d3ad6c; }

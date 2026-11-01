@@ -34,14 +34,3 @@ test('выключенный звук не запускает аудио и гр
   assert.ok(FakeAudioContext.instances[0].frequencies[0] > 329 && FakeAudioContext.instances[0].frequencies[0] < 330);
   piano.dispose();
 });
-
-test('метроном генерирует короткий тик и уважает переключатель звука', () => {
-  FakeAudioContext.instances = [];
-  const piano = createPianoAudio({ AudioContextClass: FakeAudioContext });
-  assert.equal(piano.tick(), true);
-  assert.deepEqual(FakeAudioContext.instances[0].frequencies, [1240]);
-  piano.setEnabled(false);
-  assert.equal(piano.tick(), false);
-  assert.equal(FakeAudioContext.instances[0].frequencies.length, 1);
-  piano.dispose();
-});

@@ -1,11 +1,11 @@
 import { h, render } from 'preact';
-import { LESSON, MELODY, NOTES, noteById, RHYTHM_BPM } from './melody.js';
+import { LESSON, MELODY, NOTES, noteById } from './melody.js';
 import { STAGE_LABELS } from './state.js';
 import { QUALITY_LABELS, QUALITY_LEVELS } from '../../engine/art/quality.js';
 
 function targetSequence(stage) {
   if (stage === 'learning') return LESSON;
-  if (['practice', 'rhythm', 'concert_ready'].includes(stage)) return MELODY;
+  if (['practice', 'concert'].includes(stage)) return MELODY;
   return [];
 }
 
@@ -17,8 +17,7 @@ function LessonCard({ state, onListen }) {
   return h('section', { class: 'lesson-card', 'aria-live': 'polite' },
     h('div', { class: 'eyebrow' }, `ЭТАП · ${STAGE_LABELS[state.stage]}`),
     h('div', { class: 'lesson-heading' },
-      h('div', null, h('h2', null, state.stage === 'learning' ? 'Познакомься с клавишами' : state.stage === 'rhythm' ? 'Сыграй в ритме' : state.stage === 'concert_ready' ? 'Твой выход!' : 'Разучи мелодию'),
-        h('p', null, state.stage === 'learning' ? 'До → Ре → Ми → Соль' : state.stage === 'rhythm' ? `Метроном · ${RHYTHM_BPM} ударов в минуту` : 'До – Ре – Ми – Соль | Соль – Ми – Ре – До')),
+      h('div', null, h('h2', null, state.stage === 'learning' ? 'Познакомься с клавишами' : state.stage === 'concert' ? 'Твой выход!' : 'Разучи мелодию')),
       state.stage !== 'learning' && h('button', { class: 'listen-button', type: 'button', onClick: onListen }, '▶ Послушать пример'),
     ),
     current && h('div', { class: 'next-note' }, h('span', null, 'СЛЕДУЮЩАЯ НОТА'), h('strong', null, noteById(current).label), h('kbd', null, noteById(current).key?.replace('Key', '') ?? 'мышь')),
@@ -26,7 +25,7 @@ function LessonCard({ state, onListen }) {
     h('div', { class: 'score-strip', 'aria-label': 'Последовательность нот' }, sequence.map((id, index) => h('span', {
       key: `${id}-${index}`, class: `score-note${index < state.index ? ' is-done' : index === state.index ? ' is-next' : ''}`,
     }, noteById(id).label))),
-    state.stage === 'rhythm' && h('div', { class: 'metronome', 'aria-label': 'Метроном включён' }, h('span'), ' Ровно следуй за пульсом'),
+    h('p', { class: 'tempo-hint' }, 'Играй в удобном темпе — время не ограничено.'),
     h('div', { class: 'keyboard-map' }, NOTES.filter((note) => !note.black).map((note) => h('span', { key: note.id, class: current === note.id ? 'is-target' : '' }, h('kbd', null, note.key.replace('Key', '')), note.label))),
   );
 }
@@ -41,7 +40,7 @@ function Dialog({ stage, onAccept, onRepeat }) {
   ));
   if (stage === 'completed') return h('div', { class: 'dialog-backdrop' }, h('section', { class: 'dialog-card dialog-card--complete', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dialog-title' },
     h('div', { class: 'maestro-mark applause' }, '♫'), h('span', { class: 'eyebrow' }, 'БРАВО! · КОНЦЕРТ СОСТОЯЛСЯ'),
-    h('h2', { id: 'dialog-title' }, 'Зал аплодирует тебе!'), h('p', null, 'Маэстро Артём поздравляет тебя: ты выучил ноты, сыграл мелодию ровно и выступил перед зрителями.'),
+    h('h2', { id: 'dialog-title' }, 'Зал аплодирует тебе!'), h('p', null, 'Маэстро Артём поздравляет тебя: ты выучил ноты, сыграл мелодию и выступил перед зрителями.'),
     h('button', { type: 'button', class: 'primary-button', onClick: onRepeat }, 'Повторить урок'),
   ));
   return null;

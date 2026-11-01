@@ -1,7 +1,6 @@
 import { createPianistScene } from './scene.js';
 import { createInitialState, transitionTask } from './state.js';
 import { MELODY } from './melody.js';
-import { RHYTHM_BPM } from './melody.js';
 import { noteById } from './melody.js';
 import { createPianoAudio } from './audio.js';
 import { mountPianistUI } from './ui.js';
@@ -12,7 +11,6 @@ const uiRoot = document.querySelector('#pianist-ui');
 let state = createInitialState();
 let prompt = ''; let notice = ''; let noticeType = 'info'; let controlsOpen = true; let quality = 'medium';
 let noticeTimer = 0; let statsTimer = 0;
-let metronomeTimer = 0;
 const sampleTimers = new Set();
 const audio = createPianoAudio();
 let scene;
@@ -45,22 +43,11 @@ function commit(action) {
   const result = transitionTask(state, action);
   if (!result.changed) { if (result.feedback) showNotice(result.feedback, 'error'); return false; }
   state = result.state; scene.setTaskState(state);
-  syncMetronome();
   const modal = ['briefing', 'completed'].includes(state.stage);
   scene.setUiBlocked(modal);
   notice = result.feedback; noticeType = action.type === 'note' ? 'success' : 'info'; renderUI();
   clearTimeout(noticeTimer); if (notice) noticeTimer = window.setTimeout(() => { notice = ''; renderUI(); }, 3200);
   return true;
-}
-
-function syncMetronome() {
-  const shouldTick = state.stage === 'rhythm' && state.pianoMode && state.index > 0;
-  if (shouldTick && !metronomeTimer) {
-    audio.tick();
-    metronomeTimer = window.setInterval(() => audio.tick(), 60_000 / RHYTHM_BPM);
-  } else if (!shouldTick && metronomeTimer) {
-    clearInterval(metronomeTimer); metronomeTimer = 0;
-  }
 }
 
 scene = createPianistScene({
@@ -102,7 +89,7 @@ if (new URLSearchParams(window.location.search).has('debug')) {
   }, 500);
 }
 window.addEventListener('pagehide', () => {
-  clearTimeout(noticeTimer); clearInterval(statsTimer); clearInterval(metronomeTimer);
+  clearTimeout(noticeTimer); clearInterval(statsTimer);
   for (const timer of sampleTimers) clearTimeout(timer); sampleTimers.clear();
   window.removeEventListener('keydown', onKeyDown); scene.dispose(); audio.dispose();
 }, { once: true });

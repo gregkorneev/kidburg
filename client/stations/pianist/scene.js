@@ -94,8 +94,8 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
       const distance = Math.hypot(player.x - candidate.position.x, player.z - candidate.position.z);
       if (distance < bestDistance) {
         if (candidate.kind === 'maestro' && !['not_started', 'completed'].includes(state.stage)) continue;
-        if (candidate.kind === 'practice-piano' && !['learning', 'practice', 'rhythm'].includes(state.stage)) continue;
-        if (candidate.kind === 'stage-piano' && state.stage !== 'concert_ready') continue;
+        if (candidate.kind === 'practice-piano' && !['learning', 'practice'].includes(state.stage)) continue;
+        if (candidate.kind === 'stage-piano' && state.stage !== 'concert') continue;
         best = candidate; bestDistance = distance;
       }
     }
@@ -112,7 +112,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     instrumentMode = enabled;
     if (instrumentMode) {
       instrumentReturn = { x: player.x, y: player.y, z: player.z, yaw: player.yaw };
-      activePiano = state?.stage === 'concert_ready' ? pianos[1] : pianos[0];
+      activePiano = state?.stage === 'concert' ? pianos[1] : pianos[0];
       const front = Math.cos(activePiano.rotationY) >= 0 ? 1 : -1;
       player.x = activePiano.position.x + 0.82;
       player.y = activePiano.position.y;
@@ -131,7 +131,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     if (oldStage !== 'completed' && next.stage === 'completed') triggerGesture(maestro, 'nod');
     if (next.stage === 'briefing') triggerGesture(maestro, 'wave');
     setInstrumentMode(next.pianoMode);
-    layout.setConcertMode(['concert_ready', 'concert', 'completed'].includes(next.stage));
+    layout.setConcertMode(['concert', 'completed'].includes(next.stage));
     updatePrompt(null);
   }
   function setUiBlocked(value) {
@@ -194,7 +194,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     avatar.position.set(player.x, player.y, player.z); avatar.rotation.y = player.yaw + Math.PI;
     const elapsed = (now - started) / 1000;
     if (instrumentMode && state) {
-      activePiano = state.stage === 'concert_ready' ? pianos[1] : pianos[0];
+      activePiano = state.stage === 'concert' ? pianos[1] : pianos[0];
       const front = Math.cos(activePiano.rotationY) >= 0 ? 1 : -1;
       focus.set(activePiano.position.x, 1.02 + activePiano.position.y, activePiano.position.z + front * 0.18);
       desired.set(activePiano.position.x - 2.6, 3.05 + activePiano.position.y, activePiano.position.z + front * 4.2);
