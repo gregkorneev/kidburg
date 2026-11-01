@@ -9,6 +9,8 @@ import { DOOR_REACH, doorSpec } from '../../shared/doors.js';
 import { createSignDecor } from './city-decor.js';
 import { FIRE_STATION_SIGNS, GARAGE_X, GATE, GATE_PALETTE } from './fire-station.js';
 import { DISH_POST, MAST_BEACON, RADIO_STATION_SIGNS } from './radio-station.js';
+import { buildFireTruck } from '../stations/firefighter/station-art.js';
+import { isSharedResource } from './art/materials.js';
 
 /** Идентификаторы механизмов города: те же значения знает сервер (shared/mechanisms.js). */
 export const CITY_GATE_IDS = Object.freeze(['fire-city-gate-0', 'fire-city-gate-1']);
@@ -47,6 +49,14 @@ export function decorateFireStation(args) {
   const base = createSignDecor(FIRE_STATION_SIGNS)(args);
   const { group, instance } = args;
   const root = instanceRoot(group, instance);
+  // Те же машины, что в учебной пожарной части: продольная ось повёрнута к воротам.
+  const trucks = GARAGE_X.map((x) => {
+    const truck = buildFireTruck();
+    truck.position.set(x, 0, 2.5);
+    truck.rotation.y = Math.PI / 2;
+    root.add(truck);
+    return truck;
+  });
   const gates = GARAGE_X.map((x, i) => {
     const gate = createSectionalGate({
       id: CITY_GATE_IDS[i], width: GATE.width, height: GATE.height, sections: GATE.sections, thickness: GATE.thickness, radius: GATE.radius, palette: GATE_PALETTE,
@@ -68,9 +78,28 @@ export function decorateFireStation(args) {
     radius: GATE_INTERACT_RADIUS * instance.scale,
   }));
   return compose(base, {
-    update: (dt, elapsed) => { for (const gate of gates) gate.update(dt, elapsed); },
-    dispose: () => { for (const gate of gates) gate.dispose(); root.removeFromParent(); },
+    update: (dt, elapsed) => {
+      for (const gate of gates) gate.update(dt, elapsed);
+      for (const truck of trucks) truck.userData.mechanism?.update(dt, elapsed);
+    },
+    dispose: () => {
+      for (const gate of gates) gate.dispose();
+      for (const truck of trucks) disposeModel(truck);
+      root.removeFromParent();
+    },
     mechanisms,
+  });
+}
+
+function disposeModel(root) {
+  root.traverse((node) => {
+    if (node.geometry && !isSharedResource(node.geometry)) node.geometry.dispose();
+    const materials = Array.isArray(node.material) ? node.material : node.material ? [node.material] : [];
+    for (const material of materials) {
+      if (isSharedResource(material)) continue;
+      if (material.map && !isSharedResource(material.map)) material.map.dispose();
+      material.dispose();
+    }
   });
 }
 
