@@ -7,12 +7,25 @@ import { QUALITY_LABELS, QUALITY_PRESETS, readQuality, saveQuality } from '../..
 import { buildPianistLayout } from './layout.js';
 import { createPiano } from './piano.js';
 import { noteByKey } from './melody.js';
-import { PIANIST_PLAN } from './layout-plan.js';
+import { pianistGroundHeight, PIANIST_PLAN } from './layout-plan.js';
 import { getPianoSeatPose, PIANIST_PLAYING_ARM_ANGLE, PIANIST_SEATED_LEG_ANGLE } from './pianist-pose.js';
 import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
 
 const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
 const radius = 1.85;
+const LOOK_SENSITIVITY = 0.0018;
+
+function pianoCollider(piano) {
+  const corners = [[-1.4, -0.9], [1.4, -0.9], [-1.4, 0.1], [1.4, 0.1]].map(([x, z]) => ({
+    x: piano.position.x + Math.cos(piano.rotationY) * x + Math.sin(piano.rotationY) * z,
+    z: piano.position.z - Math.sin(piano.rotationY) * x + Math.cos(piano.rotationY) * z,
+  }));
+  return {
+    minX: Math.min(...corners.map((point) => point.x)), maxX: Math.max(...corners.map((point) => point.x)),
+    minY: 0, maxY: 2.2,
+    minZ: Math.min(...corners.map((point) => point.z)), maxZ: Math.max(...corners.map((point) => point.z)),
+  };
+}
 
 function addMaestroDetails(person) {
   const body = person.userData.body;
@@ -55,12 +68,13 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
   maestro.scale.setScalar(0.72); maestro.position.set(PIANIST_PLAN.maestro.x, 0, PIANIST_PLAN.maestro.z); maestro.rotation.y = Math.PI; addMaestroDetails(maestro); scene.add(maestro); triggerGesture(maestro, 'wave');
   const pianos = [
     createPiano({ position: PIANIST_PLAN.practicePiano, name: 'practice-piano' }),
-    createPiano({ position: { ...PIANIST_PLAN.stagePiano, y: 0.155 }, rotationY: Math.PI, name: 'concert-piano' }),
+    createPiano({ position: { ...PIANIST_PLAN.stagePiano, y: PIANIST_PLAN.stage.height }, rotationY: Math.PI, name: 'concert-piano' }),
   ];
   for (const piano of pianos) scene.add(piano.root);
-  const pianoColliders = pianos.map((piano) => ({ minX: piano.position.x - 1.4, maxX: piano.position.x + 1.4, minY: 0, maxY: 2.2, minZ: piano.position.z - 0.8, maxZ: piano.position.z + 0.05 }));
+  const pianoColliders = pianos.map(pianoCollider);
   layout.colliders.push(...pianoColliders);
   layout.cameraBlockers.push(...pianoColliders);
+  const instrumentCameraBlockers = layout.cameraBlockers.filter((box) => !pianoColliders.includes(box));
 
   const focus = new THREE.Vector3(); const desired = new THREE.Vector3(); const ray = new THREE.Vector3();
   const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
@@ -175,9 +189,9 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     const dt = Math.min(0.05, Math.max(0, (now - previous) / 1000)); previous = now;
     if (!uiBlocked && !instrumentMode) {
       const lookDelta = input.consumeLook();
-      player.yaw -= lookDelta.dx * 0.0024;
-      player.pitch = clamp(player.pitch - lookDelta.dy * 0.0024, -0.42, 0.58);
-      stepPlayer(player, input.keys(), dt, { heightAt: (x, z) => x > PIANIST_PLAN.stage.minX && x < PIANIST_PLAN.stage.maxX && z > PIANIST_PLAN.stage.minZ ? 0.12 : 0, collidersNear: () => layout.colliders });
+      player.yaw -= lookDelta.dx * LOOK_SENSITIVITY;
+      player.pitch = clamp(player.pitch - lookDelta.dy * LOOK_SENSITIVITY, -0.42, 0.58);
+      stepPlayer(player, input.keys(), dt, { heightAt: pianistGroundHeight, collidersNear: () => layout.colliders });
     }
     avatar.position.set(player.x, player.y, player.z); avatar.rotation.y = player.yaw + Math.PI;
     const elapsed = (now - started) / 1000;
@@ -185,13 +199,17 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
       activePiano = state.stage === 'concert' ? pianos[1] : pianos[0];
       const front = Math.cos(activePiano.rotationY) >= 0 ? 1 : -1;
       focus.set(activePiano.position.x, 1.02 + activePiano.position.y, activePiano.position.z + front * 0.18);
-      const cameraLocalX = 4.2; const cameraLocalZ = 4.2;
+      const cameraOffset = state.stage === 'concert' ? PIANIST_PLAN.instrumentCamera.concert : PIANIST_PLAN.instrumentCamera.practice;
+      const cameraLocalX = cameraOffset.x; const cameraLocalZ = cameraOffset.z;
       desired.set(
         activePiano.position.x + Math.cos(activePiano.rotationY) * cameraLocalX + Math.sin(activePiano.rotationY) * cameraLocalZ,
         2.8 + activePiano.position.y,
         activePiano.position.z - Math.sin(activePiano.rotationY) * cameraLocalX + Math.cos(activePiano.rotationY) * cameraLocalZ,
       );
-      camera.position.lerp(desired, 1 - Math.exp(-5 * dt)); camera.lookAt(focus);
+      ray.subVectors(desired, focus);
+      const desiredDistance = ray.length();
+      cameraArmDistance = approachCameraDistance(cameraArmDistance, safeCameraDistance(focus, desired, instrumentCameraBlockers, { radius: 0.2, clearance: 0.12 }), dt);
+      camera.position.copy(focus).addScaledVector(ray, desiredDistance > 0 ? cameraArmDistance / desiredDistance : 0); camera.lookAt(focus);
     } else {
       const nearbyPiano = pianos
         .map((piano) => ({ piano, distance: Math.hypot(player.x - piano.position.x, player.z - piano.position.z) }))

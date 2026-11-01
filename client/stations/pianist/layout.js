@@ -1,9 +1,20 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { PIANIST_PLAN, ROOM, ROOM_COLLIDERS } from './layout-plan.js';
+import { AUDIENCE_CHAIRS, AUDIENCE_COLLIDERS, BETWEEN_PIANOS_CHAIRS, PIANIST_PLAN, POSTER_MOUNTS, ROOM, ROOM_COLLIDERS, STAGE_COLLIDERS } from './layout-plan.js';
 
 const COLORS = Object.freeze({ floor: '#a9764c', plank: '#bf8b5d', trim: '#f4e6c9', cream: '#f7edd8', blue: '#b9dce7', blueDark: '#80b5c7', wood: '#9c633f', gold: '#e6ba63', red: '#c96d72', curtain: '#b65f70', glass: '#aadce9' });
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+
+function roundedPanelGeometry(width, height, depth, radius) {
+  const x = width / 2; const y = height / 2; const r = Math.min(radius, x, y);
+  const shape = new THREE.Shape();
+  shape.moveTo(-x + r, -y); shape.lineTo(x - r, -y); shape.quadraticCurveTo(x, -y, x, -y + r);
+  shape.lineTo(x, y - r); shape.quadraticCurveTo(x, y, x - r, y); shape.lineTo(-x + r, y);
+  shape.quadraticCurveTo(-x, y, -x, y - r); shape.lineTo(-x, -y + r); shape.quadraticCurveTo(-x, -y, -x + r, -y);
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelThickness: 0.018, bevelSize: Math.min(0.025, r / 2), curveSegments: 2 });
+  geometry.computeVertexNormals();
+  return geometry;
+}
 
 export function buildPianistLayout() {
   const root = new THREE.Group();
@@ -53,9 +64,19 @@ export function buildPianistLayout() {
       mesh(root, [0.12, 1.9, 0.12], [x, 3.5, z + 1.32], COLORS.trim);
     }
   }
-  // Music recital stage with soft curtains, valance, lights and front steps.
-  mesh(root, [9.2, 0.12, 3.4], [10.8, 0.06, 12.95], '#d3ab78');
-  mesh(root, [9.05, 0.035, 3.25], [10.8, 0.1375, 12.95], '#e2c08c');
+  // Raised recital stage with a broad, walkable three-step entrance.
+  const { stage, stairs } = PIANIST_PLAN;
+  const stageWidth = stage.maxX - stage.minX; const stageDepth = stage.maxZ - stage.minZ;
+  const stageX = (stage.minX + stage.maxX) / 2; const stageZ = (stage.minZ + stage.maxZ) / 2;
+  mesh(root, [stageWidth, stage.height - 0.06, stageDepth], [stageX, (stage.height - 0.06) / 2, stageZ], '#c69a6e');
+  mesh(root, [stageWidth, 0.06, stageDepth], [stageX, stage.height - 0.03, stageZ], '#e2c08c');
+  for (let i = 0; i < stairs.count; i++) {
+    const height = (i + 1) * stairs.stepHeight;
+    mesh(root, [stairs.width, height, stairs.stepDepth], [stairs.centerX, height / 2, stairs.startZ + (i + 0.5) * stairs.stepDepth], i % 2 ? '#d5ad7a' : '#c99a69');
+    mesh(root, [stairs.width - 0.12, 0.025, stairs.stepDepth - 0.06], [stairs.centerX, height + 0.013, stairs.startZ + (i + 0.5) * stairs.stepDepth], '#e6c692');
+  }
+  colliders.push(...STAGE_COLLIDERS);
+  cameraBlockers.push(...STAGE_COLLIDERS, { minX: stage.minX, maxX: stage.maxX, minY: 0, maxY: stage.height, minZ: stage.minZ, maxZ: stage.maxZ });
   mesh(root, [9.2, 3.2, 0.3], [10.8, 2.14, 14.73], COLORS.curtain);
   for (let i = 0; i < 11; i++) mesh(root, [0.23, 3.0, 0.38], [6.5 + i * 0.86, 2.1, 14.5], i % 2 ? '#c56d79' : '#a95769');
   mesh(root, [9.5, 0.44, 0.55], [10.8, 3.85, 14.43], '#a95769');
@@ -68,7 +89,8 @@ export function buildPianistLayout() {
     concertLights.push(light);
   }
   // Tiny local DataTextures show a music staff and notes without DOM or external assets.
-  for (const [index, [x, z]] of [[0, [3.0, 2.0]], [1, [16.7, 2.0]], [2, [3.0, 9.1]], [3, [17, 8.7]]]) {
+  // Each complete poster is grouped and mounted on an open section of a side wall.
+  for (const [index, mount] of POSTER_MOUNTS.entries()) {
     const width = 64; const height = 48; const data = new Uint8Array(width * height * 4);
     const paper = new THREE.Color(index % 2 ? '#f7dfac' : '#d8edf0');
     for (let p = 0; p < width * height; p++) data.set([Math.round(paper.r * 255), Math.round(paper.g * 255), Math.round(paper.b * 255), 255], p * 4);
@@ -81,13 +103,42 @@ export function buildPianistLayout() {
     }
     const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
     texture.colorSpace = THREE.SRGBColorSpace; texture.magFilter = THREE.LinearFilter; texture.minFilter = THREE.LinearFilter; texture.needsUpdate = true;
+    const poster = new THREE.Group(); poster.name = `music-poster-${index}`;
+    poster.position.set(mount.x, mount.y, mount.z); poster.rotation.y = mount.rotationY;
+    root.add(poster);
+    mesh(poster, [1.62, 1.2, 0.08], [0, 0, -0.025], COLORS.wood);
+    mesh(poster, [1.5, 1.08, 0.035], [0, 0, 0.025], index % 2 ? '#f7dfac' : '#d8edf0');
     const material = new THREE.MeshStandardMaterial({ map: texture, roughness: 1, side: THREE.DoubleSide });
     materials.set(`poster-${index}`, material);
-    const poster = new THREE.Mesh(boxGeo.clone().scale(1.45, 1.08, 0.055), material);
-    ownedGeometries.add(poster.geometry);
-    poster.position.set(x, 3.6, z); poster.castShadow = true; root.add(poster);
-    mesh(root, [1.56, 0.1, 0.1], [x, 4.16, z], COLORS.gold);
+    const image = new THREE.Mesh(boxGeo.clone().scale(1.42, 1.0, 0.018), material);
+    ownedGeometries.add(image.geometry); image.position.set(0, -0.015, 0.052); image.castShadow = false; poster.add(image);
+    mesh(poster, [1.66, 0.12, 0.12], [0, 0.66, 0.025], COLORS.gold);
+    mesh(poster, [0.1, 0.1, 0.11], [-0.78, 0.66, 0.035], COLORS.red);
+    mesh(poster, [0.1, 0.1, 0.11], [0.78, 0.66, 0.035], COLORS.red);
+    mergeStaticMeshes(poster);
   }
+  // Empty low-poly audience chairs. Their locations are defined by the room plan;
+  // the center aisle between the left and right blocks stays open.
+  const audience = new THREE.Group(); audience.name = 'audience-chairs'; root.add(audience);
+  const allChairs = [
+    ...BETWEEN_PIANOS_CHAIRS.map((seat, index) => ({ ...seat, name: `between-pianos-chair-${index + 1}` })),
+    ...AUDIENCE_CHAIRS.map((seat, index) => ({ ...seat, name: `audience-chair-${index + 1}` })),
+  ];
+  for (const seat of allChairs) {
+    const chair = new THREE.Group(); chair.name = seat.name;
+    chair.position.set(seat.x, 0, seat.z); chair.rotation.y = seat.rotationY; audience.add(chair);
+    for (const x of [-0.27, 0.27]) for (const z of [-0.23, 0.23]) mesh(chair, [0.07, 0.52, 0.07], [x, 0.26, z], COLORS.wood);
+    for (const x of [-0.27, 0.27]) mesh(chair, [0.065, 0.62, 0.07], [x, 0.79, -0.235], COLORS.wood);
+    const cushionGeometry = roundedPanelGeometry(0.66, 0.58, 0.13, 0.09); cushionGeometry.rotateX(-Math.PI / 2); ownedGeometries.add(cushionGeometry);
+    const cushion = new THREE.Mesh(cushionGeometry, materials.get('#b9dce7') ?? new THREE.MeshStandardMaterial({ color: '#b9dce7', roughness: 0.92 }));
+    if (!materials.has('#b9dce7')) materials.set('#b9dce7', cushion.material);
+    cushion.position.set(0, 0.49, 0.0); cushion.castShadow = true; cushion.receiveShadow = true; chair.add(cushion);
+    const backGeometry = roundedPanelGeometry(0.66, 0.42, 0.13, 0.09); ownedGeometries.add(backGeometry);
+    const back = new THREE.Mesh(backGeometry, cushion.material); back.position.set(0, 1.0, -0.29); back.castShadow = true; back.receiveShadow = true; chair.add(back);
+    mergeStaticMeshes(chair);
+  }
+  colliders.push(...AUDIENCE_COLLIDERS);
+  cameraBlockers.push(...AUDIENCE_COLLIDERS);
   // Shelves with sheet music and a few music books.
   for (const [x, z] of [[1.8, 6.0], [18.2, 5.5]]) {
     mesh(root, [2.25, 0.12, 0.42], [x, 1.3, z], COLORS.wood);
@@ -111,7 +162,7 @@ export function buildPianistLayout() {
     for (const [material, meshes] of groups) {
       const geometries = meshes.map((item) => {
         item.updateMatrix();
-        const geometry = item.geometry.toNonIndexed().clone().applyMatrix4(item.matrix);
+        const geometry = (item.geometry.index ? item.geometry.toNonIndexed() : item.geometry.clone()).applyMatrix4(item.matrix);
         item.geometry.dispose(); ownedGeometries.delete(item.geometry);
         return geometry;
       });
