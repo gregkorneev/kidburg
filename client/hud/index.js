@@ -2,6 +2,7 @@
 
 import './hud.css';
 import logoUrl from '../../assets/branding/careerium-logo.png';
+import { createMinimap } from './minimap.js';
 
 const STATUS_TEXT = {
   closed: 'нет соединения',
@@ -18,6 +19,8 @@ export function createHud(container) {
   brand.src = logoUrl;
   brand.alt = 'Carrierium — Город профессий';
   container.appendChild(brand);
+
+  const minimap = createMinimap(container);
 
   const root = document.createElement('div');
   root.className = 'city-hud';
@@ -61,8 +64,12 @@ export function createHud(container) {
       entrance.hidden = !label;
       entrance.textContent = label ? `E  ${label}` : '';
     },
+    setPlayerPosition(x, z) {
+      minimap.setPosition(x, z);
+    },
     dispose() {
       brand.remove();
+      minimap.dispose();
       root.remove();
       entrance.remove();
     },
