@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as THREE from 'three';
 import { createPrefabKit } from './prefab-kit.js';
 import { TREE_BUILDERS, TREE_VARIANTS, bin, bush, flower, infoStand, lampPost, picketFence, planterBox, rock, signpost } from './flora.js';
 import { swayMaterial } from './wind.js';
@@ -37,6 +38,24 @@ test('растения и мебель: каждая деталь строитс
   rock(k, 16, 0);
   k.bench(18, 0, 0.5);
   sane(k.build());
+});
+
+test('скамья сохраняет форму при повороте и спинка соединена с сиденьем', () => {
+  const make = (angle) => {
+    const k = createPrefabKit({ tint: 0 });
+    k.bench(0, 0, angle);
+    return k.build().attributes.position;
+  };
+  const straight = make(0);
+  const angle = 0.8;
+  const rotated = make(angle);
+  const point = new THREE.Vector3();
+  for (let i = 0; i < straight.count; i++) {
+    point.fromBufferAttribute(straight, i).applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    assert.ok(point.distanceTo(new THREE.Vector3().fromBufferAttribute(rotated, i)) < 1e-6);
+  }
+  const backBottom = Math.min(...Array.from({ length: 36 }, (_, i) => straight.getY(36 + i)));
+  assert.ok(backBottom <= 0.55, 'спинка должна соединяться с сиденьем');
 });
 
 test('ветер: материал общий для одинаковой силы и помечен как shared', () => {
