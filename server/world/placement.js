@@ -125,6 +125,22 @@ export function createPlacement({ world = null } = {}) {
       if (zone) return { ok: false, code: 'forbidden_zone', reason: `Запретная зона: ${zone}` };
       return { ok: true };
     },
+    /** Проверяет стартовую/переносимую вещь по тем же запретным зонам, что и размещаемый объект. */
+    checkProp(x, z, radius) {
+      const m = WORLD_OBJECT_LIMITS.EDGE_MARGIN;
+      if (x - radius < m || z - radius < m || x + radius > WORLD_SIZE_X - m || z + radius > WORLD_SIZE_Z - m) {
+        return { ok: false, code: 'out_of_bounds', reason: 'Слишком близко к краю мира' };
+      }
+      const zone = blockedBy(x, z, radius);
+      return zone ? { ok: false, code: 'forbidden_zone', reason: `Запретная зона: ${zone}` } : { ok: true };
+    },
+    /** Препятствия для физики мяча: здания и статические объекты, как круги/коробки. */
+    staticObstacles() {
+      return {
+        boxes: buildings.map((b) => ({ minX: b.x - b.w / 2, maxX: b.x + b.w / 2, minZ: b.z - b.d / 2, maxZ: b.z + b.d / 2, height: 8 })),
+        circles: statics.map((s) => ({ x: s.x, z: s.z, r: s.r, height: 4 })),
+      };
+    },
     /** Описание зон для карты редактора (в координатах мира). */
     zones() {
       return {

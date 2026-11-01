@@ -13,6 +13,8 @@ import { registerAuthRoutes, resolveAuthSecrets } from './net/auth.js';
 import { createGame } from './net/game.js';
 import { createRoom } from './net/room.js';
 import { createTicketStore } from './net/tickets.js';
+import { createMechanisms } from './mechanisms/index.js';
+import { createInteractive } from './world/interactive-state.js';
 import { loadWorld } from './net/world.js';
 import { createTelemetry } from './telemetry/index.js';
 import { registerTelemetryRoutes } from './telemetry/routes.js';
@@ -90,8 +92,11 @@ export async function buildApp(overrides = {}) {
   // Динамические объекты мира (редактор Control Center) живут поверх статичных чанков.
   const placement = createPlacement({ world });
   const dynamic = createDynamicWorld({ db, placement, world, now: config.now, log: app.log });
+  const mechanisms = createMechanisms({ now: config.now });
+  const interactive = createInteractive({ db, placement, dynamic, now: config.now, log: app.log });
   const gameWorld = dynamic.wrapWorld(world);
   app.decorate('dynamicWorld', dynamic);
+  app.decorate('interactive', interactive);
 
   let game = null;
   registerAuthRoutes(app, {
@@ -115,6 +120,8 @@ export async function buildApp(overrides = {}) {
     now: config.now,
     world: gameWorld,
     dynamic,
+    mechanisms,
+    interactive,
     tickHz: config.tickHz,
     pingMs: config.pingMs,
     helloTimeoutMs: config.helloTimeoutMs,

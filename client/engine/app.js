@@ -11,6 +11,8 @@ import { applyStylizedLook } from './art/lighting.js';
 import { readQuality } from './art/quality.js';
 import { createChunkManager, makeLabel } from './chunks.js';
 import { createDynamicObjects } from './dynamic-objects.js';
+import { cityGateColliders, pickCityInteraction } from './city-interactions.js';
+import { createMechanismSync } from './mechanism-sync.js';
 import {
   BAKERY_ENTRANCE,
   FIRE_STATION_ENTRANCE,
@@ -221,7 +223,8 @@ export function createClient({ container, networkOnly = false }) {
     const worldView = {
       collidersNear: (x, z) => {
         const extra = dynamic.collidersNear(x, z);
-        return extra.length ? [...world.collidersNear(x, z), ...extra] : world.collidersNear(x, z);
+        const gates = cityGateColliders(world.mechanisms());
+        return [...world.collidersNear(x, z), ...gates, ...extra];
       },
       heightAt: (x, z) => world.heightAt(x, z),
     };
@@ -234,34 +237,20 @@ export function createClient({ container, networkOnly = false }) {
     const cameraGoal = { x: 0, y: 0, z: 0 };
     /** Модель локального игрока: тот же персонаж, что видят другие (по id и цвету из сессии). */
     let avatar = null;
-    let fireStationNearby = false;
-    let floristNearby = false;
-    let bakeryNearby = false;
-    let radioStationNearby = false;
-    let musicSchoolNearby = false;
+    let interaction = null;
+    const mechSync = createMechanismSync({ api: { on: emitter.on, net } });
     const input = createInput({
       target: renderer.domElement,
       document,
       window: win,
       onInteract: () => {
-        if (musicSchoolNearby) {
-          win.location.assign(MUSIC_SCHOOL_ENTRANCE.href);
+        if (interaction?.href) {
+          win.location.assign(interaction.href);
           return;
         }
-        if (radioStationNearby) {
-          win.location.assign(RADIO_STATION_ENTRANCE.href);
-          return;
-        }
-        if (bakeryNearby) {
-          win.location.assign(BAKERY_ENTRANCE.href);
-          return;
-        }
-        if (floristNearby) {
-          win.location.assign(FLORIST_ENTRANCE.href);
-          return;
-        }
-        if (fireStationNearby) {
-          win.location.assign(FIRE_STATION_ENTRANCE.href);
+        if (interaction?.mechanism) {
+          const { id, object } = interaction.mechanism;
+          mechSync.request(id, !object.wantsOpen, (open) => (open ? object.open() : object.close()));
           return;
         }
         emitter.emit('interact', state.npc);
@@ -281,6 +270,7 @@ export function createClient({ container, networkOnly = false }) {
     let lastSent = null;
     let npcId = null;
     let npcClock = 0;
+    let lastPrompt = '';
 
     function setNpc(npc) {
       const id = npc?.id ?? null;
@@ -456,20 +446,19 @@ export function createClient({ container, networkOnly = false }) {
         npcClock += delta;
         if (npcClock >= NPC_CHECK_MS) {
           npcClock = 0;
-          setNpc(world.nearestNpc(player.x, player.y, player.z, TALK_DISTANCE));
-          const nearEntrance = isNearFireStationEntrance(player.x, player.z);
-          const nearFlorist = isNearFloristEntrance(player.x, player.z);
-          const nearBakery = isNearBakeryEntrance(player.x, player.z);
-          const nearRadioStation = isNearRadioStationEntrance(player.x, player.z);
-          const nearMusicSchool = isNearMusicSchoolEntrance(player.x, player.z);
-          if (nearEntrance !== fireStationNearby || nearFlorist !== floristNearby || nearBakery !== bakeryNearby || nearRadioStation !== radioStationNearby || nearMusicSchool !== musicSchoolNearby) {
-            fireStationNearby = nearEntrance;
-            floristNearby = nearFlorist;
-            bakeryNearby = nearBakery;
-            radioStationNearby = nearRadioStation;
-            musicSchoolNearby = nearMusicSchool;
-            hud.setEntrancePrompt(musicSchoolNearby ? MUSIC_SCHOOL_ENTRANCE.label : radioStationNearby ? RADIO_STATION_ENTRANCE.label : bakeryNearby ? BAKERY_ENTRANCE.label : floristNearby ? FLORIST_ENTRANCE.label : fireStationNearby ? FIRE_STATION_ENTRANCE.label : '');
-          }
+          const nearbyNpc = world.nearestNpc(player.x, player.y, player.z, TALK_DISTANCE);
+          const mechanisms = world.mechanisms();
+          mechSync.reconcile(mechanisms);
+          interaction = pickCityInteraction(player, {
+            fire: FIRE_STATION_ENTRANCE,
+            florist: FLORIST_ENTRANCE,
+            bakery: BAKERY_ENTRANCE,
+            radio: RADIO_STATION_ENTRANCE,
+            music: MUSIC_SCHOOL_ENTRANCE,
+          }, mechanisms, nearbyNpc ? { ...nearbyNpc, radius: TALK_DISTANCE } : null);
+          setNpc(interaction?.npc ?? null);
+          lastPrompt = interaction?.label ?? '';
+          hud.setEntrancePrompt(lastPrompt);
         }
       }
 
@@ -499,6 +488,7 @@ export function createClient({ container, networkOnly = false }) {
       input.dispose();
       clearAvatar();
       remote.dispose();
+      mechSync.dispose();
       dynamic.dispose();
       world.dispose();
       scene.remove(skyline.group);

@@ -9,12 +9,16 @@ import { PALETTE } from '../../engine/art/palette.js';
 import { applyStylizedLook } from '../../engine/art/lighting.js';
 import { isSharedResource, stdMat } from '../../engine/art/materials.js';
 import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
+import { setWindQuality } from '../../engine/art/wind.js';
 import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
 import {
   CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, reactToEvent, resetArms, setArmReach, setCarry, setCharacterQuality, setPersonEquipment, triggerGesture, yawToward,
 } from '../../engine/art/character.js';
 import { buildFireTruck, buildHoseStand, buildLocker, buildMannequin, buildSafeZone, buildSafetyBarriers, buildStation, buildTrainingWall, createObjectiveMarker } from './station-art.js';
 import { createScenery } from './scenery.js';
+import { createMechanismSync } from '../../engine/mechanism-sync.js';
+import { createSectionalGate } from '../../engine/mechanisms/gate.js';
+import { nearestInteraction } from './interaction-target.js';
 import { BENCHES, BUSHES, CONES, FENCES, LAMPS, PLANTERS, TREES } from './yard-plan.js';
 
 export { setPersonEquipment };
@@ -78,7 +82,7 @@ function disposeModel(root) {
   });
 }
 
-export function createFirefighterScene({ container, appearance = null, onPrompt, onAction, onNotice, onHoseMode, onTarget = () => {}, onPosition = () => {} }) {
+export function createFirefighterScene({ container, appearance = null, onPrompt, onAction, onNotice, onHoseMode, onTarget = () => {}, onPosition = () => {}, api = null }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 260);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -91,6 +95,7 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
   const look = applyStylizedLook({ renderer, scene, camera, fog: [46, 135], shadowExtent: 26, exposure: 1.02 });
   let quality = readQuality();
   setCharacterQuality(quality);
+  setWindQuality(quality);
   let detail = look.setQuality(quality).detail;
   const scenery = createScenery({ detail });
   scene.add(scenery.group);
@@ -101,6 +106,19 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
   const truck = buildFireTruck();
   truck.position.set(5.7, 0, -4.4);
   scene.add(truck);
+  const truckMechanism = truck.userData.mechanism;
+  const mechSync = api ? createMechanismSync({ api }) : null;
+  const yardGates = [-3.7, 0.4].map((x, i) => {
+    const gate = createSectionalGate({ id: `fire-yard-gate-${i}`, width: 3.9, height: 3.5 });
+    gate.root.position.set(x, 0.5, 4.58);
+    station.add(gate.root);
+    return gate;
+  });
+  mechSync?.reconcile([
+    { id: 'fire-truck-ladder', kind: 'ladder', object: truckMechanism },
+    ...yardGates.map((gate) => ({ id: gate.id, kind: 'gate', object: gate })),
+  ]);
+
 
   const player = appearance
     ? createPerson({ appearance })
@@ -367,34 +385,37 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
     updateMarker();
   }
 
-  function updatePrompt() {
-    if (!state || uiBlocked) return setPrompt('');
-    let text = '';
-    if (distanceTo(npc) < LOCAL_POINTS.npc.radius) {
-      text = state.stage === 'debrief' ? 'Обсудить итог тренировки' : 'Поговорить с Марусей';
-    }
-    if (state.stage === 'equipping' && distanceTo(locker) < LOCAL_POINTS.locker.radius) text = 'Надеть экипировку';
-    if (state.stage === 'fire_drill' && distanceTo(hoseStand) < HOSE_USE_DISTANCE) text = hoseActive ? 'Завершить упражнение с рукавом' : 'Взять учебный рукав';
+  function interactionTarget() {
+    if (!state || uiBlocked) return null;
+    const candidates = [];
+    const add = (kind, object, radius, label, extra = {}) => {
+      candidates.push({ kind, distance: distanceTo(object), radius, label, ...extra });
+    };
+    add('npc', npc, LOCAL_POINTS.npc.radius, state.stage === 'debrief' ? 'Обсудить итог тренировки' : 'Поговорить с Марусей');
+    if (state.stage === 'equipping') add('locker', locker, LOCAL_POINTS.locker.radius, 'Надеть экипировку');
+    if (state.stage === 'fire_drill') add('hose', hoseStand, HOSE_USE_DISTANCE, hoseActive ? 'Завершить упражнение с рукавом' : 'Взять учебный рукав');
     if (state.stage === 'rescue') {
-      if (!state.carryingMannequin && distanceTo(mannequin) < LOCAL_POINTS.mannequin.radius) text = 'Поднять манекен';
-      else if (state.carryingMannequin && distanceTo(safeZone) < LOCAL_POINTS.safe_zone.radius) text = 'Доставить манекен';
+      if (!state.carryingMannequin) add('pickup', mannequin, LOCAL_POINTS.mannequin.radius, 'Поднять манекен');
+      else add('deliver', safeZone, LOCAL_POINTS.safe_zone.radius, 'Доставить манекен');
     }
-    setPrompt(text ? `E · ${text}` : '');
+    for (const gate of yardGates) add('gate', gate.root, 3, gate.label, { gate });
+    add('truck', truck, 3.6, truckMechanism.wantsOpen ? 'Убрать лестницу' : 'Выдвинуть лестницу');
+    return nearestInteraction(candidates);
+  }
+
+  function updatePrompt() {
+    const target = interactionTarget();
+    setPrompt(target ? `E · ${target.label}` : '');
   }
 
   function interact() {
-    if (!state || uiBlocked) return;
-    if (distanceTo(npc) < LOCAL_POINTS.npc.radius) {
-      onAction('open_chat'); // разговор с Марусей: действия этапа — кнопки в панели, подтверждает их сервер
-      return;
-    }
-    if (distanceTo(locker) < LOCAL_POINTS.locker.radius) {
-      if (state.stage === 'equipping') onAction('equip');
-      else onNotice(state.equipped ? 'Экипировка уже надета.' : 'Сначала поговорите с Марусей.');
-      return;
-    }
-    if (distanceTo(hoseStand) < HOSE_USE_DISTANCE) {
-      if (state.stage !== 'fire_drill') return onNotice('Сначала выполните предыдущий этап.');
+    const target = interactionTarget();
+    if (!target) return;
+    if (target.kind === 'npc') return onAction('open_chat');
+    if (target.kind === 'locker') return onAction('equip');
+    if (target.kind === 'pickup') return onAction('pickup_mannequin');
+    if (target.kind === 'deliver') return onAction('deliver_mannequin');
+    if (target.kind === 'hose') {
       hoseActive = !hoseActive;
       waterHeld = false;
       heldHose.visible = hoseActive;
@@ -418,9 +439,17 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
       }
       return;
     }
-    if (state.stage === 'rescue') {
-      if (!state.carryingMannequin && distanceTo(mannequin) < LOCAL_POINTS.mannequin.radius) return onAction('pickup_mannequin');
-      if (state.carryingMannequin && distanceTo(safeZone) < LOCAL_POINTS.safe_zone.radius) return onAction('deliver_mannequin');
+    if (target.kind === 'gate') {
+      const { gate } = target;
+      const next = !gate.wantsOpen;
+      if (mechSync) mechSync.request(gate.id, next, () => gate.toggle());
+      else gate.toggle();
+      return;
+    }
+    if (target.kind === 'truck') {
+      const next = !truckMechanism.wantsOpen;
+      if (mechSync) mechSync.request('fire-truck-ladder', next, () => truckMechanism.toggle());
+      else truckMechanism.toggle();
     }
   }
 
@@ -724,6 +753,8 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
     safeZone.userData.flag.rotation.y = Math.sin(elapsed * 2.2) * 0.25;
     marker.update(elapsed);
     scenery.update(elapsed);
+    truckMechanism.update(delta, elapsed);
+    for (const gate of yardGates) gate.update(delta, elapsed);
     if (!aim) updateCamera();
     look.update(player.position, elapsed);
     updatePrompt();
@@ -762,6 +793,7 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
       if (!QUALITY_PRESETS[level]) return quality;
       quality = level;
       setCharacterQuality(level);
+      setWindQuality(level);
       detail = look.setQuality(level).detail;
       scenery.setDetail(detail);
       saveQuality(level);
@@ -803,6 +835,8 @@ export function createFirefighterScene({ container, appearance = null, onPrompt,
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('pointerlockchange', onPointerLockChange);
       clearRemotePlayers();
+      mechSync?.dispose();
+      for (const gate of yardGates) gate.dispose();
       for (const root of [player, npc, station, truck, locker, wall.group, hoseStand, mannequin, safeZone]) disposeModel(root);
       hoseSegments.geometry.dispose();
       coilSegments.geometry.dispose();

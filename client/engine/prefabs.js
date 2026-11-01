@@ -10,28 +10,30 @@ import { BAKERY_SIGNS } from './bakery.js';
 import { buildCityPlazaGeometry } from './city-plaza.js';
 import { buildPathGeometry, pathIdAt } from './city-paths.js';
 import { createSignDecor, decoratePlaza } from './city-decor.js';
-import { FIRE_STATION_SIGNS, buildFireStationGeometry } from './fire-station.js';
+import { decorateFireStation, decorateRadioStation } from './city-mechanisms.js';
+import { treeProfile } from './art/wind.js';
+import { buildFireStationGeometry, fireStationCollisionBoxes } from './fire-station.js';
 import { FLOWER_SHOP_SIGNS, buildFlowerShopGeometry } from './flower-shop.js';
 import { MUSIC_SCHOOL_SIGNS, buildMusicSchoolGeometry } from './music-school.js';
 import { CITY_HALL_SIGNS, buildCityHallGeometry } from './procedural-city.js';
-import { RADIO_STATION_SIGNS, buildRadioStationGeometry } from './radio-station.js';
+import { buildRadioStationGeometry } from './radio-station.js';
 import { PATHS } from '../../tools/build-world/layout.js';
 import { plazaCollisionBoxes } from './plaza-plan.js';
 
 const box = (w, h, d) => () => new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0);
 
 const PREFABS = {
-  1: { name: 'tree', color: 0xffffff, vertexColors: true, collider: [1, 6, 1], build: TREE_BUILDERS.round, variantOf: (x, z) => TREE_VARIANTS[Math.abs(Math.floor(x * 7.3 + z * 3.1)) % TREE_VARIANTS.length], buildVariant: (variant) => TREE_BUILDERS[variant] },
+  1: { name: 'tree', color: 0xffffff, vertexColors: true, collider: [1, 6, 1], build: TREE_BUILDERS.round, variantOf: (x, z) => TREE_VARIANTS[Math.abs(Math.floor(x * 7.3 + z * 3.1)) % TREE_VARIANTS.length], buildVariant: (variant) => TREE_BUILDERS[variant], windProfile: (variant) => treeProfile(variant || 'round') },
   2: { name: 'bench', color: 0xffffff, vertexColors: true, collider: [2, 1, 1], build: buildBenchPrefab },
   3: { name: 'lamp', color: 0xffffff, vertexColors: true, collider: [0.5, 4, 0.5], build: buildLampPrefab },
   4: { name: 'bed', color: 0xdfe7ee, collider: [1, 1, 2], build: box(1, 1, 2) },
   5: { name: 'cabinet', color: 0xb9c4cf, collider: [1, 2, 1], build: box(1, 2, 1) },
   10: { name: 'city_hall', color: 0xffffff, vertexColors: true, collider: [22, 9, 14], build: buildCityHallGeometry, decorate: createSignDecor(CITY_HALL_SIGNS) },
-  11: { name: 'fire_station', color: 0xffffff, vertexColors: true, collider: [24, 9, 16], build: buildFireStationGeometry, decorate: createSignDecor(FIRE_STATION_SIGNS) },
+  11: { name: 'fire_station', color: 0xffffff, vertexColors: true, colliders: fireStationCollisionBoxes, build: buildFireStationGeometry, decorate: decorateFireStation },
   12: { name: 'bakery', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildBakeryGeometry, decorate: createSignDecor(BAKERY_SIGNS) },
   13: { name: 'flower_shop', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildFlowerShopGeometry, decorate: createSignDecor(FLOWER_SHOP_SIGNS) },
   14: { name: 'music_school', color: 0xffffff, vertexColors: true, collider: [22, 9, 14], build: buildMusicSchoolGeometry, decorate: createSignDecor(MUSIC_SCHOOL_SIGNS) },
-  15: { name: 'radio_station', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildRadioStationGeometry, decorate: createSignDecor(RADIO_STATION_SIGNS) },
+  15: { name: 'radio_station', color: 0xffffff, vertexColors: true, collider: [18, 9, 14], build: buildRadioStationGeometry, decorate: decorateRadioStation },
   20: { name: 'city_plaza', color: 0xffffff, vertexColors: true, collider: null, colliders: plazaCollisionBoxes, build: buildCityPlazaGeometry, decorate: decoratePlaza },
   // Все дорожки в мире имеют один ID; размеры берутся из PATHS по положению инстанса (city-paths.js).
   21: {

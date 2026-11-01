@@ -111,6 +111,7 @@ const playerAppearance = createPlayerAppearance(client.api.auth.session()?.user)
 
 world = createFirefighterScene({
   container: sceneRoot,
+  api: client.api,
   appearance: playerAppearance,
   onPrompt: (value) => { prompt = value; refresh(); },
   onAction: onWorldAction,

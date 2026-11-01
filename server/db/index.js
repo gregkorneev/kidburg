@@ -52,6 +52,12 @@ export function openDb(file = DEFAULT_DB_FILE) {
        ON CONFLICT(user_id) DO UPDATE SET x = excluded.x, y = excluded.y, z = excluded.z,
          ry = excluded.ry, updated_at = excluded.updated_at`,
     ),
+    interactiveProps: handle.prepare('SELECT id, type, x, z, ry, state, updated_at FROM interactive_props ORDER BY id'),
+    upsertInteractiveProp: handle.prepare(
+      `INSERT INTO interactive_props (id, type, x, z, ry, state, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET type = excluded.type, x = excluded.x, z = excluded.z,
+         ry = excluded.ry, state = excluded.state, updated_at = excluded.updated_at`,
+    ),
     memoryByKey: handle.prepare('SELECT * FROM agent_memory WHERE user_id = ? AND agent_id = ?'),
     upsertMemory: handle.prepare(
       `INSERT INTO agent_memory (user_id, agent_id, told_cards, summary, turns, topics, updated_at)
@@ -211,6 +217,13 @@ export function openDb(file = DEFAULT_DB_FILE) {
       void q.upsertState.run(userId, x, y, z, ry, updatedAt),
     /** Пачка в одной транзакции: либо записаны все, либо ни одной. */
     savePlayerStates: (rows) => void saveStates(rows),
+
+    // Переносимые предметы города: сохраняется только безопасное положение, предмет в руках не закрепляется.
+    listInteractiveProps: () => q.interactiveProps.all().map((row) => ({
+      id: row.id, type: row.type, x: row.x, z: row.z, ry: row.ry, state: row.state, updatedAt: row.updated_at,
+    })),
+    saveInteractiveProp: ({ id, type, x, z, ry = 0, state = 'available' }, updatedAt = Date.now()) =>
+      void q.upsertInteractiveProp.run(id, type, x, z, ry, state, updatedAt),
 
     // Память агента.
     getAgentMemory: (userId, agentId) => toMemory(q.memoryByKey.get(userId, agentId)) ?? null,

@@ -22,6 +22,16 @@ CREATE TABLE IF NOT EXISTS player_state (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS interactive_props (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  x REAL NOT NULL,
+  z REAL NOT NULL,
+  ry REAL NOT NULL DEFAULT 0,
+  state TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS agent_memory (
   user_id INTEGER NOT NULL REFERENCES users(id),
   agent_id TEXT NOT NULL,

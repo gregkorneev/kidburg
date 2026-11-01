@@ -8,7 +8,12 @@ for (const building of BUILDINGS) {
   test(`префаб ${building.id}: ID, размер и коллизия`, () => {
     const prefab = getPrefab(BUILDING_PREFAB_IDS[building.id]);
     assert.equal(prefab.name, building.id);
-    assert.deepEqual(prefab.collider, [building.width, 9, building.depth]);
+    if (building.id === 'fire_station') {
+      assert.equal(prefab.collider, undefined);
+      assert.ok(prefab.colliders().length >= 7);
+    } else {
+      assert.deepEqual(prefab.collider, [building.width, 9, building.depth]);
+    }
     const geometry = prefab.build();
     geometry.computeBoundingBox();
     assert.ok(geometry.boundingBox.max.y >= 9);

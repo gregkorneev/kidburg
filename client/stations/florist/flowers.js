@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PALETTE } from '../../engine/art/palette.js';
 import { stdMat } from '../../engine/art/materials.js';
+import { windMaterial, padWindBounds, applyWindShadows } from '../../engine/art/wind.js';
 import { createPrefabKit } from '../../engine/art/prefab-kit.js';
 import { FLOWERS } from './state.js';
 
@@ -162,9 +163,10 @@ export function createFlower(type, { id = null, variant = 0 } = {}) {
   else if (type === 'white_daisy') createDaisy(kit, colors, variant);
   else if (type === 'red_rose') createRose(kit, colors, variant);
   else createGreenery(kit, colors, variant);
-  const geometry = kit.build({ groundAO: { height: 0.34, strength: 0.08 }, underside: 0.82 });
-  const material = stdMat('#ffffff', { vertexColors: true, side: THREE.DoubleSide, roughness: 0.76 });
+  const geometry = padWindBounds(kit.build({ groundAO: { height: 0.34, strength: 0.08 }, underside: 0.82 }), 'flower-held');
+  const material = windMaterial('flower-held', { roughness: 0.76, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(geometry, material);
+  applyWindShadows(mesh);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   root.add(mesh);

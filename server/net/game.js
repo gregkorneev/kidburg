@@ -18,6 +18,7 @@ import {
   WORLD_SIZE_Z,
 } from '../../shared/constants.js';
 import { C2S, ERROR_CODES, LIMITS, S2C, decode, encode, validate } from '../../shared/protocol.js';
+import { BALL, FIELD, INTERACT_CODES, INTERACT_LIMITS } from '../../shared/interaction-contracts.js';
 import { reply as defaultReply } from '../agents/index.js';
 import { createChunkMirror } from './chunks.js';
 import { chooseSpawn } from './spawn.js';
@@ -30,6 +31,11 @@ const MAX_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED = 512 * 1024;
 // task_answer: серия попаданий по окнам идёт примерно 8 раз в секунду.
 const TASK_PER_SEC = 20;
+const MECH_PER_SEC = 4;
+// Мячи и предметы рассылаются игрокам не дальше этого расстояния от поля (мяч не уходит от поля дальше hardMargin).
+const BALL_VIEW_M = FIELD.hardMargin + FIELD.halfW + 70;
+const PHYSICS_DT = 1 / BALL.stepHz;
+const SNAPSHOT_EVERY = Math.max(1, Math.round(BALL.stepHz / BALL.snapshotHz));
 /** Ответ обработчика {state, done, feedback, changed, error?} -> плоское поле `state` сообщения task_state. */
 const taskWire = (r) => ({ ...r.state, done: r.done, feedback: r.feedback, changed: r.changed, ...(r.error ? { error: r.error } : {}) });
 const TASK_UNAVAILABLE = 'Сервер сейчас не может прочитать прогресс. Попробуйте позже.';
@@ -86,6 +92,8 @@ function reject(socket, status, text) {
  *   handle(userId: number, id: string, payload: unknown, context: object): object|Promise<object>, forget?(userId: number): void}} [deps.tasks]
  *   задания; прогресс принадлежит userId соединения, позиция берётся у сервера
  * @param {ReturnType<import('../world/dynamic-objects.js').createDynamicWorld>} [deps.dynamic] динамические объекты мира
+ * @param {ReturnType<import('../mechanisms/index.js').createMechanisms>} [deps.mechanisms] механизмы города
+ * @param {ReturnType<import('../world/interactive-state.js').createInteractive>} [deps.interactive] предметы и мячи
  * @param {typeof defaultReply} [deps.reply] мозг агента (shared/agent-api.md); подменяется в тестах
  * @param {number} [deps.npcTalkMaxChars] предел длины реплики игрока NPC
  * @param {number} [deps.npcTalkPerSec] предел npc_talk в секунду на игрока
@@ -97,6 +105,8 @@ export function createGame({
   now = Date.now,
   world = null,
   dynamic = null,
+  mechanisms = null,
+  interactive = null,
   tasks = null,
   tickHz = TICK_HZ,
   pingMs = 10_000,
@@ -136,6 +146,7 @@ export function createGame({
   function removePlayer(p) {
     if (p.dirty) savePlayers([p]);
     tasks?.forget?.(p.id);
+    interactive?.release(p.id); // предмет из рук возвращается на безопасное место
     players.delete(p.id);
     for (const other of players.values()) {
       if (other.known.delete(p.id)) send(other.conn, { t: S2C.PLAYER_LEAVE, id: p.id });
@@ -229,6 +240,9 @@ export function createGame({
       known: new Set(),
       posLimit: createLimiter(LIMITS.POS_PER_SEC),
       taskLimit: createLimiter(TASK_PER_SEC),
+      mechLimit: createLimiter(MECH_PER_SEC),
+      interactLimit: createLimiter(INTERACT_LIMITS.PER_SEC),
+      ballVer: new Map(),
       talkLimit: createLimiter(npcTalkPerSec),
       mirror: world && createChunkMirror(world, log),
     };
@@ -246,6 +260,74 @@ export function createGame({
     });
     streamChunks(player);
     sendTaskStates(player);
+    if (mechanisms) send(player.conn, { t: S2C.MECH_SNAPSHOT, list: mechanisms.snapshot() });
+    if (interactive) {
+      send(player.conn, { t: S2C.PROP_SNAPSHOT, list: interactive.propRows() });
+      sendBalls(player);
+    }
+  }
+
+  const nearField = (p) => Math.hypot(p.x - FIELD.x, p.z - FIELD.z) <= BALL_VIEW_M;
+
+  /** Мячи, о которых игрок ещё не знает или которые движутся; полный набор при подключении. */
+  function sendBalls(p, tick = tickNo) {
+    if (!interactive || !nearField(p)) return;
+    const rows = [];
+    for (const ball of interactive.balls.list()) {
+      if (ball.resting && p.ballVer.get(ball.id) === ball.version) continue;
+      p.ballVer.set(ball.id, ball.version);
+      rows.push(interactive.balls.wire(ball));
+    }
+    if (rows.length) send(p.conn, { t: S2C.BALL_SNAPSHOT, tick, ts: now(), list: rows });
+  }
+
+  /** Игровое действие над предметом или мячом. Дальность, владение и направление берутся из состояния сервера. */
+  function handleInteract(player, msg) {
+    const t = now();
+    const reply = (r) =>
+      send(player.conn, { t: S2C.INTERACT_RESULT, seq: msg.seq, id: msg.id, action: msg.action, ok: r.ok, code: r.code ?? INTERACT_CODES.OK, message: r.message ?? '' });
+    if (!interactive) return reply({ ok: false, code: INTERACT_CODES.UNKNOWN, message: 'Взаимодействия отключены' });
+    if (!player.interactLimit.hit(t)) {
+      if (player.interactLimit.shouldNotify(t)) sendError(player.conn, ERROR_CODES.RATE_LIMIT, 'Слишком много interact');
+      return reply({ ok: false, code: INTERACT_CODES.RATE_LIMIT, message: 'Слишком часто' });
+    }
+    const actor = { id: player.id, x: player.x, z: player.z, ry: player.ry };
+    if (msg.action === 'take') return reply(interactive.take(actor, msg.id));
+    if (msg.action === 'place' || msg.action === 'drop') return reply(interactive.place(actor, msg.id, msg.action));
+    if (msg.action === 'kick') return reply(interactive.kick(actor, msg.id));
+    return reply({ ok: false, code: INTERACT_CODES.UNKNOWN, message: 'Неизвестное действие' });
+  }
+
+  function handleMechanism(player, msg) {
+    const t = now();
+    if (!player.mechLimit.hit(t)) {
+      if (player.mechLimit.shouldNotify(t)) sendError(player.conn, ERROR_CODES.RATE_LIMIT, 'Слишком много mech_set');
+      return;
+    }
+    if (!mechanisms) return;
+    const result = mechanisms.set(msg.id, msg.active, { x: player.x, z: player.z });
+    if (!result.ok) {
+      if (result.reason === 'too_far') sendError(player.conn, ERROR_CODES.TOO_FAR, 'Слишком далеко от механизма');
+      else sendError(player.conn, ERROR_CODES.BAD_MSG, 'Неизвестный механизм');
+    }
+  }
+
+  /** Фиксированный физический шаг мячей и рассылка снимков (реже, чем шаги). */
+  let physicsNo = 0;
+  function physicsTick() {
+    if (!interactive) return;
+    physicsNo += 1;
+    const actors = [];
+    for (const p of players.values()) {
+      if (Math.hypot(p.x - FIELD.x, p.z - FIELD.z) < FIELD.halfW + 40) actors.push({ id: p.id, x: p.x, z: p.z });
+    }
+    const events = interactive.step(PHYSICS_DT, actors);
+    for (const event of events) {
+      for (const p of players.values()) if (nearField(p)) send(p.conn, { t: S2C.BALL_EVENT, ...event });
+    }
+    if (physicsNo % SNAPSHOT_EVERY === 0 || events.length > 0) {
+      for (const p of players.values()) if (p.conn.ws.bufferedAmount < MAX_BUFFERED) sendBalls(p, physicsNo);
+    }
   }
 
   /** Сохранённое состояние заданий: игрок видит прогресс после входа, перезагрузки и переподключения. */
@@ -420,6 +502,8 @@ export function createGame({
     if (msg.t === C2S.NPC_TALK) {
       return void handleNpcTalk(conn.player, msg).catch((err) => log.error({ err }, 'сбой моста npc_talk'));
     }
+    if (msg.t === C2S.MECH_SET) return handleMechanism(conn.player, msg);
+    if (msg.t === C2S.INTERACT) return handleInteract(conn.player, msg);
     // chat: мост появится в S3.
   }
 
@@ -460,6 +544,7 @@ export function createGame({
 
   function tick() {
     tickNo += 1;
+    if (tickNo % tickHz === 0) mechanisms?.sweep?.(); // двери, оставленные открытыми, закрываются сами
     const byChunk = new Map();
     for (const p of players.values()) {
       const key = p.cx + p.cz * WORLD_CHUNKS_X;
@@ -520,9 +605,16 @@ export function createGame({
 
   app.server.on('upgrade', onUpgrade);
   const tickTimer = setInterval(tick, 1000 / tickHz).unref();
+  const physicsTimer = setInterval(physicsTick, 1000 / BALL.stepHz).unref();
   const pingTimer = setInterval(ping, pingMs).unref();
   const flushTimer = setInterval(flushAll, flushMs).unref();
   const offDynamic = dynamic?.subscribe(onDynamicChange);
+  const offMechanisms = mechanisms?.subscribe((state) => {
+    for (const p of players.values()) send(p.conn, { t: S2C.MECH_STATE, ...state });
+  });
+  const offInteractive = interactive?.subscribe((prop) => {
+    for (const p of players.values()) send(p.conn, { t: S2C.PROP_STATE, prop });
+  });
 
   return {
     flushAll,
@@ -547,9 +639,12 @@ export function createGame({
     /** Сохраняет игроков и обрывает все сокеты (вызывается при остановке сервера). */
     close() {
       clearInterval(tickTimer);
+      clearInterval(physicsTimer);
       clearInterval(pingTimer);
       clearInterval(flushTimer);
       offDynamic?.();
+      offMechanisms?.();
+      offInteractive?.();
       app.server.off('upgrade', onUpgrade);
       flushAll();
       for (const conn of [...conns]) {

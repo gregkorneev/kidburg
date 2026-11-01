@@ -2,6 +2,7 @@
 
 import { encode as mpEncode, decode as mpDecode } from '@msgpack/msgpack';
 import { PROTO_VERSION } from './constants.js';
+import { INTERACT_LIMITS, PROP_STATES, isInteractAction } from './interaction-contracts.js';
 
 export const PROTO = PROTO_VERSION;
 
@@ -11,6 +12,10 @@ export const C2S = Object.freeze({
   CHAT: 'chat',
   NPC_TALK: 'npc_talk',
   TASK_ANSWER: 'task_answer',
+  // Игрок просит выставить состояние механизма (ворота, лестница): shared/mechanisms.js.
+  MECH_SET: 'mech_set',
+  // Игровое действие над предметом или мячом: взять, поставить, бросить, пнуть (shared/interaction-contracts.js).
+  INTERACT: 'interact',
 });
 
 export const S2C = Object.freeze({
@@ -33,6 +38,13 @@ export const S2C = Object.freeze({
   DYN_SNAPSHOT: 'dyn_snapshot',
   DYN_UPSERT: 'dyn_upsert',
   DYN_REMOVE: 'dyn_remove',
+  MECH_SNAPSHOT: 'mech_snapshot',
+  MECH_STATE: 'mech_state',
+  PROP_SNAPSHOT: 'prop_snapshot',
+  PROP_STATE: 'prop_state',
+  BALL_SNAPSHOT: 'ball_snapshot',
+  BALL_EVENT: 'ball_event',
+  INTERACT_RESULT: 'interact_result',
   ERROR: 'error',
 });
 
@@ -67,6 +79,8 @@ const SCHEMAS = {
   chat: { text: (v) => str(v) && v.length > 0 && v.length <= LIMITS.CHAT_MAX_CHARS },
   npc_talk: { agentId: str, text: (v) => str(v) && v.length > 0, reqId: (v) => str(v) || int(v) },
   task_answer: { taskId: str, payload: (v) => v !== undefined },
+  mech_set: { id: str, active: (v) => typeof v === 'boolean' },
+  interact: { id: (v) => str(v) && v.length > 0 && v.length <= INTERACT_LIMITS.MAX_ID_CHARS, action: isInteractAction, seq: int },
   // сервер -> клиент
   welcome: { proto: int, playerId: int, name: str, state: obj, consts: obj },
   player_join: { id: int, name: str, appearance: obj },
@@ -85,6 +99,13 @@ const SCHEMAS = {
   dyn_snapshot: { cx: int, cz: int, objects: (v) => Array.isArray(v) && v.every(dynObject) },
   dyn_upsert: { object: dynObject },
   dyn_remove: { id: str, rev: int },
+  mech_snapshot: { list: (v) => Array.isArray(v) },
+  mech_state: { id: str, active: (v) => typeof v === 'boolean', ageMs: num, progress: num },
+  prop_snapshot: { list: (v) => Array.isArray(v) },
+  prop_state: { prop: obj },
+  ball_snapshot: { tick: int, ts: num, list: (v) => Array.isArray(v) },
+  ball_event: { kind: str },
+  interact_result: { seq: int, id: str, action: str, ok: (v) => typeof v === 'boolean', code: str, message: str },
   error: { code: (v) => Object.values(ERROR_CODES).includes(v), message: str },
 };
 

@@ -11,7 +11,7 @@ import { sharedGeometry } from './art/materials.js';
 import { createPrefabKit } from './art/prefab-kit.js';
 import { QUALITY_PRESETS } from './art/quality.js';
 import { TREE_BUILDERS, bush, flower } from './art/flora.js';
-import { swayMaterial } from './art/wind.js';
+import { applyWindShadows, padWindBounds, treeProfile, windMaterial } from './art/wind.js';
 import { createTileBuffer } from './city-plaza.js';
 import { BUSHES, FOUNTAIN, PLANTS, PLAZA_RADIUS, PYLONS, ROUTES, SPOUTS, TREES } from './plaza-plan.js';
 
@@ -177,10 +177,10 @@ function createJets(center, place) {
 
 // ── Площадь: растения ──────────────────────────────────────────────────────
 
-const plantGeometry = (key, fn) => sharedGeometry(`plaza-plant:${key}`, () => {
+const plantGeometry = (key, fn, profile) => sharedGeometry(`plaza-plant:${key}`, () => {
   const kit = createPrefabKit({ seed: 31 });
   fn(kit);
-  return kit.build({ groundAO: null, underside: 1 });
+  return padWindBounds(kit.build({ groundAO: null, underside: 1 }), profile);
 });
 
 function plantMeshes(place, instanceRy = 0) {
@@ -194,6 +194,7 @@ function plantMeshes(place, instanceRy = 0) {
     if (!items.length) return;
     const ordered = [...items].sort((a, b) => hash(a.x * 31 + a.z * 17) - hash(b.x * 31 + b.z * 17));
     const mesh = new THREE.InstancedMesh(geometry, material, ordered.length);
+    applyWindShadows(mesh);
     ordered.forEach((item, i) => {
       const [x, y, z] = place(item.x, item.y ?? 0, item.z);
       rotation.setFromAxisAngle(up, item.ry ?? hash(i * 7 + ordered.length) * Math.PI * 2 + instanceRy);
@@ -209,18 +210,17 @@ function plantMeshes(place, instanceRy = 0) {
     makers.push(mesh);
   };
 
-  const flowerMat = swayMaterial(0.16);
-  const bushMat = swayMaterial(0.05);
+  const flowerMat = windMaterial('flower');
+  const bushMat = windMaterial('bush');
   BLOOM_COLORS.forEach((color, ci) => {
-    tally(`flowers-${ci}`, plantGeometry(`flower:${ci}`, (k) => flower(k, 0, 0, 0, color, 1)), flowerMat, PLANTS.filter((p) => p.kind === 'flower' && p.color === ci), { cull: true });
+    tally(`flowers-${ci}`, plantGeometry(`flower:${ci}`, (k) => flower(k, 0, 0, 0, color, 1), 'flower'), flowerMat, PLANTS.filter((p) => p.kind === 'flower' && p.color === ci), { cull: true });
   });
-  tally('bushes-beds', plantGeometry('bush', (k) => bush(k, 0, 0, 1, 0)), bushMat, [
+  tally('bushes-beds', plantGeometry('bush', (k) => bush(k, 0, 0, 1, 0), 'bush'), bushMat, [
     ...PLANTS.filter((p) => p.kind === 'bush'),
     ...BUSHES,
   ], { cull: true });
-  const treeMat = swayMaterial(0.014);
   for (const type of Object.keys(TREE_BUILDERS)) {
-    tally(`trees-${type}`, sharedGeometry(`plaza-tree:${type}`, TREE_BUILDERS[type]), treeMat, TREES.filter((t) => t.type === type));
+    tally(`trees-${type}`, sharedGeometry(`plaza-tree:${type}`, () => padWindBounds(TREE_BUILDERS[type](), treeProfile(type))), windMaterial(treeProfile(type)), TREES.filter((t) => t.type === type));
   }
   return makers;
 }

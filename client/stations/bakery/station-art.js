@@ -1,3 +1,4 @@
+import { createMixer } from './mixer.js';
 import * as THREE from 'three';
 import { createPrefabKit } from '../../engine/art/prefab-kit.js';
 import { PALETTE } from '../../engine/art/palette.js';
@@ -176,10 +177,10 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   k.cyl(0.075, 0.09, 0.07, 8, -6.38, 1.645, 0.43, C.wood);
   k.tube([[-6.25, 1.38, 0.53], [-6.18, 1.43, 0.53], [-6.18, 1.55, 0.53], [-6.25, 1.59, 0.53]], 0.025, C.wood);
   k.box(0.19, 0.1, 0.035, -6.38, 1.27, 0.56, C.peach, { r: 0.02 });
-  k.box(0.62, 0.08, 0.42, -5.77, 1.15, 0.43, C.wood, { r: 0.045 });
-  for (const x of [-5.98, -5.77, -5.56]) k.box(0.035, 0.1, 0.42, x, 1.22, 0.43, C.pale, { r: 0.012 });
-  for (const z of [0.3, 0.55]) k.box(0.62, 0.1, 0.035, -5.77, 1.22, z, C.pale, { r: 0.012 });
-  for (const [x, z] of [[-5.98, 0.3], [-5.77, 0.3], [-5.56, 0.3], [-5.98, 0.55], [-5.77, 0.55], [-5.56, 0.55]]) {
+  k.box(0.62, 0.08, 0.42, -0.75, 1.15, -4.58, C.wood, { r: 0.045 });
+  for (const x of [-0.96, -0.75, -0.54]) k.box(0.035, 0.1, 0.42, x, 1.22, -4.58, C.pale, { r: 0.012 });
+  for (const z of [-4.71, -4.46]) k.box(0.62, 0.1, 0.035, -0.75, 1.22, z, C.pale, { r: 0.012 });
+  for (const [x, z] of [[-0.96, -4.71], [-0.75, -4.71], [-0.54, -4.71], [-0.96, -4.46], [-0.75, -4.46], [-0.54, -4.46]]) {
     k.sphere(0.105, x, 1.27, z, C.egg, { s: [0.82, 1.05, 0.82], w: 7, h: 5 });
   }
   k.cyl(0.095, 0.12, 0.22, 8, -5.2, 1.24, 0.43, C.pale);
@@ -289,6 +290,9 @@ export function createBakeryInterior({ quality = 'medium' } = {}) {
   base.name = 'bakery-static';
   detail.name = 'bakery-detail';
   group.add(base, detail);
+  const mixer = createMixer();
+  mixer.root.position.set(-5.77, 1.12, 0.43);
+  group.add(mixer.root);
 
   const productMaterial = material;
   const makeProduct = (stage, seed, productColor, scale, position) => {
@@ -331,6 +335,8 @@ export function createBakeryInterior({ quality = 'medium' } = {}) {
   };
   setQuality(currentQuality);
   const setStage = (stage) => {
+    if (currentStage === 'order_received' && stage === 'ingredients_ready') mixer.start();
+    else if (stage !== 'ingredients_ready') mixer.stop();
     currentStage = stage;
     dough.visible = stage === 'product_shaped';
     loaf.visible = stage === 'product_baked' || stage === 'product_ready';
@@ -349,6 +355,7 @@ export function createBakeryInterior({ quality = 'medium' } = {}) {
       if (position) markerGroup.position.set(position.x, 0, position.z);
     },
     update(_dt, elapsed) {
+      mixer.update(_dt);
       if (markerGroup.visible) {
         const pulse = 1 + Math.sin(elapsed * 3.1) * 0.055;
         ring.scale.setScalar(pulse);
@@ -359,6 +366,7 @@ export function createBakeryInterior({ quality = 'medium' } = {}) {
     },
     dispose() {
       group.removeFromParent();
+      mixer.dispose();
       baseGeometry.dispose();
       detailGeometry.dispose();
       dough.geometry.dispose();
