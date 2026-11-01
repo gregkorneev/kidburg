@@ -10,6 +10,7 @@ import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharact
 import { applyStylizedLook } from './art/lighting.js';
 import { readQuality } from './art/quality.js';
 import { createChunkManager, makeLabel } from './chunks.js';
+import { createDynamicObjects } from './dynamic-objects.js';
 import {
   BAKERY_ENTRANCE,
   FIRE_STATION_ENTRANCE,
@@ -26,6 +27,7 @@ import { createPlayer, setPlayerPosition, stepPlayer } from './player.js';
 import { createPool } from './pool.js';
 import { createRemotePlayers } from './remote.js';
 import { createSession } from './session.js';
+import { startTelemetry } from './telemetry.js';
 import { createPlayerAppearance } from './player-appearance.js';
 import { createCitySkyline } from './skyline.js';
 import { MIN_VISIBLE_ARM, createCameraArm, orbitCameraGoal } from './third-person-camera.js';
@@ -209,6 +211,16 @@ export function createClient({ container, networkOnly = false }) {
 
     const pool = createPool();
     const world = createChunkManager({ scene, pool, quality });
+    // Объекты, добавленные в Control Center: живут в тех же чанках, что и статика, но приходят отдельными сообщениями.
+    const dynamic = createDynamicObjects({ scene, pool, createLabel: makeLabel, heightAt: (x, z) => world.heightAt(x, z) });
+    // Игрок и камера видят статику и динамические объекты как один набор препятствий.
+    const worldView = {
+      collidersNear: (x, z) => {
+        const extra = dynamic.collidersNear(x, z);
+        return extra.length ? [...world.collidersNear(x, z), ...extra] : world.collidersNear(x, z);
+      },
+      heightAt: (x, z) => world.heightAt(x, z),
+    };
     const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel, quality });
     const hud = createHud(container);
     const player = createPlayer();
@@ -245,7 +257,7 @@ export function createClient({ container, networkOnly = false }) {
 
     runtime = { input };
     // Отладочный доступ для проверки графики: только при ?debug=1.
-    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, remote, player, stylized, cameraArm, get avatar() { return avatar; }, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
+    if (new URLSearchParams(win.location.search).has('debug')) win.__cityDebug = { scene, camera, renderer, world, dynamic, remote, player, stylized, cameraArm, get avatar() { return avatar; }, setQuality: (level) => { stylized.setQuality(level); world.setQuality(level); } };
     hud.setStatus(net.status);
     hud.setCache(state.cache);
 
@@ -282,6 +294,7 @@ export function createClient({ container, networkOnly = false }) {
       ready = false;
       clearAvatar();
       world.clear();
+      dynamic.clear();
       remote.clear();
       setNpc(null);
     }
@@ -300,7 +313,13 @@ export function createClient({ container, networkOnly = false }) {
         sinceSend = 0;
         ready = true;
       }),
-      emitter.on('chunk_unload', ({ cx, cz }) => world.unload(cx, cz)),
+      emitter.on('chunk_unload', ({ cx, cz }) => {
+        dynamic.unloadChunk(cx, cz);
+        world.unload(cx, cz);
+      }),
+      emitter.on('dyn_snapshot', ({ cx, cz, objects }) => dynamic.snapshot(cx, cz, objects)),
+      emitter.on('dyn_upsert', ({ object }) => dynamic.upsert(object)),
+      emitter.on('dyn_remove', ({ id, rev }) => dynamic.remove(id, rev)),
       emitter.on('chunk_load', ({ cx, cz, data }) => {
         try {
           world.load(cx, cz, data);
@@ -364,11 +383,23 @@ export function createClient({ container, networkOnly = false }) {
       cameraFocus.y = player.y + CAMERA_FOCUS_HEIGHT;
       cameraFocus.z = player.z;
       orbitCameraGoal(cameraFocus, player.yaw, player.pitch, CAMERA_DISTANCE, cameraGoal);
-      const position = cameraArm.resolve(cameraFocus, cameraGoal, world.collidersNear(player.x, player.z), dt, (x, z) => world.heightAt(x, z));
+      const position = cameraArm.resolve(cameraFocus, cameraGoal, worldView.collidersNear(player.x, player.z), dt, worldView.heightAt);
       camera.position.set(position.x, position.y, position.z);
       camera.lookAt(cameraFocus.x, cameraFocus.y, cameraFocus.z);
       if (avatar) avatar.visible = cameraArm.length >= MIN_VISIBLE_ARM; // камера вплотную: не показываем изнанку модели
     }
+
+    // Центральный мониторинг (Control Center): усреднённые FPS и ping раз в несколько секунд.
+    const telemetry = startTelemetry({
+      loc: 'city',
+      externalFrames: true,
+      getQuality: () => quality,
+      getRenderInfo: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),
+      getChunks: () => (state.cache ? { loaded: state.cache.loaded, max: state.cache.max } : null),
+      win,
+      doc: document,
+      session,
+    });
 
     let raf = 0;
     let last = performance.now();
@@ -387,7 +418,7 @@ export function createClient({ container, networkOnly = false }) {
       player.pitch = Math.max(CAMERA_PITCH_MIN, Math.min(CAMERA_PITCH_MAX, player.pitch - look.dy * MOUSE_SENSITIVITY));
 
       if (ready) {
-        stepPlayer(player, input.keys(), dt, world);
+        stepPlayer(player, input.keys(), dt, worldView);
         hud.setPlayerPosition(player.x, player.z);
 
         sinceSend += dt;
@@ -430,6 +461,7 @@ export function createClient({ container, networkOnly = false }) {
       stylized.update(player, now / 1000);
       renderer.render(scene, camera);
       labels.render(scene, camera);
+      telemetry.markFrame();
 
       frames += 1;
       if (now - fpsSince >= 500) {
@@ -445,9 +477,11 @@ export function createClient({ container, networkOnly = false }) {
       win.clearInterval(pingTimer);
       win.removeEventListener('resize', resize);
       for (const off of offs) off();
+      telemetry.stop();
       input.dispose();
       clearAvatar();
       remote.dispose();
+      dynamic.dispose();
       world.dispose();
       scene.remove(skyline.group);
       skyline.dispose();

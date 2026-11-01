@@ -69,6 +69,30 @@ export function createChunkMirror(world, log) {
     bytesMax: world.bytesMax,
   });
 
+  function replan(x, z) {
+    const { list, requiredBytes } = planChunks(world, x, z);
+    if (requiredBytes > world.bytesMax && !warnedRequired) {
+      warnedRequired = true;
+      log?.warn('обязательная область 3×3 не помещается в 10% мира: проверьте контент');
+    }
+    const wanted = new Set(list.map((c) => c.key));
+    const unload = [...sent.values()].filter((c) => !wanted.has(c.key));
+    const load = list.filter((c) => !sent.has(c.key));
+    for (const c of unload) {
+      sent.delete(c.key);
+      bytes -= c.bytes;
+    }
+    for (const c of load) {
+      sent.set(c.key, { cx: c.cx, cz: c.cz, key: c.key, bytes: c.bytes });
+      bytes += c.bytes;
+    }
+    return {
+      unload: unload.map(({ cx, cz }) => ({ cx, cz })),
+      load: load.map(({ cx, cz }) => ({ cx, cz })),
+      stats: stats(),
+    };
+  }
+
   return {
     stats,
     has: (cx, cz) => sent.has(cx + cz * WORLD_CHUNKS_X),
@@ -76,30 +100,21 @@ export function createChunkMirror(world, log) {
       const here = chunkOf(x, z);
       if (here.key === lastKey) return null;
       lastKey = here.key;
-
-      const { list, requiredBytes } = planChunks(world, x, z);
-      if (requiredBytes > world.bytesMax && !warnedRequired) {
-        warnedRequired = true;
-        log?.warn('обязательная область 3×3 не помещается в 10% мира: проверьте контент');
-      }
-      const wanted = new Set(list.map((c) => c.key));
-      const unload = [...sent.values()].filter((c) => !wanted.has(c.key));
-      const load = list.filter((c) => !sent.has(c.key));
-      if (unload.length === 0 && load.length === 0) return null;
-
-      for (const c of unload) {
-        sent.delete(c.key);
-        bytes -= c.bytes;
-      }
-      for (const c of load) {
-        sent.set(c.key, { cx: c.cx, cz: c.cz, key: c.key, bytes: c.bytes });
+      const diff = replan(x, z);
+      return diff.unload.length === 0 && diff.load.length === 0 ? null : diff;
+    },
+    /**
+     * Пересчитывает размеры уже отправленных чанков (динамические объекты изменили их вес) и набор заново.
+     * Всегда возвращает разницу со свежей статистикой, даже пустую.
+     */
+    refresh(x, z) {
+      lastKey = chunkOf(x, z).key;
+      bytes = 0;
+      for (const c of sent.values()) {
+        c.bytes = world.chunks[c.key]?.bytes ?? c.bytes;
         bytes += c.bytes;
       }
-      return {
-        unload: unload.map(({ cx, cz }) => ({ cx, cz })),
-        load: load.map(({ cx, cz }) => ({ cx, cz })),
-        stats: stats(),
-      };
+      return replan(x, z);
     },
   };
 }

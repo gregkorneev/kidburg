@@ -108,7 +108,7 @@ export function makeLabel(text) {
 }
 
 /** Коллайдер инстанса с AABB-границами и локальной формой для точной проверки поворота. */
-function instanceBox(collider, x, y, z, ry, scale) {
+export function instanceBox(collider, x, y, z, ry, scale) {
   const [w, h, d] = collider;
   const cos = Math.abs(Math.cos(ry));
   const sin = Math.abs(Math.sin(ry));

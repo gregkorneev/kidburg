@@ -3,6 +3,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
+import { createAdminAuth } from './admin/auth.js';
+import { createAudit } from './admin/audit.js';
+import { registerAdmin, registerAdminPageGuard } from './admin/routes.js';
 import { registerAgents } from './agents/index.js';
 import { registerTasks } from './tasks/index.js';
 import { DEFAULT_DB_FILE, openDb } from './db/index.js';
@@ -11,6 +14,10 @@ import { createGame } from './net/game.js';
 import { createRoom } from './net/room.js';
 import { createTicketStore } from './net/tickets.js';
 import { loadWorld } from './net/world.js';
+import { createTelemetry } from './telemetry/index.js';
+import { registerTelemetryRoutes } from './telemetry/routes.js';
+import { createDynamicWorld } from './world/dynamic-objects.js';
+import { createPlacement } from './world/placement.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -23,6 +30,10 @@ export const DEFAULT_CONFIG = Object.freeze({
   passwordAuth: process.env.PASSWORD_AUTH === '1',
   authPepper: process.env.AUTH_PEPPER,
   authSessionSecret: process.env.AUTH_SESSION_SECRET,
+  // Control Center: без ADMIN_PASSWORD панель закрыта; доступ с других компьютеров — только по ADMIN_ALLOW_REMOTE=1.
+  adminPassword: process.env.ADMIN_PASSWORD,
+  adminAllowRemote: process.env.ADMIN_ALLOW_REMOTE === '1',
+  telemetryIntervalMs: Number(process.env.TELEMETRY_INTERVAL_MS) || undefined,
   now: Date.now,
 });
 
@@ -46,11 +57,28 @@ export async function buildApp(overrides = {}) {
   app.decorate('room', room);
   const ctx = { db, world, config, log: app.log, room };
 
+  const adminAuth = createAdminAuth({
+    password: config.adminPassword,
+    allowRemote: config.adminAllowRemote,
+    localAddresses: config.localAddresses,
+    now: config.now,
+    log: app.log,
+  });
+  app.decorate('adminAuth', adminAuth);
+  // Хук доступа к /admin ставится до статики: вложенный плагин наследует только уже добавленные хуки.
+  registerAdminPageGuard(app, { auth: adminAuth });
+
   app.get('/health', async () => ({ ok: true }));
 
   if (existsSync(config.distDir)) {
-    await app.register(fastifyStatic, { root: config.distDir });
+    await app.register(fastifyStatic, { root: config.distDir, redirect: true });
   }
+
+  // Динамические объекты мира (редактор Control Center) живут поверх статичных чанков.
+  const placement = createPlacement({ world });
+  const dynamic = createDynamicWorld({ db, placement, world, now: config.now, log: app.log });
+  const gameWorld = dynamic.wrapWorld(world);
+  app.decorate('dynamicWorld', dynamic);
 
   let game = null;
   registerAuthRoutes(app, {
@@ -72,7 +100,8 @@ export async function buildApp(overrides = {}) {
     tickets,
     tasks: app.taskHandlers,
     now: config.now,
-    world,
+    world: gameWorld,
+    dynamic,
     tickHz: config.tickHz,
     pingMs: config.pingMs,
     helloTimeoutMs: config.helloTimeoutMs,
@@ -86,6 +115,21 @@ export async function buildApp(overrides = {}) {
   app.addHook('onClose', async () => db.close());
 
   registerAgents(app, ctx);
+
+  const telemetry = createTelemetry({ intervalMs: config.telemetryIntervalMs, now: config.now });
+  app.decorate('telemetry', telemetry);
+  registerTelemetryRoutes(app, { db, telemetry, authSecrets, now: config.now });
+  registerAdmin(app, {
+    auth: adminAuth,
+    audit: createAudit({ db, now: config.now }),
+    telemetry,
+    dynamic,
+    placement,
+    game,
+    db,
+    world,
+    now: config.now,
+  });
   return app;
 }
 

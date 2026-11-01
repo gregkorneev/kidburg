@@ -29,6 +29,10 @@ export const S2C = Object.freeze({
   AGENT_DONE: 'agent_done',
   AGENT_ERROR: 'agent_error',
   TASK_STATE: 'task_state',
+  // Динамические объекты мира (редактор Control Center): снимок чанка, создание/изменение, удаление.
+  DYN_SNAPSHOT: 'dyn_snapshot',
+  DYN_UPSERT: 'dyn_upsert',
+  DYN_REMOVE: 'dyn_remove',
   ERROR: 'error',
 });
 
@@ -51,6 +55,9 @@ const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const int = (v) => Number.isInteger(v);
 const obj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const bytes = (v) => v instanceof Uint8Array;
+
+const dynObject = (o) =>
+  obj(o) && str(o.id) && str(o.type) && num(o.x) && num(o.z) && num(o.ry) && num(o.scale) && obj(o.params) && int(o.rev);
 
 // Схема: тип -> { поле: проверка }. Лишние поля допускаются.
 const SCHEMAS = {
@@ -75,6 +82,9 @@ const SCHEMAS = {
   agent_done: { agentId: str, reqId: (v) => str(v) || int(v) },
   agent_error: { agentId: str, reqId: (v) => str(v) || int(v), message: str },
   task_state: { taskId: str, state: (v) => v !== undefined },
+  dyn_snapshot: { cx: int, cz: int, objects: (v) => Array.isArray(v) && v.every(dynObject) },
+  dyn_upsert: { object: dynObject },
+  dyn_remove: { id: str, rev: int },
   error: { code: (v) => Object.values(ERROR_CODES).includes(v), message: str },
 };
 

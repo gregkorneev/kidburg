@@ -324,6 +324,7 @@ export function createFloristScene({ container, appearance = null, onPrompt = ()
     getPosition: () => ({ x: player.x, y: player.y, z: player.z }),
     getQuality: () => look.quality,
     getRenderStats: () => ({
+      frame: renderer.info.render.frame,
       calls: renderer.info.render.calls,
       triangles: renderer.info.render.triangles,
       geometries: renderer.info.memory.geometries,

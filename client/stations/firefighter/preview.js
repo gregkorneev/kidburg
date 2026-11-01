@@ -9,6 +9,7 @@ import { createInitialState } from './state.js';
 import { createTaskSync } from './tasks.js';
 import { mountStationUI } from './ui.js';
 import { readQuality } from '../../engine/art/quality.js';
+import { startTelemetry } from '../../engine/telemetry.js';
 import './style.css';
 
 const CONTROLS_KEY = 'kidburg.firefighter.controls';
@@ -170,6 +171,14 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'KeyH' && !event.repeat && !event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) toggleControls();
 });
 
+// Центральный мониторинг Control Center: FPS и ping этой страницы; кадры — по фактическим вызовам renderer.render.
+const telemetry = startTelemetry({
+  loc: 'firefighter',
+  getQuality: () => quality,
+  getFrameCount: () => world?.debug.renderer.info.render.frame,
+  getRenderInfo: () => world?.debug.stats(),
+});
+
 // ?debug=1 открывает сцену в консоли (window.__fire) для ручной проверки графики и производительности.
 if (new URLSearchParams(location.search).has('debug')) window.__fire = world.debug;
 
@@ -185,6 +194,7 @@ window.addEventListener('pagehide', (event) => {
   sync?.dispose();
   network?.dispose();
   chat?.dispose();
+  telemetry.stop();
   client.stop();
   world?.dispose();
 });

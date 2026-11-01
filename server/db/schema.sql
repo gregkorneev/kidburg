@@ -41,3 +41,42 @@ CREATE TABLE IF NOT EXISTS task_progress (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, task_id)
 );
+
+-- Control Center: динамические объекты мира, настройки агентов, журнал действий администратора.
+-- Таблицы добавляются поверх существующих (IF NOT EXISTS), игровые данные не затрагиваются.
+CREATE TABLE IF NOT EXISTS world_objects (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  x REAL NOT NULL, z REAL NOT NULL, ry REAL NOT NULL DEFAULT 0, scale REAL NOT NULL DEFAULT 1,
+  params TEXT NOT NULL DEFAULT '{}',
+  revision INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS world_meta (
+  key TEXT PRIMARY KEY,
+  value INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agent_settings (
+  agent_id TEXT PRIMARY KEY,
+  settings TEXT NOT NULL DEFAULT '{}',
+  revision INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT,
+  before_state TEXT,
+  after_state TEXT,
+  result TEXT NOT NULL,
+  detail TEXT,
+  undone INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS admin_audit_ts ON admin_audit_log (ts);

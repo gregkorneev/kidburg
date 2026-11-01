@@ -7,6 +7,8 @@ const page = (name) => fileURLToPath(new URL(`./client/${name}`, import.meta.url
 // Страницы: основной клиент, превью станций и художественный прототип.
 export default defineConfig({
   root: 'client',
+  // JSX панели администратора собирается Preact (automatic runtime).
+  oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
   build: {
     outDir: '../dist',
     emptyOutDir: true,
@@ -16,6 +18,7 @@ export default defineConfig({
       bakery: page('bakery-preview.html'),
       firefighterArtPreview: page('stations/firefighter/art-preview.html'),
       florist: page('florist-preview.html'),
+      admin: page('admin/index.html'),
     } },
   },
   server: {

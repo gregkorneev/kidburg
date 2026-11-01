@@ -11,6 +11,8 @@ export function registerTasks(app, ctx) {
   const handlers = Object.freeze({
     /** Задания, чьё состояние отправляется игроку после hello. */
     taskIds: Object.freeze([...byId.keys()]),
+    /** agentId -> taskId: у каких агентов есть задание (для панели администратора: где размещён агент). */
+    agentTasks: Object.freeze(Object.fromEntries([...byId.values()].filter((t) => t.agentId).map((t) => [t.agentId, t.taskId]))),
     has: (taskId) => byId.has(taskId),
     getState: (userId, taskId) => byId.get(taskId).getState(userId),
     handle: (userId, taskId, payload, serverContext) => byId.get(taskId).handle(userId, payload, serverContext),

@@ -67,6 +67,37 @@ export function openDb(file = DEFAULT_DB_FILE) {
        ON CONFLICT(user_id, task_id) DO UPDATE SET state = excluded.state, done = excluded.done,
          updated_at = excluded.updated_at`,
     ),
+    // Control Center.
+    worldObjects: handle.prepare('SELECT * FROM world_objects ORDER BY created_at, id'),
+    insertWorldObject: handle.prepare(
+      `INSERT INTO world_objects (id, type, x, z, ry, scale, params, revision, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    updateWorldObject: handle.prepare(
+      'UPDATE world_objects SET x = ?, z = ?, ry = ?, scale = ?, params = ?, revision = ?, updated_at = ? WHERE id = ?',
+    ),
+    deleteWorldObject: handle.prepare('DELETE FROM world_objects WHERE id = ?'),
+    clearWorldObjects: handle.prepare('DELETE FROM world_objects'),
+    metaGet: handle.prepare('SELECT value FROM world_meta WHERE key = ?'),
+    metaSet: handle.prepare(
+      'INSERT INTO world_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    ),
+    agentSettingsOne: handle.prepare('SELECT * FROM agent_settings WHERE agent_id = ?'),
+    agentSettingsAll: handle.prepare('SELECT * FROM agent_settings ORDER BY agent_id'),
+    upsertAgentSettings: handle.prepare(
+      `INSERT INTO agent_settings (agent_id, settings, revision, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(agent_id) DO UPDATE SET settings = excluded.settings, revision = excluded.revision,
+         updated_at = excluded.updated_at`,
+    ),
+    deleteAgentSettings: handle.prepare('DELETE FROM agent_settings WHERE agent_id = ?'),
+    insertAudit: handle.prepare(
+      `INSERT INTO admin_audit_log (ts, session_id, action, entity_type, entity_id, before_state, after_state, result, detail)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    auditOne: handle.prepare('SELECT * FROM admin_audit_log WHERE id = ?'),
+    auditPage: handle.prepare('SELECT * FROM admin_audit_log WHERE id < ? ORDER BY id DESC LIMIT ?'),
+    markUndone: handle.prepare('UPDATE admin_audit_log SET undone = 1 WHERE id = ? AND undone = 0'),
+    setAuditAfter: handle.prepare('UPDATE admin_audit_log SET after_state = ? WHERE id = ?'),
   };
 
   const saveStates = handle.transaction((rows) => {
@@ -92,6 +123,37 @@ export function openDb(file = DEFAULT_DB_FILE) {
       done: row.done === 1,
       updatedAt: row.updated_at,
     };
+
+  const toWorldObject = (row) => ({
+    id: row.id,
+    type: row.type,
+    x: row.x,
+    z: row.z,
+    ry: row.ry,
+    scale: row.scale,
+    params: parseJson(row.params, {}),
+    rev: row.revision,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+  const toAgentSettings = (row) =>
+    row && { agentId: row.agent_id, settings: parseJson(row.settings, {}), revision: row.revision, updatedAt: row.updated_at };
+  const toAudit = (row) =>
+    row && {
+      id: row.id,
+      ts: row.ts,
+      sessionId: row.session_id,
+      action: row.action,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      before: row.before_state === null ? null : parseJson(row.before_state, null),
+      after: row.after_state === null ? null : parseJson(row.after_state, null),
+      result: row.result,
+      detail: row.detail,
+      undone: row.undone === 1,
+    };
+  const json = (v) => (v === undefined || v === null ? null : JSON.stringify(v));
+  const writeWorld = handle.transaction((fn) => fn());
 
   return {
     // Пользователи. findUserByName возвращает ещё passHash и salt (нужны только для входа).
@@ -169,6 +231,48 @@ export function openDb(file = DEFAULT_DB_FILE) {
     listTaskProgress: (userId) => q.tasksByUser.all(userId).map(toTask),
     saveTaskProgress(userId, taskId, { state = {}, done = false }, now = Date.now()) {
       q.upsertTask.run(userId, taskId, JSON.stringify(state), done ? 1 : 0, now);
+    },
+
+    // Динамические объекты мира. Мутации идут через world(): объекты и счётчик ревизии пишутся атомарно.
+    listWorldObjects: () => q.worldObjects.all().map(toWorldObject),
+    getWorldRevision: () => q.metaGet.get('world_rev')?.value ?? 0,
+    /** Атомарно выполняет {insert, update, remove, clear, setRevision}-операции одной правки мира. */
+    world(fn) {
+      writeWorld(() =>
+        fn({
+          insert: (o, at = Date.now()) =>
+            void q.insertWorldObject.run(o.id, o.type, o.x, o.z, o.ry, o.scale, JSON.stringify(o.params ?? {}), o.rev, o.createdAt ?? at, at),
+          update: (o, at = Date.now()) =>
+            void q.updateWorldObject.run(o.x, o.z, o.ry, o.scale, JSON.stringify(o.params ?? {}), o.rev, at, o.id),
+          remove: (id) => void q.deleteWorldObject.run(id),
+          clear: () => void q.clearWorldObjects.run(),
+          setRevision: (rev) => void q.metaSet.run('world_rev', rev),
+        }),
+      );
+    },
+
+    // Переопределения настроек агентов (поверх базовых персон из JSON).
+    getAgentSettings: (agentId) => toAgentSettings(q.agentSettingsOne.get(agentId)) ?? null,
+    listAgentSettings: () => q.agentSettingsAll.all().map(toAgentSettings),
+    saveAgentSettings(agentId, settings, revision, now = Date.now()) {
+      q.upsertAgentSettings.run(agentId, JSON.stringify(settings), revision, now);
+    },
+    deleteAgentSettings: (agentId) => q.deleteAgentSettings.run(agentId).changes === 1,
+
+    // Журнал действий администратора (секреты в него не попадают: пишутся только состояния сущностей).
+    addAudit({ ts = Date.now(), sessionId, action, entityType, entityId = null, before, after, result = 'ok', detail = null }) {
+      const info = q.insertAudit.run(ts, sessionId, action, entityType, entityId, json(before), json(after), result, detail);
+      return toAudit(q.auditOne.get(info.lastInsertRowid));
+    },
+    getAudit: (id) => toAudit(q.auditOne.get(id)) ?? null,
+    listAudit: ({ limit = 50, beforeId = Number.MAX_SAFE_INTEGER } = {}) =>
+      q.auditPage.all(beforeId, Math.min(Math.max(1, limit), 200)).map(toAudit),
+    markAuditUndone: (id) => q.markUndone.run(id).changes === 1,
+    /** Обновляет ревизию в состоянии «после» записи журнала (после отката ревизия объекта выросла, а цепочка отмен должна работать). */
+    rebaseAuditRev(id, rev) {
+      const row = q.auditOne.get(id);
+      const after = row && parseJson(row.after_state, null);
+      if (after && typeof after === 'object' && !Array.isArray(after)) q.setAuditAfter.run(JSON.stringify({ ...after, rev }), id);
     },
 
     close: () => handle.close(),

@@ -85,6 +85,7 @@ function reject(socket, status, text) {
  * @param {{taskIds: readonly string[], has(id: string): boolean, getState(userId: number, id: string): object,
  *   handle(userId: number, id: string, payload: unknown, context: object): object, forget?(userId: number): void}} [deps.tasks]
  *   задания; прогресс принадлежит userId соединения, позиция берётся у сервера
+ * @param {ReturnType<import('../world/dynamic-objects.js').createDynamicWorld>} [deps.dynamic] динамические объекты мира
  * @param {typeof defaultReply} [deps.reply] мозг агента (shared/agent-api.md); подменяется в тестах
  * @param {number} [deps.npcTalkMaxChars] предел длины реплики игрока NPC
  * @param {number} [deps.npcTalkPerSec] предел npc_talk в секунду на игрока
@@ -95,6 +96,7 @@ export function createGame({
   tickets,
   now = Date.now,
   world = null,
+  dynamic = null,
   tasks = null,
   tickHz = TICK_HZ,
   pingMs = 10_000,
@@ -152,21 +154,48 @@ export function createGame({
     if (code !== undefined && conn.ws.readyState <= WebSocket.OPEN) conn.ws.close(code, reason);
   }
 
-  /** Отправляет разницу зеркала: сначала chunk_unload, потом chunk_load, затем cache_stats. */
-  function streamChunks(p) {
+  /**
+   * Отправляет разницу зеркала: сначала chunk_unload, потом chunk_load (и dyn_snapshot с динамическими объектами
+   * чанка, если они есть), затем cache_stats. `refresh` пересчитывает размеры после правки динамического слоя.
+   */
+  function streamChunks(p, { refresh = false } = {}) {
     if (!world) return;
-    const diff = p.mirror.update(p.x, p.z);
+    const diff = refresh ? p.mirror.refresh(p.x, p.z) : p.mirror.update(p.x, p.z);
     if (!diff) return;
+    if (refresh && diff.unload.length === 0 && diff.load.length === 0 && diff.stats.bytes === p.statsBytes) return;
     for (const { cx, cz } of diff.unload) send(p.conn, { t: S2C.CHUNK_UNLOAD, cx, cz });
     for (const { cx, cz } of diff.load) {
       try {
         send(p.conn, { t: S2C.CHUNK_LOAD, cx, cz, data: world.readChunk(cx, cz) });
       } catch (err) {
         log.error({ err, cx, cz }, 'не удалось прочитать чанк');
+        continue;
       }
+      const objects = dynamic?.forChunk(cx, cz) ?? [];
+      if (objects.length > 0) send(p.conn, { t: S2C.DYN_SNAPSHOT, cx, cz, objects });
     }
+    p.statsBytes = diff.stats.bytes;
     send(p.conn, { t: S2C.CACHE_STATS, ...diff.stats });
     if (diff.stats.loaded > diff.stats.max) log.error(diff.stats, 'нарушен лимит кеша клиента');
+  }
+
+  /** Правка динамического слоя: доставляем только тем, у кого соответствующий чанк в кеше. */
+  function onDynamicChange({ ops }) {
+    for (const p of players.values()) {
+      if (!p.mirror) continue;
+      for (const op of ops) {
+        if (op.op === 'upsert') {
+          const { x, z } = op.object;
+          const cx = chunkIndex(x, WORLD_CHUNKS_X);
+          const cz = chunkIndex(z, WORLD_CHUNKS_Z);
+          if (p.mirror.has(cx, cz)) send(p.conn, { t: S2C.DYN_UPSERT, object: op.object });
+          else if (op.prev && p.mirror.has(op.prev.cx, op.prev.cz)) send(p.conn, { t: S2C.DYN_REMOVE, id: op.object.id, rev: op.object.rev });
+        } else if (p.mirror.has(op.cx, op.cz)) {
+          send(p.conn, { t: S2C.DYN_REMOVE, id: op.id, rev: op.rev });
+        }
+      }
+      streamChunks(p, { refresh: true });
+    }
   }
 
   function handleHello(conn, msg) {
@@ -194,6 +223,7 @@ export function createGame({
       cz: chunkIndex(z, WORLD_CHUNKS_Z),
       lastAt: now(),
       dirty: false,
+      statsBytes: -1,
       known: new Set(),
       posLimit: createLimiter(LIMITS.POS_PER_SEC),
       taskLimit: createLimiter(TASK_PER_SEC),
@@ -386,7 +416,7 @@ export function createGame({
     const previous = connByUser.get(user.id);
     if (previous) dropConn(previous, CLOSE.REPLACED, 'replaced');
 
-    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null, talk: null };
+    const conn = { ws, user, player: null, alive: true, closed: false, helloTimer: null, talk: null, pingAt: 0, rttMs: null };
     conns.add(conn);
     connByUser.set(user.id, conn);
     conn.helloTimer = setTimeout(() => {
@@ -397,6 +427,7 @@ export function createGame({
     ws.on('message', (data, isBinary) => onMessage(conn, data, isBinary));
     ws.on('pong', () => {
       conn.alive = true;
+      if (conn.pingAt) conn.rttMs = Math.round(now() - conn.pingAt);
     });
     ws.on('error', (err) => log.debug({ err }, 'ошибка сокета'));
     ws.on('close', () => dropConn(conn));
@@ -471,6 +502,7 @@ export function createGame({
         continue;
       }
       conn.alive = false;
+      conn.pingAt = now();
       conn.ws.ping();
     }
   }
@@ -479,6 +511,7 @@ export function createGame({
   const tickTimer = setInterval(tick, 1000 / tickHz).unref();
   const pingTimer = setInterval(ping, pingMs).unref();
   const flushTimer = setInterval(flushAll, flushMs).unref();
+  const offDynamic = dynamic?.subscribe(onDynamicChange);
 
   return {
     flushAll,
@@ -487,11 +520,25 @@ export function createGame({
     get online() {
       return players.size;
     },
+    /** Снимок подключённых игроков для Control Center: позиция, чанк, кеш и WebSocket-RTT (по ping/pong сервера). */
+    listPlayers() {
+      return [...players.values()].map((p) => ({
+        userId: p.id,
+        name: p.name,
+        x: p.x,
+        z: p.z,
+        cx: p.cx,
+        cz: p.cz,
+        cache: p.mirror?.stats() ?? null,
+        wsRttMs: p.conn.rttMs,
+      }));
+    },
     /** Сохраняет игроков и обрывает все сокеты (вызывается при остановке сервера). */
     close() {
       clearInterval(tickTimer);
       clearInterval(pingTimer);
       clearInterval(flushTimer);
+      offDynamic?.();
       app.server.off('upgrade', onUpgrade);
       flushAll();
       for (const conn of [...conns]) {

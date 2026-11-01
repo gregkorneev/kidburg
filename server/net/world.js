@@ -63,6 +63,7 @@ export function loadWorld(dir, log) {
     totalBytes: index.totalBytes,
     bytesMax: Math.floor(CACHE_FRACTION * index.totalBytes),
     npcs: index.npcs ?? [],
+    prefabs: Array.isArray(index.prefabs) ? index.prefabs : [],
     /** Байты файла чанка как есть, для chunk_load. */
     readChunk: (cx, cz) => new Uint8Array(readFileSync(path.join(dir, 'chunks', `${cx}_${cz}.bin`))),
   };
