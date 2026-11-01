@@ -5,16 +5,21 @@ import { applyStylizedLook } from '../../engine/art/lighting.js';
 import { animateCharacter, createCharacter, disposeCharacter, triggerGesture } from '../../engine/art/character.js';
 import { stdMat } from '../../engine/art/materials.js';
 import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
-import { ROOM, SPAWN, ZONES, collidesWithFurniture, isInsideRoom } from './layout.js';
+import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
+import { ROOM, SPAWN, ZONES, OBSTACLES, collidesWithFurniture, isInsideRoom } from './layout.js';
 import { activeZone, interactionPrompt, resolveInteraction } from './interactions.js';
 import { createBakeryInterior } from './station-art.js';
 
 const MOUSE_SENSITIVITY = 0.0024;
 const PLAYER_RADIUS = 0.42;
-const CAMERA_DISTANCE = 5.2;
-const CAMERA_HEIGHT = 3.6;
-const CAMERA_SHOULDER = 1.45;
-const CAMERA_AIM_DISTANCE = 2.1;
+const CAMERA_BLOCKERS = [
+  ...OBSTACLES.map((box) => ({ ...box, minY: 0, maxY: ({ oven: 2.3, 'cooling-rack': 2.6, 'delivery-counter': 2.2 })[box.id] ?? 1.15 })),
+  { minX: ROOM.minX, maxX: ROOM.minX + 0.32, minY: 0, maxY: ROOM.wallHeight, minZ: ROOM.minZ, maxZ: ROOM.maxZ },
+  { minX: ROOM.maxX - 0.32, maxX: ROOM.maxX, minY: 0, maxY: ROOM.wallHeight, minZ: ROOM.minZ, maxZ: ROOM.maxZ },
+  { minX: ROOM.minX, maxX: ROOM.maxX, minY: 0, maxY: ROOM.wallHeight, minZ: ROOM.minZ, maxZ: ROOM.minZ + 0.32 },
+  { minX: ROOM.minX, maxX: ROOM.maxX, minY: 0, maxY: ROOM.wallHeight, minZ: ROOM.maxZ - 0.32, maxZ: ROOM.maxZ },
+  { minX: ROOM.minX, maxX: ROOM.maxX, minY: 5.24, maxY: ROOM.wallHeight, minZ: ROOM.minZ, maxZ: ROOM.maxZ },
+];
 
 export function createBakeryScene({
   container, appearance = null, onPrompt = () => {}, onAction = () => {}, onNotice = () => {},
@@ -41,8 +46,8 @@ export function createBakeryScene({
   const interior = createBakeryInterior({ quality });
   scene.add(interior.group);
 
-  const player = createCharacter({ name: 'Пекарь', nameScale: 0.64, appearance: appearance ?? { skin: '#f4c8a2', hair: '#5b3a2b', hairStyle: 'short', outfit: PALETTE.green, pants: '#5b6770' } });
-  player.userData.nameTag.position.y = 2.98;
+  const player = createCharacter({ appearance: appearance ?? { skin: '#f4c8a2', hair: '#5b3a2b', hairStyle: 'short', outfit: PALETTE.green, pants: '#5b6770' } });
+  player.scale.setScalar(0.68);
   player.position.set(SPAWN.x, 0, SPAWN.z);
   const mentor = createCharacter({
     name: 'Мастер-пекарь', subtitle: 'Наставник', nameScale: 0.74,
@@ -66,7 +71,7 @@ export function createBakeryScene({
   mentor.rotation.y = Math.PI;
   scene.add(player, mentor);
   const startYaw = Math.atan2(SPAWN.x - mentorZone.x, SPAWN.z - mentorZone.z);
-  player.rotation.y = startYaw;
+  player.rotation.y = startYaw + Math.PI;
 
   const host = windowObject;
   let frameId = 0;
@@ -75,6 +80,9 @@ export function createBakeryScene({
   let state = { stage: 'waiting_order', completedOrders: 0 };
   let cameraYaw = startYaw;
   let cameraPitch = 0;
+  const cameraArm = createCameraArm({ distance: Math.hypot(4.8, 1.15) });
+  const cameraFocus = new THREE.Vector3();
+  const cameraGoal = new THREE.Vector3();
   camera.rotation.set(0, cameraYaw, 0);
   let lastPrompt = '';
   let lastNotice = '';
@@ -134,13 +142,12 @@ export function createBakeryScene({
     const rightZ = -Math.sin(cameraYaw);
     const dx = (rightX * sideInput + forwardX * forwardInput) / length;
     const dz = (rightZ * sideInput + forwardZ * forwardInput) / length;
-    const speed = keys.run ? 5.2 : 3.7;
+    const speed = keys.run ? 8 : 5;
     const nextX = player.position.x + dx * speed * dt;
     const nextZ = player.position.z + dz * speed * dt;
     if (bounds(nextX, player.position.z)) player.position.x = nextX;
     if (bounds(player.position.x, nextZ)) player.position.z = nextZ;
-    player.rotation.y = Math.atan2(dx, dz);
-    return speed;
+    return keys.run ? 2 : 1;
   }
 
   function animate(now = 0) {
@@ -151,37 +158,28 @@ export function createBakeryScene({
     elapsed += dt;
     const lookDelta = input.consumeLook();
     cameraYaw -= lookDelta.dx * MOUSE_SENSITIVITY;
-    cameraPitch = THREE.MathUtils.clamp(cameraPitch + lookDelta.dy * 0.0018, -0.8, 0.55);
+    cameraPitch = THREE.MathUtils.clamp(cameraPitch - lookDelta.dy * MOUSE_SENSITIVITY, -0.42, 0.58);
     const speed = stepMovement(dt);
-    animateCharacter(player, dt, elapsed, { speed: speed ? 1 : 0 });
+    player.rotation.y = cameraYaw + Math.PI;
+    animateCharacter(player, dt, elapsed, { speed });
     animateCharacter(mentor, dt, elapsed, { speed: 0 });
     mentor.rotation.y += Math.sin(elapsed * 0.7) * 0.0008;
-    updateCamera();
+    updateCamera(dt);
     interior.update(dt, elapsed);
     setPrompt(interactionPrompt(state, position()));
     look.update(player.position, elapsed);
     renderer.render(scene, camera);
   }
 
-  function updateCamera() {
+  function updateCamera(dt) {
     const sin = Math.sin(cameraYaw);
     const cos = Math.cos(cameraYaw);
-    const x = THREE.MathUtils.clamp(
-      player.position.x + sin * CAMERA_DISTANCE + cos * CAMERA_SHOULDER,
-      ROOM.minX + 0.5,
-      ROOM.maxX - 0.5,
-    );
-    const z = THREE.MathUtils.clamp(
-      player.position.z + cos * CAMERA_DISTANCE - sin * CAMERA_SHOULDER,
-      ROOM.minZ + 0.5,
-      ROOM.maxZ - 0.5,
-    );
-    camera.position.set(x, Math.min(CAMERA_HEIGHT - cameraPitch, ROOM.wallHeight - 0.55), z);
-    camera.lookAt(
-      player.position.x - sin * CAMERA_AIM_DISTANCE,
-      1.48 - cameraPitch * 2.2,
-      player.position.z - cos * CAMERA_AIM_DISTANCE,
-    );
+    cameraFocus.set(player.position.x, 1.5, player.position.z);
+    cameraGoal.set(player.position.x + sin * 4.8, 2.65 + cameraPitch * 1.2, player.position.z + cos * 4.8);
+    const position = cameraArm.resolve(cameraFocus, cameraGoal, CAMERA_BLOCKERS, dt, () => 0);
+    camera.position.set(position.x, position.y, position.z);
+    camera.lookAt(cameraFocus);
+    player.visible = cameraArm.length >= MIN_VISIBLE_ARM;
   }
   frameId = requestFrame(animate);
 

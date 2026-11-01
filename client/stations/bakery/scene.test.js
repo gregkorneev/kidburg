@@ -68,9 +68,9 @@ test('сцена Bakery: создаётся, принимает все прес�
   frames.at(-1)(0);
   assert.deepEqual(world.getPosition(), { x: 0, z: 4.25 });
   assert.equal(world.debug.player.visible, true, 'модель игрока находится в сцене');
-  assert.ok(world.debug.camera.position.distanceTo(world.debug.player.position) > 5, 'камера отодвинута за персонажа');
-  assert.ok(world.debug.camera.position.y >= 3.5, 'стартовый ракурс поднят над персонажем');
-  assert.ok(world.debug.player.userData.nameTag.scale.x < 1.3, 'плашка игрока компактная');
+  assert.ok(world.debug.camera.position.distanceTo(world.debug.player.position) > 1, 'камера находится позади персонажа');
+  assert.ok(world.debug.camera.position.x < 3.8, 'камера не заходит за высокий стеллаж');
+  assert.equal(world.debug.player.scale.x, 0.68, 'размер игрока совпадает с цветочной локацией');
   assert.ok(world.debug.mentor.userData.nameTag.scale.x < 1.5, 'плашка наставника компактная');
   assert.ok(world.debug.mentor.userData.nameTag.position.y <= 3.3, 'плашка наставника близко к персонажу');
   assert.ok(world.debug.camera.position.y < 5.1, 'камера остаётся ниже потолка');
@@ -93,7 +93,12 @@ test('сцена Bakery: создаётся, принимает все прес�
   assert.ok(world.getPosition().x < 0, 'W движется относительно нового направления камеры');
   assert.ok(world.getPosition().z < 4.25);
   assert.ok(world.getPosition().z >= -6.1, 'игрок остаётся внутри стен');
+  assert.ok(Math.abs(world.debug.player.rotation.y - world.debug.cameraState().yaw - Math.PI) < 1e-9, 'персонаж смотрит в направлении камеры');
   windowListeners.get('keyup')?.({ code: 'KeyW' });
+  world.setPosition({ x: 0, z: 5.55 });
+  world.debug.setCameraLook(0);
+  frames.at(-1)(1016);
+  assert.ok(world.debug.camera.position.z < 6.18, 'камера не проходит через стену');
   // Browser Escape exits pointer lock; pointerlockchange resets input just like the main client.
   documentObject.exitPointerLock();
   assert.equal(world.debug.cameraState().locked, false);

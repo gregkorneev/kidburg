@@ -45,7 +45,7 @@ export function buildBakeryInteriorGeometry({ detail = true, includeBase = true 
   for (const x of [-7.7, -5.3, 5.3, 7.7]) {
     k.box(0.14, 1.05, 0.12, x, 0.72, ROOM.minZ + 0.29, C.peach, { r: 0.03 });
   }
-  for (const x of [ROOM.minX + 0.28, ROOM.maxX - 0.28]) {
+  for (const x of [ROOM.minX + 0.30, ROOM.maxX - 0.30]) {
     for (const z of [-4.65, -1.65, 1.35, 4.35]) {
       k.box(0.08, 1.72, 2.24, x, 2.15, z, C.cream, { r: 0.04 });
       k.box(0.12, 0.08, 2.3, x, 1.27, z, C.wood, { r: 0.025 });
