@@ -59,6 +59,7 @@ async function readErrorBody(res) {
  * @param {object} [p.options] параметры модели Ollama (num_predict, temperature, num_ctx)
  * @param {boolean} [p.think] включить режим рассуждений (по умолчанию выключен)
  * @param {string|number} [p.keepAlive]
+ * @param {'json'|object} [p.format] Ollama response format constraint
  * @param {AbortSignal} [p.signal]
  * @param {number} [p.idleTimeoutMs] максимальная пауза между фрагментами
  * @param {number} [p.totalTimeoutMs] предел на весь ответ
@@ -71,6 +72,7 @@ export async function* chatStream({
   options = {},
   think = false,
   keepAlive,
+  format,
   signal,
   idleTimeoutMs = 45_000,
   totalTimeoutMs = 120_000,
@@ -95,6 +97,7 @@ export async function* chatStream({
 
   try {
     const body = { model, messages, stream: true, think, options };
+    if (format !== undefined) body.format = format;
     if (keepAlive !== undefined) body.keep_alive = keepAlive;
     let res;
     try {
