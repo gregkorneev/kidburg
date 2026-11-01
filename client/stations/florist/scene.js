@@ -47,7 +47,7 @@ function disposeSubtree(root) {
   });
 }
 
-export function createFloristScene({ container, onPrompt = () => {}, onAction = () => {} }) {
+export function createFloristScene({ container, appearance = null, onPrompt = () => {}, onAction = () => {} }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(56, 1, 0.1, 110);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -65,7 +65,7 @@ export function createFloristScene({ container, onPrompt = () => {}, onAction = 
 
   const player = createPlayer();
   setPlayerPosition(player, FLORIST_PLAN.spawn.x, FLORIST_PLAN.spawn.y, FLORIST_PLAN.spawn.z);
-  const avatar = createCharacter({ appearance: { outfit: '#6d9fa0', hairStyle: 'curly', hair: '#523b30' } });
+  const avatar = createCharacter({ appearance: appearance ?? { outfit: '#6d9fa0', hairStyle: 'curly', hair: '#523b30' } });
   avatar.scale.setScalar(0.68);
   avatar.position.set(player.x, 0, player.z);
   scene.add(avatar);

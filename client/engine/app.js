@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { TALK_DISTANCE } from '../../shared/constants.js';
 import { createHud } from '../hud/index.js';
-import { CITY_CHARACTER_SCALE, animateCharacter, appearanceFromSeed, createCharacter, disposeCharacter } from './art/character.js';
+import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter } from './art/character.js';
 import { applyStylizedLook } from './art/lighting.js';
 import { readQuality } from './art/quality.js';
 import { createChunkManager, makeLabel } from './chunks.js';
@@ -24,6 +24,7 @@ import { createPlayer, setPlayerPosition, stepPlayer } from './player.js';
 import { createPool } from './pool.js';
 import { createRemotePlayers } from './remote.js';
 import { createSession } from './session.js';
+import { createPlayerAppearance } from './player-appearance.js';
 import { createCitySkyline } from './skyline.js';
 import { MIN_VISIBLE_ARM, createCameraArm, orbitCameraGoal } from './third-person-camera.js';
 
@@ -258,8 +259,7 @@ export function createClient({ container, networkOnly = false }) {
 
     function setAvatar(id) {
       clearAvatar();
-      const color = session.user()?.appearance?.color;
-      avatar = createCharacter({ appearance: appearanceFromSeed(id, typeof color === 'number' ? color : null), quality });
+      avatar = createCharacter({ appearance: createPlayerAppearance(session.user(), id), quality });
       avatar.scale.setScalar(CITY_CHARACTER_SCALE);
       scene.add(avatar);
     }

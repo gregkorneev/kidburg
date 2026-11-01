@@ -1,4 +1,5 @@
 import { createFloristScene } from './scene.js';
+import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { createInitialState, transitionTask } from './state.js';
 import { mountFloristUI } from './ui.js';
 import './style.css';
@@ -65,6 +66,7 @@ function commit(action) {
 
 scene = createFloristScene({
   container: root,
+  appearance: currentPlayerAppearance(),
   onPrompt: (value) => {
     if (prompt === value) return;
     prompt = value;

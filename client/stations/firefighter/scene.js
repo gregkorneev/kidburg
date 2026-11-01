@@ -73,7 +73,7 @@ function disposeModel(root) {
   });
 }
 
-export function createFirefighterScene({ container, onPrompt, onAction, onNotice, onHoseMode, onTarget = () => {}, onPosition = () => {} }) {
+export function createFirefighterScene({ container, appearance = null, onPrompt, onAction, onNotice, onHoseMode, onTarget = () => {}, onPosition = () => {} }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 260);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -97,8 +97,10 @@ export function createFirefighterScene({ container, onPrompt, onAction, onNotice
   truck.position.set(5.7, 0, -4.4);
   scene.add(truck);
 
-  const player = createPerson({ id: 1, outfit: PALETTE.green });
-  player.userData.appearanceSeed = 1;
+  const player = appearance
+    ? createPerson({ appearance })
+    : createPerson({ id: 1, outfit: PALETTE.green });
+  player.userData.appearanceSeed = appearance?.seed ?? 1;
   player.position.set(START.x, 0, START.z);
   player.rotation.y = Math.PI; // до welcome смотрит вдоль −Z, как и камера (cameraYaw = 0): игрок виден со спины
   scene.add(player);
