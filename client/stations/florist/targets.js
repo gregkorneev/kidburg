@@ -6,11 +6,20 @@ export function targetDistance(target, x, z) {
   return Math.hypot(Math.max(0, Math.abs(x - desk.x) - desk.width / 2), Math.max(0, Math.abs(z - desk.z) - desk.depth / 2));
 }
 
-export function targetsForState(state, layout) {
+/**
+ * Цели взаимодействия на этапе. `canTalk` — сервер подтвердил сессию станции: Лилия доступна для разговора
+ * на любом этапе, но как отдельная цель (в игре выбирается ближайшая, рабочие объекты не перекрываются).
+ */
+export function targetsForState(state, layout, { canTalk = false } = {}) {
   if (!state) return [];
   if (['not_started', 'briefing', 'completed'].includes(state.stage)) {
     return [{ kind: 'lilia', position: layout.stations.lilia }];
   }
+  const lilia = canTalk ? [{ kind: 'lilia', position: layout.stations.lilia }] : [];
+  return [...lilia, ...workTargets(state, layout)];
+}
+
+function workTargets(state, layout) {
   if (state.stage === 'collecting') {
     const targets = [];
     if (!state.heldFlower && state.stems.length < ORDER.total) {

@@ -23,6 +23,7 @@ import { reply as defaultReply } from '../agents/index.js';
 import { createChunkMirror } from './chunks.js';
 import { chooseSpawn } from './spawn.js';
 import { FIREFIGHTER_TASK_ID } from '../tasks/index.js';
+import { STATION_NPCS, clampToStation, nearEntrance, stationById, withinTalkRange } from '../../shared/station-npcs.js';
 
 // Коды закрытия WebSocket (диапазон 4000–4999 отдан приложению).
 export const CLOSE = Object.freeze({ REPLACED: 4000, UNAUTH: 4001, BAD_PROTO: 4002 });
@@ -244,6 +245,9 @@ export function createGame({
       interactLimit: createLimiter(INTERACT_LIMITS.PER_SEC),
       ballVer: new Map(),
       talkLimit: createLimiter(npcTalkPerSec),
+      stationLimit: createLimiter(LIMITS.POS_PER_SEC),
+      // Сессия внутри станции с локальными координатами (null в городе): создаётся только сервером по station_enter.
+      station: null,
       mirror: world && createChunkMirror(world, log),
     };
     conn.player = player;
@@ -342,6 +346,45 @@ export function createGame({
     }
   }
 
+  const stationState = (conn, stationId, ok, message = '') => send(conn, { t: S2C.STATION_STATE, stationId, ok, message });
+
+  /**
+   * station_enter: игрок входит в станцию только если сервер видит его у её входа по последней принятой
+   * мировой позиции. Повторный вход в ту же станцию (переподключение страницы) сохраняет позицию внутри.
+   */
+  function handleStationEnter(player, msg) {
+    const station = stationById(msg.stationId);
+    if (!station) {
+      player.station = null;
+      return stationState(player.conn, msg.stationId, false, 'Неизвестная станция');
+    }
+    if (player.station?.id === station.id) return stationState(player.conn, station.id, true);
+    if (!nearEntrance(station, player.x, player.z)) {
+      player.station = null;
+      return stationState(player.conn, station.id, false, 'Войдите в здание через город: сервер не видит вас у входа.');
+    }
+    player.station = { id: station.id, x: station.spawn.x, z: station.spawn.z, lastAt: now() };
+    try {
+      tasks?.enterStation?.(player.id, station.id);
+    } catch (err) {
+      log.warn({ err, userId: player.id, stationId: station.id }, 'не удалось подготовить задание станции к входу');
+    }
+    stationState(player.conn, station.id, true);
+  }
+
+  /** station_pos: локальная позиция в станции; скорость и границы проверяются так же строго, как у pos. */
+  function handleStationPos(player, msg) {
+    const session = player.station;
+    if (!session) return;
+    const t = now();
+    if (!player.stationLimit.hit(t)) return;
+    const station = stationById(session.id);
+    const next = clampToStation(station, msg.x, msg.z);
+    const dt = clamp((t - session.lastAt) / 1000, MIN_DT_S, MAX_DT_S);
+    if (Math.hypot(next.x - session.x, next.z - session.z) > MAX_SPEED * SPEED_TOLERANCE * dt) return;
+    Object.assign(session, { x: next.x, z: next.z, lastAt: t });
+  }
+
   async function handleTask(player, msg) {
     const t = now();
     if (!player.taskLimit.hit(t)) {
@@ -353,7 +396,13 @@ export function createGame({
     const conn = player.conn;
     const controller = new AbortController();
     conn.taskControllers.add(controller);
-    const context = { position: { x: player.x, y: player.y, z: player.z }, yaw: player.ry, signal: controller.signal };
+    const context = {
+      position: { x: player.x, y: player.y, z: player.z },
+      yaw: player.ry,
+      signal: controller.signal,
+      // Данные сервера о сессии в станции (null в городе): позиция локальная, из station_pos.
+      station: player.station ? { id: player.station.id, x: player.station.x, z: player.station.z } : null,
+    };
     let state;
     try {
       state = taskWire(await tasks.handle(player.id, msg.taskId, msg.payload, context));
@@ -378,6 +427,8 @@ export function createGame({
   }
 
   function handlePos(player, msg) {
+    // Мировая позиция приходит только от клиента города: станция закончилась.
+    player.station = null;
     const t = now();
     if (!player.posLimit.hit(t)) {
       if (player.posLimit.shouldNotify(t)) sendError(player.conn, ERROR_CODES.RATE_LIMIT, 'Слишком много pos');
@@ -422,9 +473,22 @@ export function createGame({
     const text = msg.text.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
     if (!text) return agentError(conn, agentId, reqId, 'Пустая реплика');
 
-    const npcs = (world?.npcs ?? []).filter((n) => n.agentId === agentId);
-    if (npcs.length === 0) return agentError(conn, agentId, reqId, 'Неизвестный собеседник');
-    if (!npcs.some((n) => Math.hypot(n.x - player.x, n.z - player.z) <= TALK_DISTANCE)) {
+    // Внутри станции собеседники берутся из её реестра и проверяются по локальной позиции из station_pos;
+    // в городе — из world.json по мировой позиции. Станционный NPC недоступен без сессии станции, городской — из неё.
+    let inReach;
+    if (player.station) {
+      const station = STATION_NPCS.filter((n) => n.agentId === agentId && n.stationId === player.station.id);
+      if (station.length === 0) return agentError(conn, agentId, reqId, 'Неизвестный собеседник');
+      inReach = station.some((n) => withinTalkRange(n, player.station.x, player.station.z));
+    } else {
+      const npcs = (world?.npcs ?? []).filter((n) => n.agentId === agentId);
+      if (npcs.length === 0) {
+        const placed = STATION_NPCS.some((n) => n.agentId === agentId);
+        return agentError(conn, agentId, reqId, placed ? 'Этот собеседник ждёт вас в своей станции: войдите в здание через город' : 'Неизвестный собеседник');
+      }
+      inReach = npcs.some((n) => Math.hypot(n.x - player.x, n.z - player.z) <= TALK_DISTANCE);
+    }
+    if (!inReach) {
       sendError(conn, ERROR_CODES.TOO_FAR, 'Слишком далеко от собеседника');
       return agentError(conn, agentId, reqId, 'Подойдите ближе к собеседнику');
     }
@@ -501,6 +565,12 @@ export function createGame({
     }
     if (msg.t === C2S.NPC_TALK) {
       return void handleNpcTalk(conn.player, msg).catch((err) => log.error({ err }, 'сбой моста npc_talk'));
+    }
+    if (msg.t === C2S.STATION_ENTER) return handleStationEnter(conn.player, msg);
+    if (msg.t === C2S.STATION_POS) return handleStationPos(conn.player, msg);
+    if (msg.t === C2S.STATION_LEAVE) {
+      conn.player.station = null;
+      return;
     }
     if (msg.t === C2S.MECH_SET) return handleMechanism(conn.player, msg);
     if (msg.t === C2S.INTERACT) return handleInteract(conn.player, msg);
@@ -633,6 +703,7 @@ export function createGame({
         cx: p.cx,
         cz: p.cz,
         cache: p.mirror?.stats() ?? null,
+        station: p.station?.id ?? null,
         wsRttMs: p.conn.rttMs,
       }));
     },

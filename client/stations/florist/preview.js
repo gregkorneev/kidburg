@@ -3,6 +3,11 @@ import { currentPlayerAppearance } from '../../engine/player-appearance.js';
 import { createInitialState, orderMatches, ribbonForKey, transitionTask } from './state.js';
 import { mountFloristUI } from './ui.js';
 import { startTelemetry } from '../../engine/telemetry.js';
+import { openStationLink, showOfflineProgressWarning } from '../../engine/station-link-browser.js';
+import { createStationProgress } from '../../engine/station-progress.js';
+import { createStationChatFlow } from '../../engine/station-chat-flow.js';
+import { STATION_TASK_IDS } from '../../../shared/station-npcs.js';
+import { LILIA, hintForStage, planActions } from './chat-flow.js';
 import './style.css';
 
 const isTyping = (target) => !!target?.closest?.('input, textarea, select, [contenteditable="true"]');
@@ -17,8 +22,13 @@ let quality = 'medium';
 let noticeTimer = null;
 let statsTimer = null;
 let scene;
+let link = null; // сессия станции и связь с сервером; без неё станция полностью локальная
+let progress = null; // зеркало прогресса на сервере (station_tasks.js)
+let flow = null; // разговор с Лилией
+let chatOpen = false;
 
 function renderUI() {
+  flow?.sync();
   mountFloristUI(uiRoot, {
     state,
     prompt,
@@ -46,6 +56,17 @@ function showNotice(message, type = 'info') {
   if (notice) noticeTimer = setTimeout(() => { notice = ''; renderUI(); }, 3000);
 }
 
+function serverPayload(action) {
+  const payload = { action: action.type };
+  if (typeof action.flower === 'string') payload.flower = action.flower;
+  if (typeof action.ribbon === 'string') payload.ribbon = action.ribbon;
+  return payload;
+}
+
+function openChat() {
+  return flow?.open() === true;
+}
+
 function commit(action) {
   const result = transitionTask(state, action);
   if (!result.changed) {
@@ -55,8 +76,11 @@ function commit(action) {
   state = result.state;
   scene.setTaskState(state);
   const modal = ['briefing', 'completed'].includes(state.stage);
-  scene.setUiBlocked(modal);
+  scene.setUiBlocked(modal || chatOpen);
   scene.setTalking(modal);
+  // Сервер повторяет действие по тем же правилам и проверяет расстояние: его состояние видит Лилия.
+  link?.syncPosition();
+  progress?.send(serverPayload(action));
   notice = result.feedback;
   noticeType = 'success';
   renderUI();
@@ -73,8 +97,10 @@ scene = createFloristScene({
     prompt = value;
     renderUI();
   },
+  canTalk: () => Boolean(link?.ready) && !chatOpen,
   onAction: (target) => {
     if (target.kind === 'lilia') {
+      if (openChat()) return;
       if (state.stage === 'not_started') commit({ type: 'start_briefing' });
       else if (state.stage === 'completed') showNotice('Нажми «Повторить заказ», чтобы начать заново.');
       else showNotice('Лилия улыбается и ждёт, пока ты продолжишь заказ.');
@@ -87,6 +113,49 @@ scene = createFloristScene({
 });
 
 quality = scene.getQuality();
+
+// Разговор с Лилией: общий адаптер станции, панель и прогресс на сервере. Без входа игра идёт локально.
+link = openStationLink({ stationId: 'florist', container: root, getPosition: () => scene?.getPosition(), onChange: renderUI });
+progress = createStationProgress({
+  api: link.api,
+  taskId: STATION_TASK_IDS.florist,
+  project: (value) => ({
+    stage: value.stage,
+    held: value.heldFlower?.type ?? null,
+    stems: value.stems.map((stem) => stem.type),
+    ribbon: value.ribbon,
+    wrapped: value.wrapped,
+  }),
+  getLocal: () => state,
+  canSend: () => link.ready,
+  onDiverged: showOfflineProgressWarning,
+  onReject: (message) => showNotice(message, 'error'),
+  adopt: (server) => {
+    state = { stage: server.stage, heldFlower: server.heldFlower, stems: server.stems, ribbon: server.ribbon, wrapped: server.wrapped };
+    scene.setTaskState(state);
+    const modal = ['briefing', 'completed'].includes(state.stage);
+    scene.setUiBlocked(modal || chatOpen);
+    scene.setTalking(modal);
+    renderUI();
+  },
+});
+flow = createStationChatFlow({
+  chat: link.chat,
+  npc: LILIA,
+  getStage: () => state.stage,
+  hint: hintForStage,
+  // Кнопка действия закрывает панель: дальше игру продолжает окно инструктажа.
+  plan: (stage, helpers) => planActions(stage, helpers, (action) => { link.chat.close(); commit(action); }),
+  isOnline: () => link.ready,
+  getNotice: () => notice,
+});
+link.chat.onOpenChange((open) => {
+  chatOpen = open;
+  scene.setUiBlocked(open || ['briefing', 'completed'].includes(state.stage));
+  scene.setTalking(open);
+});
+link.start();
+
 if (new URLSearchParams(window.location.search).has('debug')) {
   window.__floristDebug = {
     setQuality: (level) => { quality = scene.setQuality(level).level; renderUI(); },
@@ -115,7 +184,7 @@ function onKeyDown(event) {
   } else if (event.code === 'KeyH') {
     controlsOpen = !controlsOpen;
     renderUI();
-  } else if (event.code === 'KeyL' && !['briefing', 'completed'].includes(state.stage)) {
+  } else if (event.code === 'KeyL' && !chatOpen && !['briefing', 'completed'].includes(state.stage)) {
     window.location.assign('/');
   }
 }
@@ -125,6 +194,8 @@ window.addEventListener('pagehide', () => {
   clearTimeout(noticeTimer);
   clearInterval(statsTimer);
   window.removeEventListener('keydown', onKeyDown);
+  progress?.dispose();
+  link?.dispose();
   telemetry.stop();
   scene.dispose();
 }, { once: true });

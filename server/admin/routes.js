@@ -4,6 +4,7 @@
 
 import { WORLD_OBJECT_LIMITS, describeObjectTypes } from '../../shared/world-objects.js';
 import { SETTINGS_SCHEMA, SETTINGS_DEFAULTS, validateSettings } from '../agents/settings.js';
+import { AI_SERVICES, STATIONS, stationNpcByAgent } from '../../shared/station-npcs.js';
 import { originMatchesHost } from './auth.js';
 
 const SSE_MAX_SUBSCRIBERS = 8;
@@ -11,6 +12,11 @@ const TEST_TIMEOUT_MS = 90_000;
 const TEST_TEXT_MAX = 300;
 const WORLD_ACTIONS = new Set(['world.create', 'world.update', 'world.delete', 'world.clear']);
 const STATION_LABELS = { firefighter_station_v1: 'Пожарная часть' };
+// Диалоговые наставники станций с локальными координатами: размещение берётся из реестра, а не из наличия файла персоны.
+const stationPlacement = (agentId) => {
+  const npc = stationNpcByAgent(agentId);
+  return npc ? STATIONS[npc.stationId].label : null;
+};
 
 const SECURITY_HEADERS = {
   'cache-control': 'no-store',
@@ -76,7 +82,7 @@ export function registerAdmin(app, { auth, audit, telemetry, dynamic, placement,
     const placedInCity = new Set((world?.npcs ?? []).map((n) => n.agentId));
     return api.listPersonas().map(({ id, persona, error }) => {
       const state = api.getSettings(id);
-      const station = tasks[id] ?? null;
+      const station = stationPlacement(id) ?? (tasks[id] ? STATION_LABELS[tasks[id]] ?? tasks[id] : null);
       const city = placedInCity.has(id);
       return {
         id,
@@ -89,7 +95,9 @@ export function registerAdmin(app, { auth, audit, telemetry, dynamic, placement,
         placement: {
           status: city || station ? 'placed' : 'not_placed',
           city,
-          station: station ? STATION_LABELS[station] ?? station : null,
+          station,
+          // Задания станций проходятся без Ollama: ИИ только отвечает на вопросы игрока.
+          passableWithoutAi: city || Boolean(station),
         },
         settings: state.settings,
         revision: state.revision,
@@ -97,6 +105,25 @@ export function registerAdmin(app, { auth, audit, telemetry, dynamic, placement,
         updatedAt: state.updatedAt,
       };
     });
+  }
+
+  /** ИИ-сервисы, которые не являются собеседниками (радио-редактор): состояние берётся из реальных обработчиков и Ollama. */
+  async function serviceRows() {
+    const ollama = await refreshOllama();
+    const tasks = taskHandlers();
+    return AI_SERVICES.map((service) => ({
+      id: service.id,
+      name: service.name,
+      kind: service.kind,
+      station: service.stationLabel,
+      description: service.description,
+      placed: Boolean(tasks?.has(service.taskId)),
+      usesSharedOllama: true,
+      offlineFallback: service.offlineFallback,
+      ollama: ollama ? { state: ollama.state, model: ollama.model, message: ollama.message } : null,
+      // Без Ollama редактор не отключается: сценарий берётся из локального учебного набора.
+      mode: ollama?.state === 'ready' ? 'ollama' : 'offline_fallback',
+    }));
   }
 
   function agentsSummary(rows = agentRows()) {
@@ -375,7 +402,7 @@ export function registerAdmin(app, { auth, audit, telemetry, dynamic, placement,
 
       scope.get('/agents', async () => {
         const rows = agentRows();
-        return { agents: rows, summary: agentsSummary(rows), schema: SETTINGS_SCHEMA, defaults: SETTINGS_DEFAULTS, ollama: await refreshOllama() };
+        return { agents: rows, services: await serviceRows(), summary: agentsSummary(rows), schema: SETTINGS_SCHEMA, defaults: SETTINGS_DEFAULTS, ollama: await refreshOllama() };
       });
 
       scope.get('/agents/:id', async (req, reply) => {

@@ -7,11 +7,14 @@ import { stdMat } from '../../engine/art/materials.js';
 import { QUALITY_PRESETS, readQuality, saveQuality } from '../../engine/art/quality.js';
 import { MIN_VISIBLE_ARM, createCameraArm } from '../../engine/third-person-camera.js';
 import { ROOM, SPAWN, ZONES, OBSTACLES, collidesWithFurniture, isInsideRoom } from './layout.js';
-import { activeZone, interactionPrompt, resolveInteraction } from './interactions.js';
+import { activeZone, interactionPrompt, nearestZone, resolveInteraction } from './interactions.js';
 import { createBakeryInterior } from './station-art.js';
 import { turnNpcToward } from '../../engine/npc-facing.js';
+import { stationNpcByAgent } from '../../../shared/station-npcs.js';
 
 const MOUSE_SENSITIVITY = 0.0024;
+const MENTOR_TALK_RANGE = stationNpcByAgent('baker').talkRadius;
+export const TALK_PROMPT = 'E — Поговорить с мастером-пекарем';
 const PLAYER_RADIUS = 0.42;
 const CAMERA_BLOCKERS = [
   ...OBSTACLES.map((box) => ({ ...box, minY: 0, maxY: ({ oven: 2.3, 'cooling-rack': 2.6, 'delivery-counter': 2.2 })[box.id] ?? 1.15 })),
@@ -24,6 +27,8 @@ const CAMERA_BLOCKERS = [
 
 export function createBakeryScene({
   container, appearance = null, onPrompt = () => {}, onAction = () => {}, onNotice = () => {},
+  // Разговор с пекарем: включается, когда сервер подтвердил сессию станции (client/engine/station-link.js).
+  talk = { enabled: () => false, range: MENTOR_TALK_RANGE, onTalk: () => {} },
   rendererFactory = (options) => new THREE.WebGLRenderer(options),
   requestFrame = globalThis.requestAnimationFrame?.bind(globalThis) ?? (() => 0),
   cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis) ?? (() => {}),
@@ -100,6 +105,13 @@ export function createBakeryScene({
     onPrompt(value);
   };
   const position = () => ({ x: player.position.x, z: player.position.z });
+  // Разговор не перебивает рабочий объект: у стойки выдачи, печи и т. д. E выполняет прежний шаг заказа.
+  const nearMentor = () => {
+    if (!talk.enabled()) return false;
+    if (Math.hypot(player.position.x - mentorZone.x, player.position.z - mentorZone.z) > (talk.range ?? MENTOR_TALK_RANGE)) return false;
+    const work = nearestZone(position());
+    return !(work && work.id !== 'mentor' && work === activeZone(state));
+  };
   const setState = (next) => {
     state = next;
     interior.setStage(state.stage);
@@ -114,6 +126,8 @@ export function createBakeryScene({
     window: host,
     onInteract: () => {
       if (uiBlocked) return;
+      // Рядом с пекарем E открывает разговор; шаг заказа выполняется кнопкой в панели. Без связи с сервером E работает по-старому.
+      if (nearMentor()) return talk.onTalk();
       const result = resolveInteraction(state, position());
       if (result.action) onAction(result.action);
       else if (result.feedback && result.feedback !== lastNotice) { lastNotice = result.feedback; onNotice(result.feedback); }
@@ -170,7 +184,7 @@ export function createBakeryScene({
     turnNpcToward(mentor, mentor.position, player.position, dt, Math.PI);
     updateCamera(dt);
     interior.update(dt, elapsed);
-    setPrompt(interactionPrompt(state, position()));
+    setPrompt(nearMentor() && !uiBlocked ? TALK_PROMPT : interactionPrompt(state, position()));
     look.update(player.position, elapsed);
     renderer.render(scene, camera);
   }
