@@ -15,9 +15,11 @@ import {
   BAKERY_ENTRANCE,
   FIRE_STATION_ENTRANCE,
   FLORIST_ENTRANCE,
+  RADIO_STATION_ENTRANCE,
   isNearFireStationEntrance,
   isNearFloristEntrance,
   isNearBakeryEntrance,
+  isNearRadioStationEntrance,
 } from './city-entrance.js';
 import { createEmitter } from './emitter.js';
 import { createHttp } from './http.js';
@@ -233,11 +235,16 @@ export function createClient({ container, networkOnly = false }) {
     let fireStationNearby = false;
     let floristNearby = false;
     let bakeryNearby = false;
+    let radioStationNearby = false;
     const input = createInput({
       target: renderer.domElement,
       document,
       window: win,
       onInteract: () => {
+        if (radioStationNearby) {
+          win.location.assign(RADIO_STATION_ENTRANCE.href);
+          return;
+        }
         if (bakeryNearby) {
           win.location.assign(BAKERY_ENTRANCE.href);
           return;
@@ -446,11 +453,13 @@ export function createClient({ container, networkOnly = false }) {
           const nearEntrance = isNearFireStationEntrance(player.x, player.z);
           const nearFlorist = isNearFloristEntrance(player.x, player.z);
           const nearBakery = isNearBakeryEntrance(player.x, player.z);
-          if (nearEntrance !== fireStationNearby || nearFlorist !== floristNearby || nearBakery !== bakeryNearby) {
+          const nearRadioStation = isNearRadioStationEntrance(player.x, player.z);
+          if (nearEntrance !== fireStationNearby || nearFlorist !== floristNearby || nearBakery !== bakeryNearby || nearRadioStation !== radioStationNearby) {
             fireStationNearby = nearEntrance;
             floristNearby = nearFlorist;
             bakeryNearby = nearBakery;
-            hud.setEntrancePrompt(bakeryNearby ? BAKERY_ENTRANCE.label : floristNearby ? FLORIST_ENTRANCE.label : fireStationNearby ? FIRE_STATION_ENTRANCE.label : '');
+            radioStationNearby = nearRadioStation;
+            hud.setEntrancePrompt(radioStationNearby ? RADIO_STATION_ENTRANCE.label : bakeryNearby ? BAKERY_ENTRANCE.label : floristNearby ? FLORIST_ENTRANCE.label : fireStationNearby ? FIRE_STATION_ENTRANCE.label : '');
           }
         }
       }

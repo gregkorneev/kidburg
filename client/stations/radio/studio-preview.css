@@ -1,0 +1,61 @@
+:root {
+  color: #332e2a;
+  background: #f2eee5;
+  font-family: system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body { min-width: 320px; min-height: 100vh; margin: 0; }
+
+.preview-shell {
+  width: min(1440px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 22px clamp(12px, 3vw, 38px) 16px;
+  display: grid;
+  grid-template-rows: auto minmax(360px, 1fr) auto;
+  gap: 14px;
+}
+
+.preview-header, .preview-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.preview-header h1 { margin: 2px 0 0; font-size: clamp(22px, 3vw, 32px); line-height: 1.1; }
+.eyebrow { margin: 0; color: #766c5e; font-size: 11px; font-weight: 800; letter-spacing: .14em; }
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 19px;
+  color: #fffaf0;
+  background: #536d69;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #364a47;
+}
+button[aria-pressed="true"] { background: #d34a3e; box-shadow: 0 3px 0 #96352e; }
+button:focus-visible { outline: 3px solid #d9a94e; outline-offset: 3px; }
+
+.studio-view {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  border: 5px solid #fffaf1;
+  border-radius: 22px;
+  background: #dce8e3;
+  box-shadow: 0 16px 38px #50433922;
+}
+.studio-view canvas { display: block; width: 100%; height: 100%; }
+.studio-monitor-overlay { position: absolute; z-index: 1; overflow: hidden; pointer-events: none; }
+.studio-monitor-content { width: 100%; height: 100%; overflow: auto; pointer-events: auto; }
+.preview-footer { justify-content: flex-start; color: #5f625a; font-size: 13px; }
+.preview-footer .hint { margin-left: auto; color: #887e6e; }
+#status-light { width: 10px; height: 10px; border-radius: 50%; background: #9aaa91; }
+#status-light.is-live { background: #e3493d; box-shadow: 0 0 0 4px #e3493d28; }
+
+@media (max-width: 600px) {
+  .preview-shell { grid-template-rows: auto minmax(340px, 1fr) auto; }
+  .preview-header, .preview-footer { align-items: flex-start; flex-wrap: wrap; }
+  .preview-footer .hint { width: 100%; margin-left: 24px; }
+}

@@ -19,6 +19,7 @@ export default defineConfig({
       firefighterArtPreview: page('stations/firefighter/art-preview.html'),
       florist: page('florist-preview.html'),
       admin: page('admin/index.html'),
+      radio: page('radio-preview.html'),
     } },
   },
   server: {

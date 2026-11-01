@@ -1,6 +1,7 @@
 // Мозг NPC на локальной Ollama. Контракт: shared/agent-api.md.
 // reply() отдаёт токены ответа; память — последние реплики пары (userId, agentId) в agent_memory.
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +77,54 @@ const normalizeText = (value, max) =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
+
+const radioTopicId = (category, title) =>
+  `radio-${createHash('sha256').update(`${category}:${title.toLocaleLowerCase('ru').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`).digest('hex').slice(0, 20)}`;
+
+function radioOutput(raw, category, recentTopicIds, fact) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new OllamaError('bad_output', 'Модель вернула некорректный сценарий');
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new OllamaError('bad_output', 'Модель вернула некорректный сценарий');
+  }
+  if (Object.keys(data).sort().join(',') !== 'category,text,title') {
+    throw new OllamaError('bad_output', 'Модель вернула некорректный сценарий');
+  }
+  const modelTitle = typeof data.title === 'string' ? data.title.trim() : '';
+  const text = typeof data.text === 'string' ? data.text.replace(/\s+/g, ' ').trim() : '';
+  const wordCount = text ? text.split(' ').length : 0;
+  if (data.category !== category || modelTitle.length < 3 || modelTitle.length > 80 || text.length < 20 || text.length > 700 || wordCount < 30 || wordCount > 70) {
+    throw new OllamaError('bad_output', 'Модель вернула некорректный сценарий');
+  }
+  const title = category === 'science' ? fact.title : modelTitle;
+  const topicId = category === 'science' ? fact.topicId : radioTopicId(category, title);
+  if (recentTopicIds.includes(topicId)) throw new OllamaError('repeat', 'Эта тема уже звучала. Запросите другой сценарий.');
+  return { category, topicId, title, text, source: 'ollama' };
+}
+
+const createDeadline = (parent, timeoutMs) => {
+  const controller = new AbortController();
+  let timedOut = false;
+  const onParentAbort = () => controller.abort();
+  if (parent?.aborted) controller.abort();
+  else parent?.addEventListener('abort', onParentAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    get timedOut() { return timedOut; },
+    cleanup() {
+      clearTimeout(timer);
+      parent?.removeEventListener('abort', onParentAbort);
+    },
+  };
+};
 
 /** Начало ответа (первые предложения, пока не наберётся ~30 символов; не больше `max`): заметка о сказанном. */
 function firstSentence(text, max) {
@@ -394,6 +443,80 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
     }
   }
 
+  /**
+   * Создаёт полностью готовый сценарий Radio без обращения к памяти NPC.
+   * Science принимает только выбранный сервером факт; модель меняет лишь стиль текста.
+   */
+  async function generateRadioScript(req) {
+    if (!Number.isInteger(req?.userId) || req.userId <= 0 || !['weather', 'science'].includes(req.category)) {
+      throw new OllamaError('bad_request', 'Неверный запрос сценария Radio');
+    }
+    const recentTopicIds = Array.isArray(req.recentTopicIds)
+      ? req.recentTopicIds.filter((id) => typeof id === 'string').slice(-20)
+      : [];
+    const recentTopics = Array.isArray(req.recentTopics)
+      ? req.recentTopics.filter((topic) => typeof topic === 'string').map((topic) => clean(topic, 80)).filter(Boolean).slice(-20)
+      : [];
+    const desiredWords = Number.isInteger(req.desiredWords) ? Math.max(30, Math.min(100, req.desiredWords)) : 45;
+    let fact = null;
+    if (req.category === 'science') {
+      const source = req.fact;
+      if (
+        !source ||
+        typeof source.topicId !== 'string' || !/^[a-z0-9-]{1,64}$/.test(source.topicId) ||
+        typeof source.title !== 'string' || source.title.length < 3 || source.title.length > 80 ||
+        typeof source.text !== 'string' || source.text.trim().length < 20 || source.text.length > 700 ||
+        recentTopicIds.includes(source.topicId)
+      ) {
+        throw new OllamaError('bad_request', 'Не выбран подходящий проверенный научный факт');
+      }
+      fact = { topicId: source.topicId, title: source.title.trim(), text: source.text.trim() };
+    }
+    if (!cfg.model) throw new OllamaError('not_configured', 'ИИ не настроен: администратору нужно задать переменную OLLAMA_MODEL');
+
+    const system = [
+      'Ты пишешь короткие сценарии для детской учебной радиостанции. Верни только JSON-объект с ровно тремя строковыми полями: category, title, text. Не добавляй Markdown или пояснения.',
+      req.category === 'weather'
+        ? 'Создай вымышленный прогноз погоды для вымышленного города. Не утверждай, что описываешь реальную текущую погоду или реальные текущие данные. Не используй недавние темы. Напиши дружелюбный текст для чтения вслух в 3–4 коротких предложениях.'
+        : 'Используй только переданный проверенный научный факт. Не добавляй новые факты, числа или причинно-следственные утверждения. Не исправляй и не расширяй научное содержание. Напиши 3–4 коротких предложения, набирая нужную длину только простым перефразированием и повторным объяснением того же факта. Не добавляй новых сведений, формул или опасных инструкций.',
+      `Категория должна быть ровно ${req.category}. Текст — примерно ${desiredWords} слов (обычно 35–60), 3–4 предложения, без заголовка внутри текста. Недавние темы, которые нельзя повторять: ${recentTopics.join('; ') || 'нет'}. Недавние идентификаторы: ${recentTopicIds.join(', ') || 'нет'}.`,
+      ...(fact ? [`Единственный разрешённый исходный научный материал (не добавляй сведений): заголовок «${fact.title}». Текст факта: ${JSON.stringify(fact.text)}. Верни category="science".`] : []),
+    ].join('\n\n');
+    const deadline = createDeadline(req.signal, cfg.totalTimeoutMs);
+    let release;
+    try {
+      release = await slots.acquire({ signal: deadline.signal });
+      const pieces = [];
+      let length = 0;
+      for await (const piece of chatStream({
+        baseUrl: cfg.baseUrl,
+        model: cfg.model,
+        messages: [{ role: 'system', content: system }, { role: 'user', content: 'Создай сценарий по заданным правилам.' }],
+        format: 'json',
+        options: { num_predict: cfg.numPredict, num_ctx: cfg.numCtx, temperature: 0.4 },
+        keepAlive: cfg.keepAlive,
+        signal: deadline.signal,
+        idleTimeoutMs: cfg.idleTimeoutMs,
+        totalTimeoutMs: cfg.totalTimeoutMs,
+        fetchImpl,
+      })) {
+        length += piece.length;
+        if (length > 4000) throw new OllamaError('bad_output', 'Ответ модели слишком длинный');
+        pieces.push(piece);
+      }
+      if (deadline.timedOut) throw new OllamaError('timeout', 'Модель не ответила вовремя');
+      if (req.signal?.aborted) throw abortError();
+      return radioOutput(pieces.join(''), req.category, recentTopicIds, fact);
+    } catch (err) {
+      if (deadline.timedOut) throw new OllamaError('timeout', 'Модель не ответила вовремя');
+      if (req.signal?.aborted) throw err;
+      throw err;
+    } finally {
+      release?.();
+      deadline.cleanup();
+    }
+  }
+
   /** Одна генерация: отдаёт токены после проверки начала, возвращает {answer, repeated}. */
   async function* generate(req, messages, temperature, guard, numPredict = cfg.numPredict) {
     let answer = '';
@@ -514,6 +637,7 @@ export function createAgents({ db, config = {}, log, env = process.env }) {
   return {
     config: cfg,
     reply,
+    generateRadioScript,
     probe,
     get busy() {
       return { active: slots.active, queued: slots.queued };
@@ -571,4 +695,10 @@ export function registerAgents(app, ctx) {
 export async function* reply(req) {
   if (!current) throw new OllamaError('not_configured', 'Модуль агентов не запущен');
   yield* current.reply(req);
+}
+
+/** Публичный метод генерации сценария Radio; не использует reply() или память NPC. */
+export async function generateRadioScript(req) {
+  if (!current) throw new OllamaError('not_configured', 'Модуль агентов не запущен');
+  return current.generateRadioScript(req);
 }

@@ -27,6 +27,15 @@ export const BAKERY_ENTRANCE = Object.freeze({
   label: 'Войти в пекарню',
 });
 
+// Вход на фасаде +Z после поворота здания радиостанции на -2.37 рад.
+export const RADIO_STATION_ENTRANCE = Object.freeze({
+  x: 444.06,
+  z: 444.95,
+  radius: 10,
+  href: '/radio-preview.html',
+  label: 'Войти в радиостанцию',
+});
+
 export function isNearFireStationEntrance(x, z) {
   return Number.isFinite(x) && Number.isFinite(z) &&
     Math.hypot(x - FIRE_STATION_ENTRANCE.x, z - FIRE_STATION_ENTRANCE.z) <= FIRE_STATION_ENTRANCE.radius;
@@ -40,4 +49,9 @@ export function isNearFloristEntrance(x, z) {
 export function isNearBakeryEntrance(x, z) {
   return Number.isFinite(x) && Number.isFinite(z) &&
     Math.hypot(x - BAKERY_ENTRANCE.x, z - BAKERY_ENTRANCE.z) <= BAKERY_ENTRANCE.radius;
+}
+
+export function isNearRadioStationEntrance(x, z) {
+  return Number.isFinite(x) && Number.isFinite(z) &&
+    Math.hypot(x - RADIO_STATION_ENTRANCE.x, z - RADIO_STATION_ENTRANCE.z) <= RADIO_STATION_ENTRANCE.radius;
 }

@@ -5,6 +5,13 @@
 
 ## Заметки
 
+- **Radio MVP (дата: 2026-11-01; инициатор: Codex, роль 2; ветка `station/radio`).**
+  - **Затронутый контракт:** `shared/agent-api.md` — публичный `generateRadioScript()` и асинхронный task handler через `task_answer/task_state`.
+  - **Что меняется:** готовые сценарии Weather и Science, локальные fallback-сценарии, отдельный `radio_station_v1` progress; новый тип сетевого сообщения не добавляется.
+  - **Зачем:** дать Radio автономную серверную генерацию без использования памяти NPC и без частичного потока клиенту.
+  - **Затрагивает:** роли 2 (`server/net`, `shared`, `docs`, `tests`), 3 (`server/agents`) и 4 (`server/tasks`, `content`).
+  - **Статус:** находится в незакоммиченной рабочей копии. Реализованы async task path с `AbortController` при disconnect, отдельные physical lock (`activeGenerations`) и актуальность запроса (`currentRevisions`), stale-generation guard, запрет второй генерации до завершения активного Promise, серверный Weather-дисклеймер, Science на локальных проверенных фактах, fallback и изоляция прогресса по `userId`. Смена категории инвалидирует revision, не освобождая физический lock; stale success не сохраняется, stale failure не вызывает fallback, lock освобождается в `finally`.
+
 - **Русский стеммер (роль 3).** В S0 не установлен намеренно. Роль 3 выбирает библиотеку
   (или собственную реализацию) и согласует установку с тимлидом отдельным коммитом
   `deps: add <имя>`. В `package.json` JSON-комментариев нет, поэтому заметка здесь.

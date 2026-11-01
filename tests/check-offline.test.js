@@ -48,3 +48,27 @@ test('offline checker flags external module imports and fetch calls in JavaScrip
     [2, 'https://api.example/data'],
   ]);
 });
+
+test('offline checker allows SVG namespace contexts but blocks network use of the same URI', async (t) => {
+  const root = await fixture(t);
+  await writeFile(path.join(root, 'minimap.js'), [
+    "document.createElementNS('http://www.w3.org/2000/svg', 'svg');",
+    "const SVG = 'http://www.w3.org/2000/svg';",
+    "document.createElementNS(SVG, 'circle');",
+    "element.setAttributeNS(SVG, 'xlink:href', '#marker');",
+    "root.innerHTML = '<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>';",
+    "fetch('http://www.w3.org/2000/svg');",
+    "fetch('http://www.w3.org/2000/svg/icons.svg');",
+    "fetch('https://cdn.example/assets.svg');",
+    "const SVG_REQUEST = 'http://www.w3.org/2000/svg';",
+    'fetch(SVG_REQUEST);',
+  ].join('\n'));
+
+  const violations = await checkOffline(root);
+  assert.deepEqual(violations.map(({ line, url }) => [line, url]), [
+    [6, 'http://www.w3.org/2000/svg'],
+    [7, 'http://www.w3.org/2000/svg/icons.svg'],
+    [8, 'https://cdn.example/assets.svg'],
+    [9, 'http://www.w3.org/2000/svg'],
+  ]);
+});
