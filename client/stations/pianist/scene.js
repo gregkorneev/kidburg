@@ -7,25 +7,13 @@ import { QUALITY_LABELS, QUALITY_PRESETS, readQuality, saveQuality } from '../..
 import { buildPianistLayout } from './layout.js';
 import { createPiano } from './piano.js';
 import { noteByKey } from './melody.js';
-import { pianistGroundHeight, PIANIST_PLAN } from './layout-plan.js';
+import { pianistGroundHeight, pianoCollider, PIANIST_PLAN } from './layout-plan.js';
 import { getPianoSeatPose, PIANIST_PLAYING_ARM_ANGLE, PIANIST_SEATED_LEG_ANGLE } from './pianist-pose.js';
 import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
 
 const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
 const radius = 1.85;
 const LOOK_SENSITIVITY = 0.0018;
-
-function pianoCollider(piano) {
-  const corners = [[-1.4, -0.9], [1.4, -0.9], [-1.4, 0.1], [1.4, 0.1]].map(([x, z]) => ({
-    x: piano.position.x + Math.cos(piano.rotationY) * x + Math.sin(piano.rotationY) * z,
-    z: piano.position.z - Math.sin(piano.rotationY) * x + Math.cos(piano.rotationY) * z,
-  }));
-  return {
-    minX: Math.min(...corners.map((point) => point.x)), maxX: Math.max(...corners.map((point) => point.x)),
-    minY: 0, maxY: 2.2,
-    minZ: Math.min(...corners.map((point) => point.z)), maxZ: Math.max(...corners.map((point) => point.z)),
-  };
-}
 
 function addMaestroDetails(person) {
   const body = person.userData.body;
@@ -71,7 +59,7 @@ export function createPianistScene({ container, onPrompt = () => {}, onAction = 
     createPiano({ position: { ...PIANIST_PLAN.stagePiano, y: PIANIST_PLAN.stage.height }, rotationY: Math.PI, name: 'concert-piano' }),
   ];
   for (const piano of pianos) scene.add(piano.root);
-  const pianoColliders = pianos.map(pianoCollider);
+  const pianoColliders = pianos.map((piano) => pianoCollider(piano.position, piano.rotationY));
   layout.colliders.push(...pianoColliders);
   layout.cameraBlockers.push(...pianoColliders);
   const instrumentCameraBlockers = layout.cameraBlockers.filter((box) => !pianoColliders.includes(box));

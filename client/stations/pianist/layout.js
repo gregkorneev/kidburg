@@ -147,30 +147,49 @@ export function buildPianistLayout() {
     const shelfCollider = { minX: x - 0.21, maxX: x + 0.21, minY: 0, maxY: 2.5, minZ: z - 1.125, maxZ: z + 1.125 };
     colliders.push(shelfCollider); cameraBlockers.push(shelfCollider);
   }
-  // A compact corner rack displays instruments instead of empty music boards.
+  // A larger corner display holds several string instruments and a small drum kit.
   const display = new THREE.Group(); display.name = 'instrument-display';
   display.position.set(PIANIST_PLAN.instrumentDisplay.x, 0, PIANIST_PLAN.instrumentDisplay.z);
   display.rotation.y = PIANIST_PLAN.instrumentDisplay.rotationY; root.add(display);
-  mesh(display, [1.2, 0.12, 0.48], [0, 0.08, 0], COLORS.wood);
-  for (const x of [-0.52, 0.52]) mesh(display, [0.08, 1.55, 0.08], [x, 0.83, -0.08], COLORS.wood);
-  mesh(display, [1.15, 0.1, 0.1], [0, 1.52, -0.08], COLORS.gold);
-  const instrumentSphere = (at, scale, color) => {
+  mesh(display, [2.05, 0.14, 0.78], [0, 0.07, 0], COLORS.wood);
+  for (const x of [-0.95, 0.95]) mesh(display, [0.09, 2.0, 0.1], [x, 1.08, -0.08], COLORS.wood);
+  mesh(display, [1.98, 0.12, 0.12], [0, 2.08, -0.08], COLORS.gold);
+  mesh(display, [1.9, 0.08, 0.12], [0, 0.36, -0.08], COLORS.wood);
+  const instrumentSphere = (at, scale, color, radius = 0.22) => {
     if (!materials.has(color)) materials.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.78 }));
-    const geometry = new THREE.SphereGeometry(0.22, 8, 6); geometry.scale(...scale); ownedGeometries.add(geometry);
+    const geometry = new THREE.SphereGeometry(radius, 8, 6); geometry.scale(...scale); ownedGeometries.add(geometry);
     const item = new THREE.Mesh(geometry, materials.get(color)); item.position.set(...at); item.castShadow = true; item.receiveShadow = true; display.add(item);
   };
-  instrumentSphere([-0.28, 0.48, 0.12], [0.92, 1.2, 0.42], '#a9673e');
-  mesh(display, [0.075, 0.76, 0.08], [-0.28, 1.12, 0.12], '#714b35');
-  mesh(display, [0.14, 0.16, 0.1], [-0.28, 1.55, 0.12], COLORS.gold);
-  mesh(display, [0.012, 1.0, 0.015], [-0.31, 0.94, 0.205], '#e8d5ad');
-  mesh(display, [0.012, 1.0, 0.015], [-0.25, 0.94, 0.205], '#e8d5ad');
-  instrumentSphere([0.24, 0.55, 0.12], [0.72, 1.05, 0.36], '#9d4d49');
-  mesh(display, [0.06, 0.64, 0.065], [0.24, 1.15, 0.12], '#523a32');
-  mesh(display, [0.12, 0.13, 0.08], [0.24, 1.53, 0.12], COLORS.gold);
-  const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 8), materials.get(COLORS.blue));
-  drum.rotation.x = Math.PI / 2; drum.position.set(0.46, 0.52, 0.22); drum.castShadow = true; display.add(drum); ownedGeometries.add(drum.geometry);
+  // Acoustic guitar.
+  instrumentSphere([-0.62, 0.55, 0.13], [0.95, 1.3, 0.48], '#a9673e');
+  mesh(display, [0.075, 0.88, 0.08], [-0.62, 1.23, 0.13], '#714b35');
+  mesh(display, [0.15, 0.17, 0.1], [-0.62, 1.78, 0.13], COLORS.gold);
+  for (const x of [-0.65, -0.59]) mesh(display, [0.01, 1.18, 0.014], [x, 1.0, 0.24], '#e8d5ad');
+  // Electric guitar.
+  instrumentSphere([0.0, 0.54, 0.13], [0.95, 1.15, 0.42], '#668496');
+  mesh(display, [0.07, 0.85, 0.075], [0.0, 1.2, 0.13], '#473a38');
+  mesh(display, [0.14, 0.16, 0.095], [0.0, 1.76, 0.13], COLORS.gold);
+  for (const x of [-0.025, 0.025]) mesh(display, [0.009, 1.15, 0.012], [x, 0.98, 0.235], '#e8d5ad');
+  // Violin.
+  instrumentSphere([0.62, 0.58, 0.13], [0.78, 1.15, 0.35], '#9d4d49', 0.17);
+  mesh(display, [0.05, 0.62, 0.055], [0.62, 1.2, 0.13], '#523a32');
+  mesh(display, [0.11, 0.13, 0.075], [0.62, 1.59, 0.13], COLORS.gold);
+  // Kick drum, two toms, snare and a brass cymbal.
+  const drumPiece = (radius, depth, at, color, horizontal = true) => {
+    const geometry = new THREE.CylinderGeometry(radius, radius, depth, 10); ownedGeometries.add(geometry);
+    const drum = new THREE.Mesh(geometry, materials.get(color));
+    if (horizontal) drum.rotation.x = Math.PI / 2;
+    drum.position.set(...at); drum.castShadow = true; drum.receiveShadow = true; display.add(drum);
+  };
+  drumPiece(0.25, 0.22, [0.2, 0.34, 0.34], '#9d4d49');
+  drumPiece(0.14, 0.14, [0.68, 0.48, 0.32], '#668496');
+  drumPiece(0.115, 0.13, [0.36, 0.78, 0.29], '#d47970');
+  drumPiece(0.105, 0.13, [0.68, 0.78, 0.29], '#d47970');
+  mesh(display, [0.04, 0.78, 0.04], [0.79, 0.76, 0.18], COLORS.wood);
+  const cymbalGeometry = new THREE.CylinderGeometry(0.22, 0.22, 0.035, 10); ownedGeometries.add(cymbalGeometry);
+  const cymbal = new THREE.Mesh(cymbalGeometry, materials.get(COLORS.gold)); cymbal.position.set(0.79, 1.18, 0.18); cymbal.castShadow = true; display.add(cymbal);
   mergeStaticMeshes(display);
-  const displayCollider = { minX: display.position.x - 0.64, maxX: display.position.x + 0.64, minY: 0, maxY: 1.7, minZ: display.position.z - 0.28, maxZ: display.position.z + 0.28 };
+  const displayCollider = { minX: display.position.x - 1.08, maxX: display.position.x + 1.08, minY: 0, maxY: 2.2, minZ: display.position.z - 0.42, maxZ: display.position.z + 0.42 };
   colliders.push(displayCollider); cameraBlockers.push(displayCollider);
   cameraBlockers.push(...ROOM_COLLIDERS.slice(0, 3));
   function mergeStaticMeshes(parent) {

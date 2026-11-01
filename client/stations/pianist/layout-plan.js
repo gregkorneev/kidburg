@@ -8,7 +8,7 @@ export const PIANIST_PLAN = Object.freeze({
     Object.freeze({ x: 0.28, z: 5.4 }),
     Object.freeze({ x: 0.28, z: 9.8 }),
   ]),
-  instrumentDisplay: Object.freeze({ x: 18.9, z: 1.2, rotationY: 0 }),
+  instrumentDisplay: Object.freeze({ x: 18.5, z: 1.5, rotationY: 0 }),
   stagePiano: Object.freeze({ x: 10.8, z: 12.55 }),
   stage: Object.freeze({ minX: 6.2, maxX: 15.4, minZ: 11.25, maxZ: 14.55, height: 0.3 }),
   stairs: Object.freeze({ centerX: 10.8, width: 4.4, startZ: 9.99, stepDepth: 0.42, stepHeight: 0.1, count: 3 }),
@@ -51,6 +51,19 @@ export function pianistGroundHeight(x, z) {
   }
   if (x >= stage.minX && x <= stage.maxX && z >= stage.minZ && z <= stage.maxZ) return stage.height;
   return 0;
+}
+
+export function pianoCollider(position, rotationY = 0) {
+  const pianoY = position.y ?? 0;
+  const corners = [[-1.4, -0.9], [1.4, -0.9], [-1.4, 0.85], [1.4, 0.85]].map(([x, z]) => ({
+    x: position.x + Math.cos(rotationY) * x + Math.sin(rotationY) * z,
+    z: position.z - Math.sin(rotationY) * x + Math.cos(rotationY) * z,
+  }));
+  return {
+    minX: Math.min(...corners.map((point) => point.x)), maxX: Math.max(...corners.map((point) => point.x)),
+    minY: pianoY, maxY: pianoY + 2.2,
+    minZ: Math.min(...corners.map((point) => point.z)), maxZ: Math.max(...corners.map((point) => point.z)),
+  };
 }
 
 export const AUDIENCE_COLLIDERS = Object.freeze([...AUDIENCE_CHAIRS, ...BETWEEN_PIANOS_CHAIRS].map(({ x, z }) => Object.freeze({

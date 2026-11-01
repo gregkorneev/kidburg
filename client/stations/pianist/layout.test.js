@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AUDIENCE_CHAIRS, AUDIENCE_COLLIDERS, BETWEEN_PIANOS_CHAIRS, pianistGroundHeight, PIANIST_PLAN, POSTER_MOUNTS, ROOM, ROOM_COLLIDERS, STAGE_COLLIDERS } from './layout-plan.js';
+import { AUDIENCE_CHAIRS, AUDIENCE_COLLIDERS, BETWEEN_PIANOS_CHAIRS, pianistGroundHeight, pianoCollider, PIANIST_PLAN, POSTER_MOUNTS, ROOM, ROOM_COLLIDERS, STAGE_COLLIDERS } from './layout-plan.js';
 import { collides, createPlayer, stepPlayer } from '../../engine/player.js';
 import { buildPianistLayout } from './layout.js';
 import { approachCameraDistance, safeCameraDistance } from './camera-collision.js';
@@ -96,6 +96,15 @@ test('периметр и стулья блокируют предметы, це
   assert.equal(collides(ROOM_COLLIDERS, 0.15, 0, 5), true);
   assert.equal(collides([...ROOM_COLLIDERS, ...AUDIENCE_COLLIDERS, ...STAGE_COLLIDERS], 4.2, 0, 7.55), false);
   assert.equal(collides([...ROOM_COLLIDERS, ...AUDIENCE_COLLIDERS, ...STAGE_COLLIDERS], 10.8, 0.3, 11.5), false);
+});
+
+test('коллизии закрывают корпус и клавиатурную сторону обоих пианино', () => {
+  const practice = pianoCollider(PIANIST_PLAN.practicePiano, PIANIST_PLAN.practicePiano.rotationY);
+  const stage = pianoCollider({ ...PIANIST_PLAN.stagePiano, y: PIANIST_PLAN.stage.height }, Math.PI);
+  assert.equal(collides([practice], 14.5, 0, PIANIST_PLAN.practicePiano.z), true);
+  assert.equal(collides([practice], 13.7, 0, PIANIST_PLAN.practicePiano.z), false);
+  assert.equal(collides([stage], PIANIST_PLAN.stagePiano.x, PIANIST_PLAN.stage.height, 12.2), true);
+  assert.equal(collides([stage], PIANIST_PLAN.stagePiano.x, PIANIST_PLAN.stage.height, 11.25), false);
 });
 
 test('интерьер создаётся без DOM и освобождает геометрию, материалы и локальные текстуры', () => {
