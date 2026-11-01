@@ -408,3 +408,31 @@ test('hello не меняет личность: имя, код комнаты и
     await app.close();
   }
 });
+
+
+test('животные: два игрока получают одно состояние и новый снимок после переподключения', async () => {
+  const { app, port } = await listen();
+  try {
+    const a = await joinGame(app, port, 'Аня');
+    const b = await joinGame(app, port, 'Боря');
+    const stateB = await b.client.nextOfType('animals');
+    const stateA = await a.client.next((m) => m.t === 'animals' && m.tick === stateB.tick);
+    assert.deepEqual(stateA, stateB);
+    assert.equal(stateA.list.length, 4);
+    const laterA = await a.client.next((m) => m.t === 'animals' && m.tick > stateA.tick + 2);
+    const laterB = await b.client.next((m) => m.t === 'animals' && m.tick === laterA.tick);
+    assert.deepEqual(laterA, laterB);
+    assert.notDeepEqual(laterA.list, stateA.list);
+    await b.client.close();
+    const again = await TestClient.connect(port, await getTicket(app, b.token));
+    again.send({ t: 'hello', ticket: 'x', proto: 1 });
+    await again.nextOfType('welcome');
+    const restored = await again.nextOfType('animals');
+    assert.equal(restored.list.length, 4);
+    const same = await again.next((m) => m.t === 'animals' && m.tick > restored.tick);
+    const existing = await a.client.next((m) => m.t === 'animals' && m.tick === same.tick);
+    assert.deepEqual(same, existing);
+  } finally {
+    await app.close();
+  }
+});

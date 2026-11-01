@@ -320,6 +320,7 @@ export function createClient({ container, networkOnly = false }) {
       world.clear();
       dynamic.clear();
       remote.clear();
+      animals.clear();
       carry.dispose();
       balls.dispose();
       carrying = new Set();
@@ -352,6 +353,7 @@ export function createClient({ container, networkOnly = false }) {
       emitter.on('prop_snapshot', ({ list }) => { carry.snapshot(list); syncCarryPoses(); }),
       emitter.on('prop_state', ({ prop }) => { carry.state(prop); syncCarryPoses(); }),
       emitter.on('ball_snapshot', (msg) => balls.snapshot(msg)),
+      emitter.on('animals', ({ list }) => animals.snapshot(list)),
       emitter.on('ball_event', (msg) => {
         balls.event(msg);
         if (msg.kind === 'kick' && msg.by !== state.me?.id) remote.kick(msg.by);
@@ -378,7 +380,7 @@ export function createClient({ container, networkOnly = false }) {
       }),
       emitter.on('status', ({ status }) => {
         hud.setStatus(status);
-        if (status !== 'open') ready = false; // не шлём позиции в закрытый сокет
+        if (status !== 'open') { ready = false; animals.clear(); } // не показываем устаревшее состояние при разрыве
         if (status === 'open') measurePing();
       }),
     ];
@@ -510,7 +512,7 @@ export function createClient({ container, networkOnly = false }) {
       carry.update(dt);
       balls.update(dt);
       world.update(dt, now / 1000, player);
-      animals.update(dt, ready ? player : null);
+      animals.update(dt);
       seatedNpcs.update(dt, ready ? player : null, now / 1000);
       updateAvatarAndCamera(now / 1000, dt);
       stylized.update(player, now / 1000);
