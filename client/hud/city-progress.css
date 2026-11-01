@@ -1,0 +1,22 @@
+.city-progress {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 10;
+  transform: translateX(-50%);
+  width: min(230px, 44vw);
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid rgba(70, 91, 67, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 253, 242, 0.94);
+  box-shadow: 0 8px 24px rgba(36, 55, 42, 0.18);
+  color: #31483b;
+  font: 600 11px/1.3 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+.city-progress[hidden] { display: none; }
+.city-progress-bar { display: flex; gap: 4px; margin-top: 6px; }
+.city-progress-segment { flex: 1; height: 8px; border-radius: 5px; background: #dce5d8; }
+.city-progress-segment.is-complete { background: #579e70; }

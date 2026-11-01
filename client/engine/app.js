@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { TALK_DISTANCE } from '../../shared/constants.js';
 import { createHud } from '../hud/index.js';
+import { createCityProgress } from '../hud/city-progress.js';
+import '../hud/city-progress.css';
 import { CITY_CHARACTER_SCALE, animateCharacter, createCharacter, disposeCharacter, setCarry, triggerKick } from './art/character.js';
 import { applyStylizedLook } from './art/lighting.js';
 import { readQuality } from './art/quality.js';
@@ -230,6 +232,7 @@ export function createClient({ container, networkOnly = false, instance = 'city'
     };
     const remote = createRemotePlayers({ scene, pool, createLabel: makeLabel, quality });
     const hud = createHud(container);
+    const disposeProgress = createCityProgress(container, emitter);
     const animals = createPlazaAnimals({ scene });
     const seatedNpcs = createPlazaSeatedNpcs({ scene, quality });
     const player = createPlayer();
@@ -553,6 +556,7 @@ export function createClient({ container, networkOnly = false, instance = 'city'
       renderer.forceContextLoss();
       renderer.domElement.remove();
       labels.domElement.remove();
+      disposeProgress();
       hud.dispose();
     };
 
